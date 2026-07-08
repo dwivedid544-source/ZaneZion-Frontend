@@ -4,7 +4,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
     User, Mail, Phone, Lock, Briefcase, CreditCard,
     Shield, CheckCircle, ArrowRight, ArrowLeft, Loader2,
-    Calendar, Globe, FileText, Image, Award, AlertCircle, Camera, Truck
+    Calendar, Globe, FileText, Image, Award, AlertCircle, Camera, Truck,
+    Eye, EyeOff
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api/setupAxios.js';
@@ -13,6 +14,7 @@ import { ageFromBirthday } from '../../utils/dateEst';
 const StaffSignup = () => {
     const navigate = useNavigate();
     const [step, setStep] = useState(1);
+    const [showPassword, setShowPassword] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState('');
     const [files, setFiles] = useState({
@@ -38,7 +40,11 @@ const StaffSignup = () => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        let val = value;
+        if (name === 'phone') {
+            val = value.replace(/\D/g, '');
+        }
+        setFormData(prev => ({ ...prev, [name]: val }));
     };
 
     const handleFileChange = (e) => {
@@ -51,13 +57,36 @@ const StaffSignup = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (step < 3) {
+            if (step === 1) {
+                if (formData.birthday && new Date(formData.birthday) > new Date()) {
+                    setError('Date of birth cannot be in the future.');
+                    return;
+                }
+                const applicantAge = ageFromBirthday(formData.birthday);
+                if (applicantAge == null || applicantAge < 18) {
+                    setError('Applicants must be at least 18 years old.');
+                    return;
+                }
+                if (formData.phone && !/^\d+$/.test(formData.phone)) {
+                    setError('Phone number must contain only numeric digits.');
+                    return;
+                }
+            }
             setStep(step + 1);
             return;
         }
 
+        if (formData.birthday && new Date(formData.birthday) > new Date()) {
+            setError('Date of birth cannot be in the future.');
+            return;
+        }
         const applicantAge = ageFromBirthday(formData.birthday);
         if (applicantAge == null || applicantAge < 18) {
             setError('Applicants must be at least 18 years old.');
+            return;
+        }
+        if (formData.phone && !/^\d+$/.test(formData.phone)) {
+            setError('Phone number must contain only numeric digits.');
             return;
         }
 
@@ -123,20 +152,27 @@ const StaffSignup = () => {
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted">Primary Phone</label>
                                 <div className="relative">
                                     <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-accent" size={16} />
-                                    <input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 text-sm focus:border-accent outline-none" placeholder="+1 (242) ..." />
+                                    <input type="tel" name="phone" value={formData.phone} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 text-sm focus:border-accent outline-none font-mono" placeholder="e.g. 2421234567" autoComplete="new-phone-number" />
                                 </div>
                             </div>
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black uppercase tracking-widest text-muted">Create Vault Password</label>
                                 <div className="relative">
                                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-accent" size={16} />
-                                    <input type="password" name="password" required value={formData.password} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-4 py-3 text-sm focus:border-accent outline-none" placeholder="••••••••" />
+                                    <input type={showPassword ? 'text' : 'password'} name="password" required value={formData.password} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl pl-12 pr-10 py-3 text-sm focus:border-accent outline-none font-mono" placeholder="••••••••" autoComplete="new-password" />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors"
+                                    >
+                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
                                 </div>
                             </div>
                         </div>
                         <div className="space-y-2">
                             <label className="text-[10px] font-black uppercase tracking-widest text-muted">Date of Birth <span className="text-warning">(minimum age 18)</span></label>
-                            <input type="date" name="birthday" required value={formData.birthday} onChange={handleChange} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-accent outline-none" />
+                            <input type="date" name="birthday" required value={formData.birthday} onChange={handleChange} max={new Date().toISOString().split('T')[0]} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-accent outline-none" />
                         </div>
                     </motion.div>
                 );

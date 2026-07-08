@@ -139,7 +139,17 @@ const Users = () => {
 
   const filteredUsers = users.filter(u => {
     const rName = (typeof u?.role === 'object' ? u.role?.name || '' : u?.role || '').toLowerCase();
-    return !['customer', 'saas_client', 'business_client', 'client'].includes(rName);
+    if (['customer', 'saas_client', 'business_client', 'client'].includes(rName)) {
+      return false;
+    }
+    const statusLower = String(u.status || '').toLowerCase();
+    if (activeTab === 'users') {
+      return statusLower === 'active';
+    }
+    if (activeTab === 'pending') {
+      return statusLower === 'pending';
+    }
+    return true;
   });
   const currentUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 

@@ -13,6 +13,53 @@ import Swal from 'sweetalert2';
 
 const Users = () => {
   const [showPassword, setShowPassword] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState({});
+
+  const handleDocUpload = async (userId, docType, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const documentTypes = {
+      passport: ['pdf', 'jpg', 'jpeg', 'png'],
+      license: ['pdf', 'jpg', 'jpeg', 'png'],
+      nib: ['pdf', 'jpg', 'jpeg', 'png'],
+      resume: ['pdf', 'doc', 'docx'],
+      profilePic: ['jpg', 'jpeg', 'png', 'webp'],
+      certs: ['pdf', 'jpg', 'jpeg', 'png']
+    };
+
+    const allowed = documentTypes[docType];
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!allowed || !allowed.includes(ext)) {
+      swalWarning('Validation Error', `Invalid format. Allowed: ${allowed.join(', ').toUpperCase()}`);
+      return;
+    }
+
+    const stateKey = `${userId}-${docType}`;
+    setUploadingDocs(prev => ({ ...prev, [stateKey]: true }));
+
+    try {
+      const uploadData = new FormData();
+      uploadData.append('file', file);
+
+      const res = await api.post(`/users/${userId}/documents?type=${docType}`, uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (res.data?.success) {
+        swalSuccess('Success', 'Document uploaded successfully.');
+        await fetchStaff();
+      } else {
+        swalWarning('Error', res.data?.message || 'Failed to upload document.');
+      }
+    } catch (err) {
+      console.error(err);
+      swalWarning('Error', err.response?.data?.message || 'Upload failed.');
+    } finally {
+      setUploadingDocs(prev => ({ ...prev, [stateKey]: false }));
+    }
+  };
+
   const { leaveRequests, updateLeaveRequest, staffAssignments, addStaffAssignment, updateAssignment, fetchStaff, reviewStaff, currentUser, payHistory, fetchPayHistory, clients, fetchClients, subscriptionRequests, updateSubscriptionRequest, hasMenuPermission, cancelPersonalMembership, roles } = useData();
   const roleNormalized = normalizeRole(currentUser?.role);
   const isSuperAdmin = roleNormalized === 'superadmin';
@@ -728,28 +775,65 @@ const Users = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 flex-1">
+                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 flex-1">
                   {[
-                    { label: 'Passport', key: 'hasPassport' },
-                    { label: 'D. License', key: 'hasLicense' },
-                    { label: 'NIB Photo', key: 'hasNIB' },
-                    { label: 'Resume', key: 'hasResume' },
-                    { label: 'Profile Pic', key: 'hasProfilePic' },
-                    { label: 'Certs', key: 'hasCerts' }
-                  ].map(doc => (
-                    <div key={doc.label} className="space-y-1.5 flex flex-col">
-                      <p className="text-[9px] font-black text-muted uppercase tracking-tighter truncate">{doc.label}</p>
-                      <label className={`w-full py-2.5 rounded-lg text-[9px] font-black uppercase border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${user[doc.key] ? 'bg-success/20 border-success/40 text-success' : 'bg-white/5 border-white/10 text-muted hover:border-accent/40 hover:text-accent'}`}>
-                        <input
-                          type="file"
-                          className="hidden"
-                          onChange={() => updateMutation.mutate({ id: user.id, data: { [doc.key]: true } })}
-                        />
-                        {user[doc.key] ? <CheckCircle2 size={11} /> : <Plus size={11} />}
-                        {user[doc.key] ? 'Verified' : 'Upload'}
-                      </label>
-                    </div>
-                  ))}
+                    { label: 'Passport', key: 'hasPassport', urlKey: 'passportUrl', type: 'passport' },
+                    { label: 'D. License', key: 'hasLicense', urlKey: 'licenseUrl', type: 'license' },
+                    { label: 'NIB Photo', key: 'hasNIB', urlKey: 'nibUrl', type: 'nib' },
+                    { label: 'Resume', key: 'hasResume', urlKey: 'resumeUrl', type: 'resume' },
+                    { label: 'Profile Pic', key: 'hasProfilePic', urlKey: 'avatar', type: 'profilePic' },
+                    { label: 'Certs', key: 'hasCerts', urlKey: 'certsUrl', type: 'certs' }
+                  ].map(doc => {
+                    const isUploading = uploadingDocs[`${user.id}-${doc.type}`];
+                    const hasDoc = user[doc.key] || !!user[doc.urlKey];
+                    const docUrl = user[doc.urlKey];
+                    
+                    return (
+                      <div key={doc.label} className="space-y-1.5 flex flex-col">
+                        <p className="text-[9px] font-black text-muted uppercase tracking-tighter truncate">{doc.label}</p>
+                        
+                        {hasDoc && docUrl ? (
+                          <div className="flex gap-1 w-full">
+                            <a 
+                              href={docUrl} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="flex-1 py-2.5 rounded-lg text-[9px] font-black uppercase border bg-success/20 border-success/40 text-success hover:bg-success/30 transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <CheckCircle2 size={11} />
+                              View
+                            </a>
+                            <label className="p-2.5 rounded-lg border bg-white/5 border-white/10 text-muted hover:border-accent/40 hover:text-accent cursor-pointer transition-all flex items-center justify-center">
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => handleDocUpload(user.id, doc.type, e)}
+                                disabled={isUploading}
+                              />
+                              <Edit size={11} />
+                            </label>
+                          </div>
+                        ) : (
+                          <label className={`w-full py-2.5 rounded-lg text-[9px] font-black uppercase border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${isUploading ? 'bg-white/5 border-white/10 text-muted cursor-not-allowed' : 'bg-white/5 border-white/10 text-muted hover:border-accent/40 hover:text-accent'}`}>
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => handleDocUpload(user.id, doc.type, e)}
+                              disabled={isUploading}
+                            />
+                            {isUploading ? (
+                              <span>Uploading...</span>
+                            ) : (
+                              <>
+                                <Plus size={11} />
+                                <span>Upload</span>
+                              </>
+                            )}
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}

@@ -1193,8 +1193,17 @@ const Clients = () => {
                   </button>
                 )}
 
-                <button onClick={showAddModal ? handleSaveAdd : handleSaveEdit} className="btn-primary flex items-center gap-3 px-10 shadow-xl shadow-accent/20">
-                  <span>{showAddModal ? (isAdminRole ? 'Register Customer' : 'Register Client') : 'Update Portfolio'}</span>
+                <button 
+                  onClick={showAddModal ? handleSaveAdd : handleSaveEdit} 
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                  className="btn-primary flex items-center gap-3 px-10 shadow-xl shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span>
+                    {showAddModal 
+                      ? (createMutation.isPending ? 'Registering...' : (isAdminRole ? 'Register Customer' : 'Register Client')) 
+                      : (updateMutation.isPending ? 'Updating...' : 'Update Portfolio')
+                    }
+                  </span>
                 </button>
               </div>
             </motion.div>

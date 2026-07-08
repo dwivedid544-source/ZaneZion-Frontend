@@ -34,6 +34,7 @@ const Vendors = () => {
   
   const vendors = realVendors.length > 0 ? realVendors : mockVendors;
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [modalType, setModalType] = useState('view');
   const [selectedVendor, setSelectedVendor] = useState(null);
   const [formData, setFormData] = useState({ name: '', rating: 0, delivery: 0, category: 'Premium Supplier' });
@@ -72,6 +73,7 @@ const Vendors = () => {
   const handleAction = (type, vendor) => {
     setSelectedVendor(vendor);
     setModalType(type);
+    setIsSaving(false);
     setFormData(vendor.id ? {
       ...vendor,
       name: vendor.companyName ?? vendor.name ?? vendor.vendor_name ?? vendor.business_name ?? vendor.company_name ?? '',
@@ -105,6 +107,7 @@ const Vendors = () => {
       }
 
       try {
+        setIsSaving(true);
         const apiPayload = {
           companyName: formData.name.trim(),
           contactPerson: formData.contact || '',
@@ -125,6 +128,8 @@ const Vendors = () => {
       } catch (e) {
         console.warn('[REAL_API_FAILED] Vendor creation via real API failed', e);
         swalWarning('Error', vendorSaveErrorMessage(e));
+      } finally {
+        setIsSaving(false);
       }
       return;
     }
@@ -140,6 +145,7 @@ const Vendors = () => {
       }
 
       try {
+        setIsSaving(true);
         const apiPayload = {
           companyName: formData.name.trim(),
           contactPerson: formData.contact || '',
@@ -159,6 +165,8 @@ const Vendors = () => {
       } catch (e) {
         console.warn('[REAL_API_FAILED] Vendor update via real API failed', e);
         swalWarning('Error', vendorSaveErrorMessage(e));
+      } finally {
+        setIsSaving(false);
       }
     }
   };
@@ -558,7 +566,16 @@ const Vendors = () => {
 
               <div className="flex gap-3 justify-end pt-6">
                 <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary">{modalType === 'view' ? 'Close' : 'Cancel'}</button>
-                {modalType !== 'view' && <button type="button" onClick={handleSave} className="btn-primary">Save Changes</button>}
+                {modalType !== 'view' && (
+                  <button 
+                    type="button" 
+                    onClick={handleSave} 
+                    disabled={isSaving}
+                    className="btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {isSaving ? 'Saving...' : 'Save Changes'}
+                  </button>
+                )}
               </div>
             </div>
           )}

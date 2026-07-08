@@ -4,7 +4,7 @@ import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import { useData } from '../../context/GlobalDataContext';
 import { useUsers, useCreateUser, useUpdateUser, useDeleteUser } from '../../hooks/api/useCRM';
-import { Search, Plus, Shield, ShieldCheck, Calendar, Check, X as CloseIcon, Radio, Clock, CheckCircle2, XCircle, Briefcase, Truck, MapPin, Car, FileText, Eye, Edit, Trash2 } from 'lucide-react';
+import { Search, Plus, Shield, ShieldCheck, Calendar, Check, X as CloseIcon, Radio, Clock, CheckCircle2, XCircle, Briefcase, Truck, MapPin, Car, FileText, Eye, EyeOff, Edit, Trash2 } from 'lucide-react';
 import { swalConfirm, swalSuccess, swalWarning, swalInfo } from '../../utils/swal';
 import Pagination from '../../components/Common/Pagination';
 import { normalizeRole, resolvePortalRole } from '../../utils/authUtils';
@@ -12,6 +12,7 @@ import api from '../../services/api/setupAxios.js';
 import Swal from 'sweetalert2';
 
 const Users = () => {
+  const [showPassword, setShowPassword] = useState(false);
   const { leaveRequests, updateLeaveRequest, staffAssignments, addStaffAssignment, updateAssignment, fetchStaff, reviewStaff, currentUser, payHistory, fetchPayHistory, clients, fetchClients, subscriptionRequests, updateSubscriptionRequest, hasMenuPermission, cancelPersonalMembership, roles } = useData();
   const roleNormalized = normalizeRole(currentUser?.role);
   const isSuperAdmin = roleNormalized === 'superadmin';
@@ -180,6 +181,18 @@ const Users = () => {
         return;
       }
 
+      if (formData.birthday && new Date(formData.birthday) > new Date()) {
+        alert('Birthday cannot be in the future.');
+        return;
+      }
+      if (formData.phone && !/^\d+$/.test(formData.phone)) {
+        alert('Phone number must contain only numeric characters.');
+        return;
+      }
+      if (formData.vacationBalance < 0) {
+        alert('Vacation balance cannot be negative.');
+        return;
+      }
       try {
         const payload = { ...formData, roleId: Number(roleIdToSubmit), tenantId: currentUser?.tenantId || 1 };
         const rawCompanyId = payload.company_id ?? payload.companyId;
@@ -203,6 +216,18 @@ const Users = () => {
         // error already handled
       }
     } else if (modalType === 'edit') {
+      if (formData.birthday && new Date(formData.birthday) > new Date()) {
+        alert('Birthday cannot be in the future.');
+        return;
+      }
+      if (formData.phone && !/^\d+$/.test(formData.phone)) {
+        alert('Phone number must contain only numeric characters.');
+        return;
+      }
+      if (formData.vacationBalance < 0) {
+        alert('Vacation balance cannot be negative.');
+        return;
+      }
       try {
         await updateMutation.mutateAsync({ id: selectedUser.id, data: { ...selectedUser, ...formData } });
         setIsModalOpen(false);
@@ -1041,9 +1066,10 @@ const Users = () => {
                   <input
                     type="tel"
                     value={formData.phone || ''}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono"
                     disabled={modalType === 'view'}
+                    autoComplete="new-phone-number"
                   />
                 </div>
                 <div className="space-y-1">
@@ -1065,6 +1091,7 @@ const Users = () => {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
                     disabled={modalType === 'view'}
+                    autoComplete="new-email"
                   />
                 </div>
                 <div className="space-y-1">
@@ -1140,6 +1167,7 @@ const Users = () => {
                   <label className="text-[10px] font-bold text-muted uppercase">Birthday</label>
                   <input
                     type="date"
+                    max={new Date().toISOString().split('T')[0]}
                     value={formData.birthday || ''}
                     onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
@@ -1510,7 +1538,7 @@ const Users = () => {
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-muted uppercase">Phone</label>
-              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.phone} onChange={e => setClientFormData({...clientFormData, phone: e.target.value})} />
+              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.phone} onChange={e => setClientFormData({...clientFormData, phone: e.target.value.replace(/\D/g, '')})} autoComplete="new-phone" />
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-muted uppercase">Plan</label>

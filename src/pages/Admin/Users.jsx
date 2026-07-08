@@ -74,6 +74,12 @@ const Users = () => {
     loadData();
   }, [activeTab, currentPage, debounceSearch, fetchStaff, fetchClients, fetchPayHistory]);
 
+  React.useEffect(() => {
+    if (!isModalOpen) {
+      setSearchTerm('');
+    }
+  }, [isModalOpen]);
+
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
   };

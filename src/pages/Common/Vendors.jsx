@@ -410,7 +410,7 @@ const Vendors = () => {
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1 col-span-1 sm:col-span-2">
-                  <label className="text-[10px] font-bold text-muted uppercase">Vendor Name</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Vendor Name <span className="text-danger">*</span></label>
                   <input
                     type="text"
                     value={formData.name}
@@ -472,7 +472,7 @@ const Vendors = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Business Email</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Business Email <span className="text-danger">*</span></label>
                   <input
                     type="email"
                     value={formData.email || ''}
@@ -496,9 +496,12 @@ const Vendors = () => {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted uppercase">Rating (%)</label>
                   <input
-                    type="number"
+                    type="text"
                     value={formData.rating}
-                    onChange={(e) => setFormData({ ...formData, rating: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setFormData({ ...formData, rating: val });
+                    }}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
                     disabled={modalType === 'view'}
                   />
@@ -506,9 +509,12 @@ const Vendors = () => {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted uppercase">Delivery Performance (%)</label>
                   <input
-                    type="number"
+                    type="text"
                     value={formData.delivery}
-                    onChange={(e) => setFormData({ ...formData, delivery: e.target.value })}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setFormData({ ...formData, delivery: val });
+                    }}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
                     disabled={modalType === 'view'}
                   />

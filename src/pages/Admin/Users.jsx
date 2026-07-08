@@ -1027,7 +1027,7 @@ const Users = () => {
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Full Name</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Full Name <span className="text-danger">*</span></label>
                   <input
                     type="text"
                     value={formData.name}
@@ -1047,7 +1047,7 @@ const Users = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Login Password</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Login Password <span className="text-danger">*</span></label>
                   <input
                     type="password"
                     value={formData.password || ''}
@@ -1058,7 +1058,7 @@ const Users = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Email Address</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Email Address <span className="text-danger">*</span></label>
                   <input
                     type="email"
                     value={formData.email}
@@ -1068,7 +1068,7 @@ const Users = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Role</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Role <span className="text-danger">*</span></label>
                   <select
                     value={formData.roleId || ''}
                     onChange={(e) => setFormData({ ...formData, roleId: Number(e.target.value) })}
@@ -1126,9 +1126,12 @@ const Users = () => {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted uppercase">Vacation Balance (Tenure Adjusted)</label>
                   <input
-                    type="number"
-                    value={formData.vacationBalance || 0}
-                    onChange={(e) => setFormData({ ...formData, vacationBalance: parseInt(e.target.value) || 0 })}
+                    type="text"
+                    value={formData.vacationBalance ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value.replace(/\D/g, '');
+                      setFormData({ ...formData, vacationBalance: val === '' ? '' : parseInt(val, 10) });
+                    }}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono text-accent"
                     disabled={modalType === 'view'}
                   />
@@ -1300,7 +1303,7 @@ const Users = () => {
         <form onSubmit={handleDelegateSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Assignee Profile</label>
+              <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Assignee Profile <span className="text-danger">*</span></label>
               <select
                 value={delegateFormData.assigneeId}
                 onChange={e => setDelegateFormData({ ...delegateFormData, assigneeId: e.target.value })}
@@ -1328,7 +1331,7 @@ const Users = () => {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Mission Description</label>
+            <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Mission Description <span className="text-danger">*</span></label>
             <textarea
               value={delegateFormData.task}
               onChange={e => setDelegateFormData({ ...delegateFormData, task: e.target.value })}
@@ -1498,7 +1501,7 @@ const Users = () => {
         }} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-muted uppercase">Company / Name</label>
+              <label className="text-[9px] font-bold text-muted uppercase">Company / Name <span className="text-danger">*</span></label>
               <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.companyName} onChange={e => setClientFormData({...clientFormData, companyName: e.target.value})} required />
             </div>
             <div className="space-y-1">

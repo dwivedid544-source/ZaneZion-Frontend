@@ -354,3 +354,13 @@
     page-break-inside: avoid !important;
   }
 }
+
+/* Hide number input increment/decrement arrows globally */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] {
+  -moz-appearance: textfield;
+}

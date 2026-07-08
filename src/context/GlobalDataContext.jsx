@@ -3102,7 +3102,10 @@ export const GlobalDataProvider = ({ children }) => {
         console.error("updateUser: missing user id");
         return;
       }
-      const safePayload = withoutPassword(updated);
+      const safePayload = { ...updated };
+      if (!safePayload.password) {
+        delete safePayload.password;
+      }
       const bank =
         safePayload?.bankingInfo?.bank ??
         safePayload.bankName ??
@@ -3128,7 +3131,9 @@ export const GlobalDataProvider = ({ children }) => {
         vacationBalance:
           safePayload.vacationBalance ?? safePayload.vacation_balance,
       };
-      const res = await api.put(`/users/${id}`, payload);
+
+      const endpoint = String(id) === String(currentUser?.id) ? '/auth/profile' : `/users/${id}`;
+      const res = await api.put(endpoint, payload);
       if (res.data?.success) {
         const apiUser = normalizeUserForUi(
           normalizeApiUserPayload(res.data.data),

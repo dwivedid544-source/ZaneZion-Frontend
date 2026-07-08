@@ -231,9 +231,6 @@ const Clients = () => {
       billingCycle: client.billingCycle || client.billing_cycle || 'Monthly',
       paymentMethod: client.paymentMethod || client.payment_method || 'Wire Transfer',
       contact: client.contactPerson || client.contact || client.contact_person || '',
-      address: client.address || '',
-      city: client.city || '',
-      country: client.country || '',
       status: client.status || 'active'
     });
     setErrors({});

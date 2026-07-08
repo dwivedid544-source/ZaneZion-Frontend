@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/GlobalDataContext';
-import { User, Mail, Phone, Lock, Save, Shield, Calendar, CreditCard, Hash, Briefcase, TrendingUp } from 'lucide-react';
+import { User, Mail, Phone, Lock, Save, Shield, Calendar, CreditCard, Hash, Briefcase, TrendingUp, Eye, EyeOff } from 'lucide-react';
 
 const Profile = () => {
     const { currentUser, updateUser } = useData();
@@ -15,6 +15,7 @@ const Profile = () => {
         routingNumber: '',
         nibNumber: '',
     });
+    const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [message, setMessage] = useState({ type: '', text: '' });
 
@@ -35,11 +36,26 @@ const Profile = () => {
     }, [currentUser]);
 
     const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        let val = e.target.value;
+        if (e.target.name === 'phone') {
+            val = val.replace(/\D/g, '');
+        }
+        setFormData({ ...formData, [e.target.name]: val });
     };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (formData.birthday && new Date(formData.birthday) > new Date()) {
+            setMessage({ type: 'error', text: 'Birthday cannot be in the future.' });
+            setIsLoading(false);
+            return;
+        }
+        if (formData.phone && !/^\d+$/.test(formData.phone)) {
+            setMessage({ type: 'error', text: 'Phone number must contain only numeric characters.' });
+            setIsLoading(false);
+            return;
+        }
+
         setIsLoading(true);
         setMessage({ type: '', text: '' });
 
@@ -136,6 +152,7 @@ const Profile = () => {
                                         onChange={handleChange}
                                         className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
                                         required
+                                        autoComplete="new-name"
                                     />
                                 </div>
                             </div>
@@ -153,6 +170,7 @@ const Profile = () => {
                                         onChange={handleChange}
                                         className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
                                         required
+                                        autoComplete="new-email"
                                     />
                                 </div>
                             </div>
@@ -168,7 +186,8 @@ const Profile = () => {
                                         name="phone"
                                         value={formData.phone}
                                         onChange={handleChange}
-                                        className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
+                                        className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors font-mono"
+                                        autoComplete="new-phone"
                                     />
                                 </div>
                             </div>
@@ -184,6 +203,7 @@ const Profile = () => {
                                         name="birthday"
                                         value={formData.birthday}
                                         onChange={handleChange}
+                                        max={new Date().toISOString().split('T')[0]}
                                         className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
                                     />
                                 </div>
@@ -203,13 +223,21 @@ const Profile = () => {
                                         <Lock size={16} />
                                     </div>
                                     <input
-                                        type="password"
+                                        type={showPassword ? 'text' : 'password'}
                                         name="password"
                                         value={formData.password}
                                         onChange={handleChange}
                                         placeholder="••••••••"
-                                        className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
+                                        className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-10 text-sm text-white focus:outline-none focus:border-accent transition-colors font-mono"
+                                        autoComplete="new-password"
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors"
+                                    >
+                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                                    </button>
                                 </div>
                             </div>
                         </div>

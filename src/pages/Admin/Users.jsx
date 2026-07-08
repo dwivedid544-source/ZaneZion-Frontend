@@ -127,29 +127,60 @@ const Users = () => {
     return resolved;
   };
 
-  const handleAction = (type, user) => {
-    setSelectedUser(user);
+  const handleAction = async (type, user) => {
     setModalType(type);
 
     if (user.id) {
-      // Map backend snake_case fields → frontend form fields
-      setFormData({
-        ...user,
-        roleId: user.roleId || user.role?.id || '',
-        // birthday comes as "2026-04-29T00:00:00.000Z" from DB, trim to date only
-        birthday: user.birthday ? String(user.birthday).split('T')[0] : '',
-        nibNumber: user.nib_number || user.nibNumber || '',
-        vacationBalance: user.vacation_balance ?? user.vacationBalance ?? 0,
-        employmentStatus: user.employment_status || user.employmentStatus || 'Full Time',
-        // Flatten bank fields into bankingInfo object for the form
-        bankingInfo: {
-          bank: user.bank_name || user.bankingInfo?.bank || '',
-          account: user.account_number || user.bankingInfo?.account || '',
-          routing: user.routing_number || user.bankingInfo?.routing || '',
-          method: user.bankingInfo?.method || 'Direct Deposit',
-        },
-      });
+      try {
+        const res = await api.get(`/users/${user.id}`);
+        const fullUser = res.data?.data || user;
+        setSelectedUser(fullUser);
+
+        let parsedBankingInfo = fullUser.bankingInfo;
+        if (typeof parsedBankingInfo === 'string') {
+          try { parsedBankingInfo = JSON.parse(parsedBankingInfo); } catch (e) { parsedBankingInfo = {}; }
+        }
+        // Map backend snake_case fields → frontend form fields
+        setFormData({
+          ...fullUser,
+          roleId: fullUser.roleId || fullUser.role?.id || '',
+          // birthday comes as "2026-04-29T00:00:00.000Z" from DB, trim to date only
+          birthday: fullUser.birthday ? String(fullUser.birthday).split('T')[0] : '',
+          nibNumber: fullUser.nib_number || fullUser.nibNumber || '',
+          vacationBalance: fullUser.vacation_balance ?? fullUser.vacationBalance ?? 0,
+          employmentStatus: fullUser.employment_status || fullUser.employmentStatus || 'Full Time',
+          // Flatten bank fields into bankingInfo object for the form
+          bankingInfo: {
+            bank: fullUser.bank_name || parsedBankingInfo?.bank || '',
+            account: fullUser.account_number || parsedBankingInfo?.account || '',
+            routing: fullUser.routing_number || parsedBankingInfo?.routing || '',
+            method: parsedBankingInfo?.method || 'Direct Deposit',
+          },
+        });
+      } catch (err) {
+        console.error("Failed to fetch user details:", err);
+        setSelectedUser(user);
+        let parsedBankingInfo = user.bankingInfo;
+        if (typeof parsedBankingInfo === 'string') {
+          try { parsedBankingInfo = JSON.parse(parsedBankingInfo); } catch (e) { parsedBankingInfo = {}; }
+        }
+        setFormData({
+          ...user,
+          roleId: user.roleId || user.role?.id || '',
+          birthday: user.birthday ? String(user.birthday).split('T')[0] : '',
+          nibNumber: user.nib_number || user.nibNumber || '',
+          vacationBalance: user.vacation_balance ?? user.vacationBalance ?? 0,
+          employmentStatus: user.employment_status || user.employmentStatus || 'Full Time',
+          bankingInfo: {
+            bank: user.bank_name || parsedBankingInfo?.bank || '',
+            account: user.account_number || parsedBankingInfo?.account || '',
+            routing: user.routing_number || parsedBankingInfo?.routing || '',
+            method: parsedBankingInfo?.method || 'Direct Deposit',
+          },
+        });
+      }
     } else {
+      setSelectedUser(null);
       // New user — empty form
       const adminRole = (roles || []).find(r => r.name === 'ADMIN');
       setFormData({
@@ -168,29 +199,33 @@ const Users = () => {
   const handleSave = async () => {
     if (modalType === 'add') {
       if (!formData.name || !formData.email || !formData.password) {
-        alert('Name, Email and Password are required.');
+        swalWarning('Validation Error', 'Name, Email and Password are required.');
+        return;
+      }
+      if (formData.name.length < 2) {
+        swalWarning('Validation Error', 'Name must be at least 2 characters.');
         return;
       }
       if (formData.password.length < 6) {
-        alert('Password must be at least 6 characters long.');
+        swalWarning('Validation Error', 'Password must be at least 6 characters.');
         return;
       }
       let roleIdToSubmit = formData.roleId;
       if (!roleIdToSubmit) {
-        alert('Please select a role.');
+        swalWarning('Validation Error', 'Please select a role.');
         return;
       }
 
       if (formData.birthday && new Date(formData.birthday) > new Date()) {
-        alert('Birthday cannot be in the future.');
+        swalWarning('Validation Error', 'Birthday cannot be in the future.');
         return;
       }
       if (formData.phone && !/^\d+$/.test(formData.phone)) {
-        alert('Phone number must contain only numeric characters.');
+        swalWarning('Validation Error', 'Phone number must contain only numeric characters.');
         return;
       }
       if (formData.vacationBalance < 0) {
-        alert('Vacation balance cannot be negative.');
+        swalWarning('Validation Error', 'Vacation balance cannot be negative.');
         return;
       }
       try {
@@ -210,29 +245,100 @@ const Users = () => {
           payload.company_id = parsedCompanyId;
           payload.companyId = parsedCompanyId;
         }
+
+        // Duplicate fields in snake_case for maximum compatibility
+        if (formData.vacationBalance !== undefined) {
+          payload.vacation_balance = Number(formData.vacationBalance);
+          payload.vacationBalance = Number(formData.vacationBalance);
+        }
+        if (formData.nibNumber !== undefined) {
+          payload.nib_number = formData.nibNumber;
+          payload.nibNumber = formData.nibNumber;
+        }
+        if (formData.employmentStatus !== undefined) {
+          payload.employment_status = formData.employmentStatus;
+          payload.employmentStatus = formData.employmentStatus;
+        }
+        if (formData.bankingInfo !== undefined) {
+          payload.banking_info = formData.bankingInfo;
+          payload.bankingInfo = formData.bankingInfo;
+        }
+
+        // Sanitize payload: remove null values to prevent production backend validation failures
+        Object.keys(payload).forEach(key => {
+          if (payload[key] === null) {
+            delete payload[key];
+          }
+        });
+
         await createMutation.mutateAsync(payload);
         setIsModalOpen(false);
       } catch (err) {
-        // error already handled
+        const errorMsg = err.response?.data?.message || err.message || 'An error occurred';
+        swalWarning('Failed to Register User', errorMsg);
       }
     } else if (modalType === 'edit') {
+      if (formData.name && formData.name.length < 2) {
+        swalWarning('Validation Error', 'Name must be at least 2 characters.');
+        return;
+      }
+      if (formData.password && formData.password.length < 6) {
+        swalWarning('Validation Error', 'Password must be at least 6 characters.');
+        return;
+      }
       if (formData.birthday && new Date(formData.birthday) > new Date()) {
-        alert('Birthday cannot be in the future.');
+        swalWarning('Validation Error', 'Birthday cannot be in the future.');
         return;
       }
       if (formData.phone && !/^\d+$/.test(formData.phone)) {
-        alert('Phone number must contain only numeric characters.');
+        swalWarning('Validation Error', 'Phone number must contain only numeric characters.');
         return;
       }
       if (formData.vacationBalance < 0) {
-        alert('Vacation balance cannot be negative.');
+        swalWarning('Validation Error', 'Vacation balance cannot be negative.');
         return;
       }
       try {
-        await updateMutation.mutateAsync({ id: selectedUser.id, data: { ...selectedUser, ...formData } });
+        const mergedData = { ...selectedUser, ...formData };
+
+        // Duplicate fields in snake_case for maximum compatibility
+        if (formData.vacationBalance !== undefined) {
+          mergedData.vacation_balance = Number(formData.vacationBalance);
+          mergedData.vacationBalance = Number(formData.vacationBalance);
+        }
+        if (formData.nibNumber !== undefined) {
+          mergedData.nib_number = formData.nibNumber;
+          mergedData.nibNumber = formData.nibNumber;
+        }
+        if (formData.employmentStatus !== undefined) {
+          mergedData.employment_status = formData.employmentStatus;
+          mergedData.employmentStatus = formData.employmentStatus;
+        }
+        if (formData.bankingInfo !== undefined) {
+          mergedData.banking_info = formData.bankingInfo;
+          mergedData.bankingInfo = formData.bankingInfo;
+        }
+
+        // Sanitize payload: remove null values to prevent production backend validation failures
+        Object.keys(mergedData).forEach(key => {
+          if (mergedData[key] === null) {
+            delete mergedData[key];
+          }
+        });
+
+        if (mergedData.bankingInfo && typeof mergedData.bankingInfo === 'object') {
+          Object.keys(mergedData.bankingInfo).forEach(bKey => {
+            if (mergedData.bankingInfo[bKey] === null) {
+              mergedData.bankingInfo[bKey] = '';
+            }
+          });
+        }
+
+        await updateMutation.mutateAsync({ id: selectedUser.id, data: mergedData });
         setIsModalOpen(false);
       } catch (err) {
-        // error already handled
+        const errorMsg = err.response?.data?.message || err.message || 'An error occurred';
+        swalWarning('Failed to Update User', errorMsg);
       }
     }
   };

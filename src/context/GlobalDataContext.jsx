@@ -645,7 +645,7 @@ function extractTransportModeFromOrder(row) {
 
   let meta = {};
   if (typeof row.metadata === "string") {
-    try { meta = JSON.parse(row.metadata); } catch (e) {}
+    try { meta = JSON.parse(row.metadata); } catch (e) { }
   } else if (row.metadata && typeof row.metadata === "object") {
     meta = row.metadata;
   }
@@ -716,19 +716,19 @@ export const GlobalDataProvider = ({ children }) => {
               // Auto-kick out if on a restricted page
               const path = window.location.pathname;
               const search = window.location.search;
-              
+
               const isDashboardIndexWithoutTab = (path === '/dashboard' || path === '/dashboard/') && !search.includes('tab=');
-              
+
               if (path.startsWith('/dashboard') && !isDashboardIndexWithoutTab && !['/dashboard/settings', '/dashboard/profile'].includes(path)) {
                 const hasPermission = realUser.menuPermissions.some(p =>
                   p.can_view &&
                   p.path &&
                   menuPathGrantsAccess(path, search, p.path)
                 );
-                
+
                 const role = normalizeRole(realUser.role);
                 const isPrivileged = ['superadmin', 'admin', 'saas_client', 'staff', 'customer', 'client', 'concierge', 'inventory', 'logistics'].includes(role);
-                
+
                 if (!hasPermission && !isPrivileged) {
                   window.location.href = '/dashboard';
                 }
@@ -863,6 +863,7 @@ export const GlobalDataProvider = ({ children }) => {
   const urgentApiUnavailableRef = React.useRef(false);
   const lastFetchedUserIdRef = React.useRef(null);
   const [stockMovements, setStockMovements] = useState([]);
+  const [lossAssessments, setLossAssessments] = useState([]);
   const [cart, setCart] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [revenueFilter, setRevenueFilter] = useState("Weekly");
@@ -877,7 +878,7 @@ export const GlobalDataProvider = ({ children }) => {
     // Determine the base URL for the socket connection from the API URL
     const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     const socketURL = baseURL.replace('/api/v1', '');
-    
+
     const socket = io(socketURL, {
       transports: ['websocket', 'polling']
     });
@@ -1442,25 +1443,67 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchStockMovements = React.useCallback(async () => {
     try {
-      const res = await api.get("/inventory/movements");
-      if (res.data?.success) {
+      const res = await api.get("/stock/movements");
+      const movementsData = res.data?.success ? (res.data.data?.movements || res.data.data) : [];
+      if (Array.isArray(movementsData)) {
         setStockMovements(
-          res.data.data.map((m) => ({
-            id: m.id,
-            item: m.item_name || "Deleted Asset",
-            type: m.type,
-            quantity: m.quantity,
-            reason: m.reason || "Routine Adjustment",
-            issuedBy: m.performed_by_name || "System User",
-            date:
-              m.created_at?.split("T")[0] ||
-              new Date().toISOString().split("T")[0],
-            time: m.created_at?.split("T")[1]?.slice(0, 5) || "",
-          })),
+          movementsData.map((m) => {
+            let typeLabel = "ADJUSTMENT";
+            const mType = String(m.movementType || '').toUpperCase();
+            const rType = String(m.referenceType || '').toUpperCase();
+            
+            if (rType === 'LOSS' || mType === 'LOSS' || rType === 'ASSET_LOSS' || mType === 'ASSET_LOSS') {
+              typeLabel = 'ASSET_LOSS';
+            } else if (mType === 'IN' || rType === 'GRN') {
+              typeLabel = 'STOCK_ENTRY';
+            } else if (mType === 'OUT' || rType === 'TRANSFER_OUT') {
+              typeLabel = 'STOCK_ISSUE';
+            }
+
+            return {
+              id: m.id,
+              item: m.item?.name || m.item_name || "Deleted Asset",
+              type: typeLabel,
+              quantity: m.quantity,
+              reason: m.remarks || m.reason || "Routine Adjustment",
+              issuedBy: m.performerName || m.performed_by_name || "System User",
+              date: (m.createdAt || m.created_at || new Date().toISOString()).split("T")[0],
+              time: (m.createdAt || m.created_at || "").split("T")[1]?.slice(0, 5) || "",
+              referenceType: m.referenceType,
+              movementType: m.movementType,
+              remarks: m.remarks
+            };
+          }),
         );
       }
     } catch (e) {
       console.error("Fetch stock movements failed", e);
+    }
+  }, []);
+
+  const fetchLossAssessments = React.useCallback(async () => {
+    try {
+      const res = await api.get("/inventory/loss");
+      const lossesData = res.data?.success ? (res.data.data?.losses || res.data.data) : [];
+      if (Array.isArray(lossesData)) {
+        setLossAssessments(
+          lossesData.map((l) => ({
+            id: l.id,
+            item: l.item?.name || l.item_name || "Deleted Asset",
+            quantity: l.quantity,
+            lossType: l.lossType,
+            explanation: l.explanation,
+            reportedBy: l.reportedBy,
+            status: l.investigationStatus || "Pending",
+            evidenceUrl: l.evidenceUrl || "",
+            date: (l.createdAt || new Date().toISOString()).split("T")[0],
+            time: (l.createdAt || "").split("T")[1]?.slice(0, 5) || "",
+            financialLoss: (parseFloat(l.item?.price || 0) * parseFloat(l.quantity || 0))
+          })),
+        );
+      }
+    } catch (e) {
+      console.error("Fetch loss assessments failed", e);
     }
   }, []);
 
@@ -1927,11 +1970,11 @@ export const GlobalDataProvider = ({ children }) => {
         const transportMode = extractTransportModeFromOrder(o);
         let meta = {};
         if (typeof o.metadata === "string") {
-          try { meta = JSON.parse(o.metadata); } catch (e) {}
+          try { meta = JSON.parse(o.metadata); } catch (e) { }
         } else if (o.metadata && typeof o.metadata === "object") {
           meta = o.metadata;
         }
-        
+
         return {
           ...o,
           ...meta,
@@ -2396,12 +2439,12 @@ export const GlobalDataProvider = ({ children }) => {
         // Backend already scopes notifications to the current user via user_id and role_target+company_id.
         // No additional client-side filtering needed — this prevents false notifications for new accounts.
         let notifs = res.data.data || [];
-        
+
         // TEMPORARY FIX: Ignore default mock notifications that leak from outdated mockApi fallback
         if (notifs.length === 2 && notifs[0]?.id === 1 && notifs[1]?.id === 2 && notifs[0]?.title === "New Purchase Order") {
-            notifs = [];
+          notifs = [];
         }
-        
+
         setNotifications(notifs);
         // Compute unread count directly from the scoped list to prevent phantom badges
         setUnreadCount(notifs.filter(n => !(n.isRead || n.is_read)).length);
@@ -2470,6 +2513,7 @@ export const GlobalDataProvider = ({ children }) => {
         fetchTracking(),
         fetchUrgentTasks(),
         fetchStockMovements(),
+        fetchLossAssessments(),
         fetchTickets(),
         fetchNotifications(),
       ];
@@ -2488,13 +2532,13 @@ export const GlobalDataProvider = ({ children }) => {
         fetches.push(fetchPayHistory());
       }
 
-      // Only fetch roles if the role has Security menu permission
-      if (canAccessRoles) {
+      // Only fetch roles if the role has Security menu permission or can access users
+      if (canAccessRoles || canAccessUsers) {
         fetches.push(api.get('/roles').then(res => {
           const rawData = res.data?.data;
           const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
           setRoles(rolesArray);
-        }).catch(() => {}));
+        }).catch(() => { }));
       }
       await Promise.all(fetches);
     } catch (err) {
@@ -2532,7 +2576,7 @@ export const GlobalDataProvider = ({ children }) => {
     const canAccessOrders = ["superadmin", "admin", "saas_client", "operations", "logistics", "concierge"].includes(role);
     const canAccessProjects = ["superadmin", "admin", "saas_client", "operations"].includes(role);
     const canAccessDeliveries = ["superadmin", "admin", "saas_client", "operations", "logistics", "driver"].includes(role);
-    
+
     const refreshOperationalState = () => {
       if (canAccessOrders) fetchOrders();
       if (canAccessDeliveries) fetchDeliveries();
@@ -3913,29 +3957,29 @@ export const GlobalDataProvider = ({ children }) => {
   const generateInvoiceFromOrder = async (order) => {
     try {
       const items = (order.items && order.items.length > 0)
-          ? order.items.map(item => ({
-              itemId: Number(item.itemId || item.id || 1),
-              quantity: Number(item.quantity || item.qty || 1),
-              unitPrice: Number(item.unitPrice || item.price || 0),
-              tax: 0,
-              discount: 0
-            }))
-          : [{ 
-              itemId: 1, 
-              quantity: 1, 
-              unitPrice: Number(order.totalAmount || order.total || 0),
-              tax: 0,
-              discount: 0
-            }];
+        ? order.items.map(item => ({
+          itemId: Number(item.itemId || item.id || 1),
+          quantity: Number(item.quantity || item.qty || 1),
+          unitPrice: Number(item.unitPrice || item.price || 0),
+          tax: 0,
+          discount: 0
+        }))
+        : [{
+          itemId: 1,
+          quantity: 1,
+          unitPrice: Number(order.totalAmount || order.total || 0),
+          tax: 0,
+          discount: 0
+        }];
 
-      const isoDueDate = order.dueDate 
-          ? new Date(order.dueDate).toISOString() 
-          : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+      const isoDueDate = order.dueDate
+        ? new Date(order.dueDate).toISOString()
+        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
       const reqData = {
-          deliveryId: order.id,
-          dueDate: isoDueDate,
-          items
+        deliveryId: order.id,
+        dueDate: isoDueDate,
+        items
       };
 
       await api.post("/invoices", reqData);
@@ -4145,7 +4189,7 @@ export const GlobalDataProvider = ({ children }) => {
         patchBody.assigned_driver = (assignId !== null && Number.isFinite(n) && !Number.isNaN(n)) ? n : assignId;
         patchBody.driverId = patchBody.assigned_driver; // for mock API compatibility
       }
-      
+
       console.log('Sending patch to /logistics/deliveries/' + patchId, patchBody);
       const res = await api.patch(`/logistics/deliveries/${patchId}`, patchBody);
       console.log('Patch response:', res.data);
@@ -4922,7 +4966,7 @@ export const GlobalDataProvider = ({ children }) => {
       if (updated.status === 'in_progress' || updated.status === 'assigned') {
         await api.put(`/missions/${updated.rawId}/assign`, { driverId: updated.assigneeId, vehicleId: 1 });
       }
-      
+
       if (updated.status === 'Completed' || updated.status === 'Delivered') {
         const podPayload = {
           receiverName: updated.receiverName || 'System Verified',
@@ -5212,7 +5256,7 @@ export const GlobalDataProvider = ({ children }) => {
   const updatePurchaseRequest = async (updated) => {
     try {
       const identifier = updated.id ?? updated.requestId;
-      
+
       // Optimistic update for instant UI feedback
       setPurchaseRequests((prev) =>
         prev.map((r) => {
@@ -5372,7 +5416,7 @@ export const GlobalDataProvider = ({ children }) => {
       const res = await api.put(`/purchase-orders/${numericId}/approve-receipt`);
       if (res.data?.success) {
         await fetchPurchaseOrders();
-          
+
         addLog({
           action: "Receipt Approved",
           detail: `Admin approved receipt for PO ${poId}.`,
@@ -6056,7 +6100,7 @@ export const GlobalDataProvider = ({ children }) => {
       } catch {
         piObj = {};
       }
-      
+
       piObj.chauffeur_status = updated.status;
       patch.passenger_info = JSON.stringify(piObj);
 
@@ -6225,7 +6269,7 @@ export const GlobalDataProvider = ({ children }) => {
       };
 
       const res = await api.put(`/support/events/${updated.id}`, payload);
-      
+
       try {
         console.debug(
           `PUT /support/events/${updated.id} payload:`,
@@ -6233,7 +6277,7 @@ export const GlobalDataProvider = ({ children }) => {
           "response:",
           res?.data || res,
         );
-      } catch (e) {}
+      } catch (e) { }
 
       // Optimistically update local state so UI reflects changes immediately.
       const uiUpdate = {};
@@ -6842,6 +6886,7 @@ export const GlobalDataProvider = ({ children }) => {
         updateLuxuryItem,
         deleteLuxuryItem,
         stockMovements,
+        fetchStockMovements,
         addStockEntry,
         issueStock,
 
@@ -7015,6 +7060,8 @@ export const GlobalDataProvider = ({ children }) => {
         // Dashboard & Settings
         dashboardStats,
         fetchDashboardStats,
+        lossAssessments,
+        fetchLossAssessments,
         systemSettings,
         fetchSystemSettings,
         setSystemSettings,

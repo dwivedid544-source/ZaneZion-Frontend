@@ -193,58 +193,71 @@ const Users = () => {
   const handleAction = async (type, user) => {
     setModalType(type);
 
-    if (user.id) {
+    if (user && user.id) {
       try {
         const res = await api.get(`/users/${user.id}`);
         const fullUser = res.data?.data || user;
         setSelectedUser(fullUser);
 
-        let parsedBankingInfo = fullUser.bankingInfo;
-        if (typeof parsedBankingInfo === 'string') {
-          try { parsedBankingInfo = JSON.parse(parsedBankingInfo); } catch (e) { parsedBankingInfo = {}; }
+        let parsedBankingInfo = {};
+        if (fullUser.bankingInfo) {
+          if (typeof fullUser.bankingInfo === 'string') {
+            try { parsedBankingInfo = JSON.parse(fullUser.bankingInfo); } catch (e) { parsedBankingInfo = {}; }
+          } else if (typeof fullUser.bankingInfo === 'object') {
+            parsedBankingInfo = fullUser.bankingInfo;
+          }
         }
-        // Map backend snake_case fields → frontend form fields
+
         setFormData({
-          ...fullUser,
+          name: fullUser.name || '',
+          email: fullUser.email || '',
+          phone: fullUser.phone || '',
+          password: '',
           roleId: fullUser.roleId || fullUser.role?.id || '',
-          // birthday comes as "2026-04-29T00:00:00.000Z" from DB, trim to date only
+          status: fullUser.status || 'Active',
           birthday: fullUser.birthday ? String(fullUser.birthday).split('T')[0] : '',
-          nibNumber: fullUser.nib_number || fullUser.nibNumber || '',
-          vacationBalance: fullUser.vacation_balance ?? fullUser.vacationBalance ?? 0,
-          employmentStatus: fullUser.employment_status || fullUser.employmentStatus || 'Full Time',
-          // Flatten bank fields into bankingInfo object for the form
+          nibNumber: fullUser.nibNumber || fullUser.nib_number || '',
+          vacationBalance: fullUser.vacationBalance ?? fullUser.vacation_balance ?? 0,
+          employmentStatus: fullUser.employmentStatus || fullUser.employment_status || 'Full Time',
           bankingInfo: {
-            bank: fullUser.bank_name || parsedBankingInfo?.bank || '',
-            account: fullUser.account_number || parsedBankingInfo?.account || '',
-            routing: fullUser.routing_number || parsedBankingInfo?.routing || '',
+            bank: parsedBankingInfo?.bank || fullUser.bank_name || '',
+            account: parsedBankingInfo?.account || fullUser.account_number || '',
+            routing: parsedBankingInfo?.routing || fullUser.routing_number || '',
             method: parsedBankingInfo?.method || 'Direct Deposit',
           },
         });
       } catch (err) {
         console.error("Failed to fetch user details:", err);
         setSelectedUser(user);
-        let parsedBankingInfo = user.bankingInfo;
-        if (typeof parsedBankingInfo === 'string') {
-          try { parsedBankingInfo = JSON.parse(parsedBankingInfo); } catch (e) { parsedBankingInfo = {}; }
+        let parsedBankingInfo = {};
+        if (user.bankingInfo) {
+          if (typeof user.bankingInfo === 'string') {
+            try { parsedBankingInfo = JSON.parse(user.bankingInfo); } catch (e) { parsedBankingInfo = {}; }
+          } else if (typeof user.bankingInfo === 'object') {
+            parsedBankingInfo = user.bankingInfo;
+          }
         }
         setFormData({
-          ...user,
+          name: user.name || '',
+          email: user.email || '',
+          phone: user.phone || '',
+          password: '',
           roleId: user.roleId || user.role?.id || '',
+          status: user.status || 'Active',
           birthday: user.birthday ? String(user.birthday).split('T')[0] : '',
-          nibNumber: user.nib_number || user.nibNumber || '',
-          vacationBalance: user.vacation_balance ?? user.vacationBalance ?? 0,
-          employmentStatus: user.employment_status || user.employmentStatus || 'Full Time',
+          nibNumber: user.nibNumber || user.nib_number || '',
+          vacationBalance: user.vacationBalance ?? user.vacation_balance ?? 0,
+          employmentStatus: user.employmentStatus || user.employment_status || 'Full Time',
           bankingInfo: {
-            bank: user.bank_name || parsedBankingInfo?.bank || '',
-            account: user.account_number || parsedBankingInfo?.account || '',
-            routing: user.routing_number || parsedBankingInfo?.routing || '',
+            bank: parsedBankingInfo?.bank || user.bank_name || '',
+            account: parsedBankingInfo?.account || user.account_number || '',
+            routing: parsedBankingInfo?.routing || user.routing_number || '',
             method: parsedBankingInfo?.method || 'Direct Deposit',
           },
         });
       }
     } else {
       setSelectedUser(null);
-      // New user — empty form
       const adminRole = (roles || []).find(r => r.name === 'ADMIN');
       setFormData({
         name: '', email: '', phone: '', password: '',
@@ -1276,7 +1289,7 @@ const Users = () => {
                   <input
                     type="tel"
                     value={formData.phone || ''}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono"
                     disabled={modalType === 'view'}
                     autoComplete="new-phone-number"
@@ -1316,10 +1329,12 @@ const Users = () => {
                     <option value="" disabled>Select Role...</option>
                     {(roles || [])
                       .filter(r => {
+                        const nameUpper = r.name.toUpperCase();
+                        const allowedRoles = ['OPERATIONS', 'PROCUREMENT', 'LOGISTICS', 'INVENTORY', 'CONCIERGE', 'FIELD_STAFF', 'STAFF', 'DRIVER'];
                         if (isSuperAdmin) {
-                          return r.name.toUpperCase() === 'ADMIN';
+                          allowedRoles.push('ADMIN');
                         }
-                        return ['OPERATIONS', 'PROCUREMENT', 'LOGISTICS', 'INVENTORY', 'CONCIERGE', 'FIELD_STAFF', 'STAFF', 'DRIVER'].includes(r.name.toUpperCase());
+                        return allowedRoles.includes(nameUpper);
                       })
                       .map(r => (
                         <option key={r.id} value={r.id}>
@@ -1749,7 +1764,7 @@ const Users = () => {
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-muted uppercase">Phone</label>
-              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.phone} onChange={e => setClientFormData({...clientFormData, phone: e.target.value.replace(/\D/g, '')})} autoComplete="new-phone" />
+              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.phone} onChange={e => setClientFormData({...clientFormData, phone: e.target.value.replace(/\D/g, '').slice(0, 10)})} autoComplete="new-phone" />
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-muted uppercase">Plan</label>

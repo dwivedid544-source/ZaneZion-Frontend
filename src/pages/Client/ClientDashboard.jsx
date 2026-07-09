@@ -256,7 +256,7 @@ const ClientDashboard = () => {
               <input type="text" placeholder="Contact Person" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" value={profileForm.contact_person} onChange={e => setProfileForm({ ...profileForm, contact_person: e.target.value })} />
               <input type="email" placeholder="Email" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" value={profileForm.email} onChange={e => setProfileForm({ ...profileForm, email: e.target.value })} />
               <input type="text" placeholder="Location" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" value={profileForm.location} onChange={e => setProfileForm({ ...profileForm, location: e.target.value })} />
-              <input type="text" placeholder="Phone" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" value={profileForm.phone} onChange={e => setProfileForm({ ...profileForm, phone: e.target.value })} />
+              <input type="text" placeholder="Phone" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" value={profileForm.phone} onChange={e => setProfileForm({ ...profileForm, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} />
               <button onClick={handleProfileUpdate} className="w-full py-3 bg-accent text-black font-black uppercase rounded-xl">Save Changes</button>
             </div>
           </div>

@@ -1078,7 +1078,7 @@ const Clients = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Phone Number</label>
-                    <input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '') })}
+                    <input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold" placeholder="9876543210" />
                   </div>
                   <div className="space-y-2">

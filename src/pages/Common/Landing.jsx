@@ -688,9 +688,9 @@ const Landing = () => {
                             <input
                                 type="tel"
                                 value={requestFormData.phone}
-                                onChange={(e) => setRequestFormData({ ...requestFormData, phone: e.target.value })}
+                                onChange={(e) => setRequestFormData({ ...requestFormData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                                 className="w-full bg-white/[0.03] border border-white/10 rounded-xl px-4 py-4 text-sm focus:border-accent/40 focus:bg-white/[0.07] outline-none text-white transition-all placeholder:text-muted/30"
-                                placeholder="+1 234 567 890"
+                                placeholder="e.g. 2421234567"
                             />
                         </div>
                     </div>

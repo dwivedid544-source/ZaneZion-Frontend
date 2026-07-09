@@ -45,7 +45,7 @@ const Deliveries = () => {
     totalPages: deliveriesData?.data?.totalPages || deliveriesData?.totalPages || 1,
     totalItems: deliveriesData?.data?.total || deliveriesData?.total || deliveries.length
   };
-  
+
   const createDeliveryMutation = useCreateDelivery();
   const updateDeliveryMutation = useUpdateDelivery();
   const cancelDeliveryMutation = useCancelDelivery();
@@ -247,18 +247,18 @@ const Deliveries = () => {
       : (del?.items && del.items.length > 0)
         ? del.items.map(it => ({ name: it.item?.name || 'Asset', qty: it.quantity, weight: '', length: '', width: '', height: '' }))
         : [{ name: '', qty: 1, weight: '', length: '', width: '', height: '' }];
-    
+
     const podData = del?.pod || (del?.proofsOfDelivery?.[0] ? {
-        signature: del.proofsOfDelivery[0].receiverSignature,
-        image: del.proofsOfDelivery[0].deliveryPhoto,
-        notes: del.proofsOfDelivery[0].remarks,
-        actualTime: del.proofsOfDelivery[0].createdAt
-      } : (del?.proofs?.[0] ? {
-        signature: del.proofs[0].receiverSignature,
-        image: del.proofs[0].deliveryPhoto,
-        notes: del.proofs[0].remarks,
-        actualTime: del.proofs[0].createdAt
-      } : {}));
+      signature: del.proofsOfDelivery[0].receiverSignature,
+      image: del.proofsOfDelivery[0].deliveryPhoto,
+      notes: del.proofsOfDelivery[0].remarks,
+      actualTime: del.proofsOfDelivery[0].createdAt
+    } : (del?.proofs?.[0] ? {
+      signature: del.proofs[0].receiverSignature,
+      image: del.proofs[0].deliveryPhoto,
+      notes: del.proofs[0].remarks,
+      actualTime: del.proofs[0].createdAt
+    } : {}));
 
     const nextFormData = del && del.id ? {
       ...del,
@@ -416,31 +416,31 @@ const Deliveries = () => {
       };
 
       if (formData.status === 'Completed' || formData.status === 'Delivered') {
-         // It's a POD completion
-         submitPODMutation.mutateAsync({
-           id: finalData.id,
-           podData: {
-             receiverName: typeof finalData.client === 'object' 
-               ? (finalData.client?.name || finalData.client?.companyName || 'Authorized Receiver') 
-               : (finalData.client || finalData.passengerInfo?.name || 'Authorized Receiver'),
-             receiverSignature: finalData.pod?.signature || '',
-             remarks: finalData.pod?.notes || 'Delivered'
-           }
-         }).catch(() => swalError("Error", "Could not submit POD"));
+        // It's a POD completion
+        submitPODMutation.mutateAsync({
+          id: finalData.id,
+          podData: {
+            receiverName: typeof finalData.client === 'object'
+              ? (finalData.client?.name || finalData.client?.companyName || 'Authorized Receiver')
+              : (finalData.client || finalData.passengerInfo?.name || 'Authorized Receiver'),
+            receiverSignature: finalData.pod?.signature || '',
+            remarks: finalData.pod?.notes || 'Delivered'
+          }
+        }).catch(() => swalError("Error", "Could not submit POD"));
       } else {
-         // Standard update of form fields
-         updateDeliveryMutation.mutateAsync({ id: finalData.id, data: updatePayload })
-           .then(() => {
-             // If driver is assigned, create mission
-             if (finalData.assigned_driver) {
-               createMissionMutation.mutateAsync({
-                 deliveryId: finalData.id,
-                 assignedEmployeeId: finalData.assigned_driver,
-                 vehicleId: 1
-               }).catch(() => console.error("Driver assigned but mission already exists or failed"));
-             }
-           })
-           .catch(() => swalError("Error", "Could not update delivery"));
+        // Standard update of form fields
+        updateDeliveryMutation.mutateAsync({ id: finalData.id, data: updatePayload })
+          .then(() => {
+            // If driver is assigned, create mission
+            if (finalData.assigned_driver) {
+              createMissionMutation.mutateAsync({
+                deliveryId: finalData.id,
+                assignedEmployeeId: finalData.assigned_driver,
+                vehicleId: 1
+              }).catch(() => console.error("Driver assigned but mission already exists or failed"));
+            }
+          })
+          .catch(() => swalError("Error", "Could not update delivery"));
       }
     } else if (modalType === 'delete') {
       cancelDeliveryMutation.mutateAsync(selectedDelivery.db_id || selectedDelivery.id)
@@ -494,20 +494,20 @@ const Deliveries = () => {
       render: (item) => {
         const label = displayDeliveryStatus(item.status);
         return (
-        <div className="space-y-1">
-          <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase text-center border ${item.status === 'Completed' || item.status === 'Delivered' ? 'bg-success/10 border-success/30 text-success' :
-            item.status === 'Failed' ? 'bg-danger/10 border-danger/30 text-danger' :
-              item.status === 'Re-routed' ? 'bg-warning/10 border-warning/30 text-warning' :
-                'bg-accent/10 border-accent/30 text-accent'
-            }`}>
-            {label}
-          </div>
-          {item.clientConfirmed && (
-            <div className="flex items-center justify-center gap-1 text-[8px] font-bold text-success uppercase">
-              <CheckCircle2 size={8} /> Client Verified
+          <div className="space-y-1">
+            <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase text-center border ${item.status === 'Completed' || item.status === 'Delivered' ? 'bg-success/10 border-success/30 text-success' :
+              item.status === 'Failed' ? 'bg-danger/10 border-danger/30 text-danger' :
+                item.status === 'Re-routed' ? 'bg-warning/10 border-warning/30 text-warning' :
+                  'bg-accent/10 border-accent/30 text-accent'
+              }`}>
+              {label}
             </div>
-          )}
-        </div>
+            {item.clientConfirmed && (
+              <div className="flex items-center justify-center gap-1 text-[8px] font-bold text-success uppercase">
+                <CheckCircle2 size={8} /> Client Verified
+              </div>
+            )}
+          </div>
         );
       }
     },
@@ -537,99 +537,6 @@ const Deliveries = () => {
           <Car size={16} className="text-accent" /> Chauffeur protocol
         </Link>
       </div>
-
-      {/* ── Dashboard Stats Cards ────────────────────────────── */}
-      {(() => {
-        const total       = meta.totalItems || deliveries.length;
-        const pending     = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'pending' || s === 'pending_pickup' || s === 'pending pickup'; }).length;
-        const inTransit   = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'in_transit' || s === 'dispatched' || s === 'in transit' || s === 'en_route'; }).length;
-        const delivered   = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'delivered' || s === 'completed'; }).length;
-        const failed      = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'failed' || s === 'cancelled' || s === 'canceled' || s === 're-routed'; }).length;
-        const assigned    = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'assigned' || s === 'accepted'; }).length;
-
-        const cards = [
-          {
-            label: 'Total Dispatches',
-            value: total,
-            sub: 'All logistics missions',
-            icon: <Truck size={20} />,
-            color: 'accent',
-            bg: 'bg-accent/10',
-            border: 'border-accent/25',
-            text: 'text-accent',
-          },
-          {
-            label: 'Pending Pickup',
-            value: pending,
-            sub: 'Awaiting fleet assignment',
-            icon: <Clock size={20} />,
-            color: 'warning',
-            bg: 'bg-yellow-500/10',
-            border: 'border-yellow-500/25',
-            text: 'text-yellow-400',
-          },
-          {
-            label: 'Assigned',
-            value: assigned,
-            sub: 'Driver / vehicle allocated',
-            icon: <Navigation size={20} />,
-            color: 'info',
-            bg: 'bg-blue-500/10',
-            border: 'border-blue-500/25',
-            text: 'text-blue-400',
-          },
-          {
-            label: 'Out for Delivery',
-            value: inTransit,
-            sub: 'In transit right now',
-            icon: <Activity size={20} />,
-            color: 'info',
-            bg: 'bg-sky-400/10',
-            border: 'border-sky-400/25',
-            text: 'text-sky-400',
-          },
-          {
-            label: 'Delivered',
-            value: delivered,
-            sub: 'Successfully completed',
-            icon: <PackageCheck size={20} />,
-            color: 'success',
-            bg: 'bg-green-500/10',
-            border: 'border-green-500/25',
-            text: 'text-green-400',
-          },
-          {
-            label: 'Failed / Cancelled',
-            value: failed,
-            sub: 'Interrupted or re-routed',
-            icon: <AlertCircle size={20} />,
-            color: 'danger',
-            bg: 'bg-red-500/10',
-            border: 'border-red-500/25',
-            text: 'text-red-400',
-          },
-        ];
-
-        return (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-            {cards.map((card) => (
-              <div
-                key={card.label}
-                className={`glass-card p-4 border ${card.border} ${card.bg} flex flex-col gap-3 hover:scale-[1.02] transition-transform duration-200`}
-              >
-                <div className={`w-9 h-9 rounded-xl ${card.bg} border ${card.border} flex items-center justify-center ${card.text}`}>
-                  {card.icon}
-                </div>
-                <div>
-                  <p className={`text-2xl font-black ${card.text} tabular-nums`}>{card.value}</p>
-                  <p className="text-[10px] font-black text-white uppercase tracking-widest mt-0.5">{card.label}</p>
-                  <p className="text-[9px] text-muted mt-0.5">{card.sub}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-      })()}
 
       <div className="glass-card p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
@@ -663,7 +570,7 @@ const Deliveries = () => {
               customAction={(item) => {
                 const statusLower = String(item.status || '').toLowerCase();
                 const isDelivered = statusLower === 'completed' || statusLower === 'delivered';
-                
+
                 return (
                   <div className="flex items-center gap-1 flex-wrap justify-end">
                     {canAssignDriverUi && (
@@ -686,11 +593,10 @@ const Deliveries = () => {
                         e.stopPropagation();
                         handleAction('delivered', item);
                       }}
-                      className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide transition-all ${
-                        isDelivered
+                      className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide transition-all ${isDelivered
                           ? 'text-success/30 border border-success/10 bg-success/5 cursor-not-allowed opacity-50'
                           : 'text-success border border-success/30 bg-success/10 hover:bg-success/20'
-                      }`}
+                        }`}
                       title={isDelivered ? "Already Delivered" : "Complete Delivery (POD)"}
                       disabled={isDelivered}
                     >
@@ -1039,8 +945,8 @@ const Deliveries = () => {
                     <select
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold appearance-none cursor-pointer"
                       value={
-                        clientOptions.some(c => c.value === formData.clientId) 
-                          ? formData.clientId 
+                        clientOptions.some(c => c.value === formData.clientId)
+                          ? formData.clientId
                           : clientOptions.find(c => String(c.id) === String(formData.clientId))?.value || formData.clientId || ''
                       }
                       onChange={(e) => {

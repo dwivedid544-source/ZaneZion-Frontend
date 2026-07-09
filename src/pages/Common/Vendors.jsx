@@ -473,10 +473,10 @@ const Vendors = () => {
                   <input
                     type="text"
                     value={formData.phone || ''}
-                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
                     disabled={modalType === 'view'}
-                    placeholder="+377 ..."
+                    placeholder="e.g. 2421234567"
                   />
                 </div>
                 <div className="space-y-1">

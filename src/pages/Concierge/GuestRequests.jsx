@@ -52,7 +52,27 @@ const GuestRequests = () => {
         { header: "Request ID", accessor: "id" },
         { header: "Guest / Suite", accessor: "guest" },
         { header: "Requested By", accessor: "requestedBy" },
-        { header: "Requirement", accessor: "request" },
+        {
+            header: "Requirement",
+            accessor: "request",
+            render: (row) => (
+                <span
+                    className="text-sm text-white/90 leading-snug block"
+                    style={{
+                        display: '-webkit-box',
+                        WebkitLineClamp: 3,
+                        WebkitBoxOrient: 'vertical',
+                        overflow: 'hidden',
+                        maxWidth: '320px',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                    }}
+                    title={row.request}
+                >
+                    {row.request}
+                </span>
+            )
+        },
         { header: "Target Time", accessor: "time" },
         {
             header: "Priority",

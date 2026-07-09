@@ -51,7 +51,7 @@ const Payroll = () => {
         ...p,
         empId: p.user_id || 'N/A',
         name: p.user_name || 'Unknown',
-        amount: `$${(parseFloat(p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
+        amount: `$${(parseFloat(p.net_amount || p.netAmount || p.amount) || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`,
         method: p.method || 'Direct Deposit',
         date: p.payment_date ? new Date(p.payment_date).toISOString().split('T')[0] : new Date(p.created_at).toISOString().split('T')[0],
         status: p.status || 'Pending'

@@ -538,6 +538,99 @@ const Deliveries = () => {
         </Link>
       </div>
 
+      {/* ── Dashboard Stats Cards ────────────────────────────── */}
+      {(() => {
+        const total       = meta.totalItems || deliveries.length;
+        const pending     = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'pending' || s === 'pending_pickup' || s === 'pending pickup'; }).length;
+        const inTransit   = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'in_transit' || s === 'dispatched' || s === 'in transit' || s === 'en_route'; }).length;
+        const delivered   = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'delivered' || s === 'completed'; }).length;
+        const failed      = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'failed' || s === 'cancelled' || s === 'canceled' || s === 're-routed'; }).length;
+        const assigned    = deliveries.filter(d => { const s = String(d.status||'').toLowerCase(); return s === 'assigned' || s === 'accepted'; }).length;
+
+        const cards = [
+          {
+            label: 'Total Dispatches',
+            value: total,
+            sub: 'All logistics missions',
+            icon: <Truck size={20} />,
+            color: 'accent',
+            bg: 'bg-accent/10',
+            border: 'border-accent/25',
+            text: 'text-accent',
+          },
+          {
+            label: 'Pending Pickup',
+            value: pending,
+            sub: 'Awaiting fleet assignment',
+            icon: <Clock size={20} />,
+            color: 'warning',
+            bg: 'bg-yellow-500/10',
+            border: 'border-yellow-500/25',
+            text: 'text-yellow-400',
+          },
+          {
+            label: 'Assigned',
+            value: assigned,
+            sub: 'Driver / vehicle allocated',
+            icon: <Navigation size={20} />,
+            color: 'info',
+            bg: 'bg-blue-500/10',
+            border: 'border-blue-500/25',
+            text: 'text-blue-400',
+          },
+          {
+            label: 'Out for Delivery',
+            value: inTransit,
+            sub: 'In transit right now',
+            icon: <Activity size={20} />,
+            color: 'info',
+            bg: 'bg-sky-400/10',
+            border: 'border-sky-400/25',
+            text: 'text-sky-400',
+          },
+          {
+            label: 'Delivered',
+            value: delivered,
+            sub: 'Successfully completed',
+            icon: <PackageCheck size={20} />,
+            color: 'success',
+            bg: 'bg-green-500/10',
+            border: 'border-green-500/25',
+            text: 'text-green-400',
+          },
+          {
+            label: 'Failed / Cancelled',
+            value: failed,
+            sub: 'Interrupted or re-routed',
+            icon: <AlertCircle size={20} />,
+            color: 'danger',
+            bg: 'bg-red-500/10',
+            border: 'border-red-500/25',
+            text: 'text-red-400',
+          },
+        ];
+
+        return (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            {cards.map((card) => (
+              <div
+                key={card.label}
+                className={`glass-card p-4 border ${card.border} ${card.bg} flex flex-col gap-3 hover:scale-[1.02] transition-transform duration-200`}
+              >
+                <div className={`w-9 h-9 rounded-xl ${card.bg} border ${card.border} flex items-center justify-center ${card.text}`}>
+                  {card.icon}
+                </div>
+                <div>
+                  <p className={`text-2xl font-black ${card.text} tabular-nums`}>{card.value}</p>
+                  <p className="text-[10px] font-black text-white uppercase tracking-widest mt-0.5">{card.label}</p>
+                  <p className="text-[9px] text-muted mt-0.5">{card.sub}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
+
       <div className="glass-card p-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
           <div className="relative max-w-sm w-full">

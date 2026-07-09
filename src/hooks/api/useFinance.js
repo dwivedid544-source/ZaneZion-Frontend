@@ -55,6 +55,20 @@ export const useUpdateInvoiceStatus = () => {
   });
 };
 
+export const useUpdateInvoice = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, invoiceData }) => {
+      const response = await api.put(`/invoices/${id}`, invoiceData);
+      return response.data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      queryClient.invalidateQueries({ queryKey: ['invoices', variables.id] });
+    },
+  });
+};
+
 // -----------------------------
 // Payments & Receipts Hooks
 // -----------------------------

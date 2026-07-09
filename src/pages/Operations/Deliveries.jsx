@@ -290,7 +290,7 @@ const Deliveries = () => {
       missionType: 'Delivery',
       passengerInfo: { name: '', count: 1, phone: '' },
       packageDetails: { weight: '', dimensions: '', type: 'General' },
-      orderId: '',
+      orderId: `ORD-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
       clientId: '',
       client: '',
       companyId: '',
@@ -313,7 +313,7 @@ const Deliveries = () => {
       delivery_fee: 0,
       pod: { signature: null, image: null, actualTime: null },
       ...(del && !del.id ? {
-        orderId: del.orderId || '',
+        orderId: del.orderId || `ORD-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
         clientId: del.clientId || del.client_id || del.customer_id || '',
         client: del.client || del.clientName || '',
         customerId: del.customerId || del.customer_id || del.client_id || '',
@@ -451,7 +451,11 @@ const Deliveries = () => {
 
   const columns = [
     { header: "Dispatch ID", accessor: "id" },
-    { header: "Order Ref", accessor: "orderId" },
+    {
+      header: "Order Ref",
+      accessor: "orderId",
+      render: (item) => item.order?.orderNumber || item.orderId || '—'
+    },
     { header: "Client", accessor: "client", render: (item) => (typeof item.client === 'object' ? item.client?.companyName : item.client) || item.clientName || '—' },
     { header: "Personnel", accessor: "driver" },
     {
@@ -939,7 +943,14 @@ const Deliveries = () => {
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted uppercase">ZaneZion Reference</label>
-                    <input type="text" value={formData.orderId} onChange={(e) => setFormData({ ...formData, orderId: e.target.value })} className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold" disabled={modalType === 'view'} placeholder="ORD-XXXX" />
+                    <input
+                      type="text"
+                      value={formData.orderId}
+                      onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
+                      className="w-full bg-background/50 border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold text-muted cursor-not-allowed"
+                      disabled={true}
+                      placeholder="ORD-XXXX"
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted uppercase">Linked Client</label>

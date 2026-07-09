@@ -1288,10 +1288,10 @@ const Users = () => {
                     type="password"
                     value={formData.password || ''}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono"
+                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                     placeholder={modalType === 'edit' ? 'Leave blank to keep unchanged' : '••••••••'}
                     autoComplete="new-password"
-                    disabled={modalType === 'view'}
+                    disabled={modalType === 'view' || (modalType === 'edit' && (roles || []).find(r => Number(r.id) === Number(formData.roleId))?.name?.toUpperCase() === 'ADMIN')}
                   />
                 </div>
                 <div className="space-y-1">

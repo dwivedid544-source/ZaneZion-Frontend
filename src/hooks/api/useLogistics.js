@@ -43,6 +43,19 @@ export const useCancelDelivery = () => {
   });
 };
 
+export const useDeleteDelivery = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => {
+      const response = await api.delete(`/deliveries/${id}`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+    },
+  });
+};
+
 export const useUpdateDelivery = () => {
   const queryClient = useQueryClient();
   return useMutation({

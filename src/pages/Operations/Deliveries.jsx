@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Pagination from '../../components/Common/Pagination';
-import { useDeliveries, useCreateDelivery, useUpdateDelivery, useCancelDelivery, useCreateMission, useStartMission, useSubmitPOD } from '../../hooks/api/useLogistics';
+import { useDeliveries, useCreateDelivery, useUpdateDelivery, useCancelDelivery, useDeleteDelivery, useCreateMission, useStartMission, useSubmitPOD } from '../../hooks/api/useLogistics';
 
 import { useData } from '../../context/GlobalDataContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
@@ -49,6 +49,7 @@ const Deliveries = () => {
   const createDeliveryMutation = useCreateDelivery();
   const updateDeliveryMutation = useUpdateDelivery();
   const cancelDeliveryMutation = useCancelDelivery();
+  const deleteDeliveryMutation = useDeleteDelivery();
   const createMissionMutation = useCreateMission();
   const startMissionMutation = useStartMission();
   const submitPODMutation = useSubmitPOD();
@@ -443,8 +444,8 @@ const Deliveries = () => {
            .catch(() => swalError("Error", "Could not update delivery"));
       }
     } else if (modalType === 'delete') {
-      cancelDeliveryMutation.mutateAsync(selectedDelivery.db_id || selectedDelivery.id)
-        .catch(() => swalError("Error", "Could not cancel delivery"));
+      deleteDeliveryMutation.mutateAsync(selectedDelivery.id)
+        .catch(() => swalError("Error", "Could not delete delivery"));
     }
     setIsModalOpen(false);
   };
@@ -457,26 +458,38 @@ const Deliveries = () => {
       render: (item) => item.order?.orderNumber || item.orderId || '—'
     },
     { header: "Client", accessor: "client", render: (item) => (typeof item.client === 'object' ? item.client?.companyName : item.client) || item.clientName || '—' },
-    { header: "Personnel", accessor: "driver" },
+    {
+      header: "Personnel",
+      accessor: "driver",
+      render: (item) => {
+        if (item.assignee) {
+          return `${item.assignee.firstName} ${item.assignee.lastName}`;
+        }
+        return item.driver || '—';
+      }
+    },
     {
       header: "Manifest Summary",
       accessor: "items",
       render: (item) => {
-        if (!item.items || item.items.length === 0) return item.item || "No Items";
-        if (item.items.length === 1) return item.items[0].name;
-        return `${item.items[0].name} (+${item.items.length - 1})`;
-      }
-    },
-    {
-      header: "Instructions",
-      accessor: "delivery_instructions",
-      render: (item) => {
-        const t = String(item.delivery_instructions || item.order_instructions || '').replace(/\[request_meta\].*/g, '').trim();
-        return (
-          <span className="text-[10px] text-secondary max-w-[160px] truncate block" title={t || undefined}>
-            {t || "—"}
-          </span>
-        );
+        let manifestItems = [];
+        if (item.remarks) {
+          try {
+            const parsed = JSON.parse(item.remarks);
+            if (parsed && Array.isArray(parsed.manifestItems)) {
+              manifestItems = parsed.manifestItems;
+            }
+          } catch (e) {}
+        }
+        if (manifestItems.length === 0 && item.items) {
+          manifestItems = item.items.map(it => ({ name: it.item?.name || 'Asset', qty: it.quantity }));
+        }
+
+        if (manifestItems.length === 0) return item.item || "—";
+        const first = manifestItems[0];
+        const name = first.name || first.itemName || 'Asset';
+        if (manifestItems.length === 1) return `${name} (x${first.qty || first.quantity || 1})`;
+        return `${name} (x${first.qty || first.quantity || 1}) (+${manifestItems.length - 1})`;
       }
     },
     {

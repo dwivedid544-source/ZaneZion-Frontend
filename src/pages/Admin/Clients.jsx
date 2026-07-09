@@ -3,7 +3,7 @@ import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredent
 import { createPortal } from 'react-dom';
 import { useData } from '../../context/GlobalDataContext';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '../../hooks/api/useCRM';
-import { Search, Plus, Download, User, MapPin, Package, CreditCard, Eye, Edit2, ToggleLeft, ToggleRight, XCircle, X, Mail, Phone, Globe, Calendar, Shield, Activity, Trash2, ShoppingCart, ChevronDown, FileText, Truck } from 'lucide-react';
+import { Search, Plus, Download, User, MapPin, Package, CreditCard, Eye, EyeOff, Edit2, ToggleLeft, ToggleRight, XCircle, X, Mail, Phone, Globe, Calendar, Shield, Activity, Trash2, ShoppingCart, ChevronDown, FileText, Truck } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import BootstrapPagination from '../../components/Common/Pagination';
 import api from '../../services/api/setupAxios.js';
@@ -65,6 +65,7 @@ const Clients = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedClient, setSelectedClient] = useState(null);
+  const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState({});
   const [formData, setFormData] = useState({
     name: '', email: '', phone: '', password: '', location: '', source: 'Manual', clientType: 'SaaS',
@@ -1038,12 +1039,12 @@ const Clients = () => {
               <div className="p-8 space-y-6 max-h-[60vh] overflow-y-auto custom-scrollbar">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">{isAdminRole ? 'Customer Name' : 'Client Name'}</label>
+                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">{isAdminRole ? 'Customer Name' : 'Client Name'}<span className="text-danger"> *</span></label>
                     <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold" placeholder="Full Name" />
                   </div>
                   <div className="space-y-2">
-                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Email Address</label>
+                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Email Address<span className="text-danger"> *</span></label>
                     <input
                       type="email"
                       value={formData.email}
@@ -1096,9 +1097,24 @@ const Clients = () => {
                   )}
                   {showAddModal && (
                     <div className="space-y-2 md:col-span-2">
-                      <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Login Password</label>
-                      <input type="password" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold font-mono" placeholder="••••••••" />
+                      <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Login Password<span className="text-danger"> *</span></label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          value={formData.password}
+                          onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                          className="w-full bg-background border border-border rounded-xl pl-4 pr-12 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold font-mono"
+                          placeholder="••••••••"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
+                          title={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
                     </div>
                   )}
                   {!isAdminRole && clientTypeFilter !== 'Personal' && (
@@ -1177,8 +1193,17 @@ const Clients = () => {
                   </button>
                 )}
 
-                <button onClick={showAddModal ? handleSaveAdd : handleSaveEdit} className="btn-primary flex items-center gap-3 px-10 shadow-xl shadow-accent/20">
-                  <span>{showAddModal ? (isAdminRole ? 'Register Customer' : 'Register Client') : 'Update Portfolio'}</span>
+                <button 
+                  onClick={showAddModal ? handleSaveAdd : handleSaveEdit} 
+                  disabled={createMutation.isPending || updateMutation.isPending}
+                  className="btn-primary flex items-center gap-3 px-10 shadow-xl shadow-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <span>
+                    {showAddModal 
+                      ? (createMutation.isPending ? 'Registering...' : (isAdminRole ? 'Register Customer' : 'Register Client')) 
+                      : (updateMutation.isPending ? 'Updating...' : 'Update Portfolio')
+                    }
+                  </span>
                 </button>
               </div>
             </motion.div>

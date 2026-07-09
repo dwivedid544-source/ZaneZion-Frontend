@@ -13,6 +13,53 @@ import Swal from 'sweetalert2';
 
 const Users = () => {
   const [showPassword, setShowPassword] = useState(false);
+  const [uploadingDocs, setUploadingDocs] = useState({});
+
+  const handleDocUpload = async (userId, docType, e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const documentTypes = {
+      passport: ['pdf', 'jpg', 'jpeg', 'png'],
+      license: ['pdf', 'jpg', 'jpeg', 'png'],
+      nib: ['pdf', 'jpg', 'jpeg', 'png'],
+      resume: ['pdf', 'doc', 'docx'],
+      profilePic: ['jpg', 'jpeg', 'png', 'webp'],
+      certs: ['pdf', 'jpg', 'jpeg', 'png']
+    };
+
+    const allowed = documentTypes[docType];
+    const ext = file.name.split('.').pop().toLowerCase();
+    if (!allowed || !allowed.includes(ext)) {
+      swalWarning('Validation Error', `Invalid format. Allowed: ${allowed.join(', ').toUpperCase()}`);
+      return;
+    }
+
+    const stateKey = `${userId}-${docType}`;
+    setUploadingDocs(prev => ({ ...prev, [stateKey]: true }));
+
+    try {
+      const uploadData = new FormData();
+      uploadData.append('file', file);
+
+      const res = await api.post(`/users/${userId}/documents?type=${docType}`, uploadData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+
+      if (res.data?.success) {
+        swalSuccess('Success', 'Document uploaded successfully.');
+        await fetchStaff();
+      } else {
+        swalWarning('Error', res.data?.message || 'Failed to upload document.');
+      }
+    } catch (err) {
+      console.error(err);
+      swalWarning('Error', err.response?.data?.message || 'Upload failed.');
+    } finally {
+      setUploadingDocs(prev => ({ ...prev, [stateKey]: false }));
+    }
+  };
+
   const { leaveRequests, updateLeaveRequest, staffAssignments, addStaffAssignment, updateAssignment, fetchStaff, reviewStaff, currentUser, payHistory, fetchPayHistory, clients, fetchClients, subscriptionRequests, updateSubscriptionRequest, hasMenuPermission, cancelPersonalMembership, roles } = useData();
   const roleNormalized = normalizeRole(currentUser?.role);
   const isSuperAdmin = roleNormalized === 'superadmin';
@@ -74,6 +121,12 @@ const Users = () => {
     loadData();
   }, [activeTab, currentPage, debounceSearch, fetchStaff, fetchClients, fetchPayHistory]);
 
+  React.useEffect(() => {
+    if (!isModalOpen) {
+      setSearchTerm('');
+    }
+  }, [isModalOpen]);
+
   const handlePageChange = (newPage) => {
     setCurrentPage(newPage);
   };
@@ -86,7 +139,17 @@ const Users = () => {
 
   const filteredUsers = users.filter(u => {
     const rName = (typeof u?.role === 'object' ? u.role?.name || '' : u?.role || '').toLowerCase();
-    return !['customer', 'saas_client', 'business_client', 'client'].includes(rName);
+    if (['customer', 'saas_client', 'business_client', 'client'].includes(rName)) {
+      return false;
+    }
+    const statusLower = String(u.status || '').toLowerCase();
+    if (activeTab === 'users') {
+      return statusLower !== 'pending';
+    }
+    if (activeTab === 'pending') {
+      return statusLower === 'pending';
+    }
+    return true;
   });
   const currentUsers = filteredUsers.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
@@ -127,29 +190,60 @@ const Users = () => {
     return resolved;
   };
 
-  const handleAction = (type, user) => {
-    setSelectedUser(user);
+  const handleAction = async (type, user) => {
     setModalType(type);
 
     if (user.id) {
-      // Map backend snake_case fields → frontend form fields
-      setFormData({
-        ...user,
-        roleId: user.roleId || user.role?.id || '',
-        // birthday comes as "2026-04-29T00:00:00.000Z" from DB, trim to date only
-        birthday: user.birthday ? String(user.birthday).split('T')[0] : '',
-        nibNumber: user.nib_number || user.nibNumber || '',
-        vacationBalance: user.vacation_balance ?? user.vacationBalance ?? 0,
-        employmentStatus: user.employment_status || user.employmentStatus || 'Full Time',
-        // Flatten bank fields into bankingInfo object for the form
-        bankingInfo: {
-          bank: user.bank_name || user.bankingInfo?.bank || '',
-          account: user.account_number || user.bankingInfo?.account || '',
-          routing: user.routing_number || user.bankingInfo?.routing || '',
-          method: user.bankingInfo?.method || 'Direct Deposit',
-        },
-      });
+      try {
+        const res = await api.get(`/users/${user.id}`);
+        const fullUser = res.data?.data || user;
+        setSelectedUser(fullUser);
+
+        let parsedBankingInfo = fullUser.bankingInfo;
+        if (typeof parsedBankingInfo === 'string') {
+          try { parsedBankingInfo = JSON.parse(parsedBankingInfo); } catch (e) { parsedBankingInfo = {}; }
+        }
+        // Map backend snake_case fields → frontend form fields
+        setFormData({
+          ...fullUser,
+          roleId: fullUser.roleId || fullUser.role?.id || '',
+          // birthday comes as "2026-04-29T00:00:00.000Z" from DB, trim to date only
+          birthday: fullUser.birthday ? String(fullUser.birthday).split('T')[0] : '',
+          nibNumber: fullUser.nib_number || fullUser.nibNumber || '',
+          vacationBalance: fullUser.vacation_balance ?? fullUser.vacationBalance ?? 0,
+          employmentStatus: fullUser.employment_status || fullUser.employmentStatus || 'Full Time',
+          // Flatten bank fields into bankingInfo object for the form
+          bankingInfo: {
+            bank: fullUser.bank_name || parsedBankingInfo?.bank || '',
+            account: fullUser.account_number || parsedBankingInfo?.account || '',
+            routing: fullUser.routing_number || parsedBankingInfo?.routing || '',
+            method: parsedBankingInfo?.method || 'Direct Deposit',
+          },
+        });
+      } catch (err) {
+        console.error("Failed to fetch user details:", err);
+        setSelectedUser(user);
+        let parsedBankingInfo = user.bankingInfo;
+        if (typeof parsedBankingInfo === 'string') {
+          try { parsedBankingInfo = JSON.parse(parsedBankingInfo); } catch (e) { parsedBankingInfo = {}; }
+        }
+        setFormData({
+          ...user,
+          roleId: user.roleId || user.role?.id || '',
+          birthday: user.birthday ? String(user.birthday).split('T')[0] : '',
+          nibNumber: user.nib_number || user.nibNumber || '',
+          vacationBalance: user.vacation_balance ?? user.vacationBalance ?? 0,
+          employmentStatus: user.employment_status || user.employmentStatus || 'Full Time',
+          bankingInfo: {
+            bank: user.bank_name || parsedBankingInfo?.bank || '',
+            account: user.account_number || parsedBankingInfo?.account || '',
+            routing: user.routing_number || parsedBankingInfo?.routing || '',
+            method: parsedBankingInfo?.method || 'Direct Deposit',
+          },
+        });
+      }
     } else {
+      setSelectedUser(null);
       // New user — empty form
       const adminRole = (roles || []).find(r => r.name === 'ADMIN');
       setFormData({
@@ -168,29 +262,33 @@ const Users = () => {
   const handleSave = async () => {
     if (modalType === 'add') {
       if (!formData.name || !formData.email || !formData.password) {
-        alert('Name, Email and Password are required.');
+        swalWarning('Validation Error', 'Name, Email and Password are required.');
+        return;
+      }
+      if (formData.name.length < 2) {
+        swalWarning('Validation Error', 'Name must be at least 2 characters.');
         return;
       }
       if (formData.password.length < 6) {
-        alert('Password must be at least 6 characters long.');
+        swalWarning('Validation Error', 'Password must be at least 6 characters.');
         return;
       }
       let roleIdToSubmit = formData.roleId;
       if (!roleIdToSubmit) {
-        alert('Please select a role.');
+        swalWarning('Validation Error', 'Please select a role.');
         return;
       }
 
       if (formData.birthday && new Date(formData.birthday) > new Date()) {
-        alert('Birthday cannot be in the future.');
+        swalWarning('Validation Error', 'Birthday cannot be in the future.');
         return;
       }
       if (formData.phone && !/^\d+$/.test(formData.phone)) {
-        alert('Phone number must contain only numeric characters.');
+        swalWarning('Validation Error', 'Phone number must contain only numeric characters.');
         return;
       }
       if (formData.vacationBalance < 0) {
-        alert('Vacation balance cannot be negative.');
+        swalWarning('Validation Error', 'Vacation balance cannot be negative.');
         return;
       }
       try {
@@ -210,29 +308,104 @@ const Users = () => {
           payload.company_id = parsedCompanyId;
           payload.companyId = parsedCompanyId;
         }
+
+        // Duplicate fields in snake_case for maximum compatibility
+        if (formData.vacationBalance !== undefined) {
+          payload.vacation_balance = Number(formData.vacationBalance);
+          payload.vacationBalance = Number(formData.vacationBalance);
+        }
+        if (formData.nibNumber !== undefined) {
+          payload.nib_number = formData.nibNumber;
+          payload.nibNumber = formData.nibNumber;
+        }
+        if (formData.employmentStatus !== undefined) {
+          payload.employment_status = formData.employmentStatus;
+          payload.employmentStatus = formData.employmentStatus;
+        }
+        if (formData.bankingInfo !== undefined) {
+          payload.banking_info = formData.bankingInfo;
+          payload.bankingInfo = formData.bankingInfo;
+        }
+
+        // Sanitize payload: remove null values to prevent production backend validation failures
+        Object.keys(payload).forEach(key => {
+          if (payload[key] === null) {
+            delete payload[key];
+          }
+        });
+
         await createMutation.mutateAsync(payload);
         setIsModalOpen(false);
       } catch (err) {
-        // error already handled
+        const errorMsg = err.response?.data?.message || err.message || 'An error occurred';
+        swalWarning('Failed to Register User', errorMsg);
       }
     } else if (modalType === 'edit') {
+      const isDotsOnly = /^[\u2022\u25CF\s]*$/.test(formData.password || '');
+      if (formData.name && formData.name.length < 2) {
+        swalWarning('Validation Error', 'Name must be at least 2 characters.');
+        return;
+      }
+      if (formData.password && !isDotsOnly && formData.password.length < 6) {
+        swalWarning('Validation Error', 'Password must be at least 6 characters.');
+        return;
+      }
       if (formData.birthday && new Date(formData.birthday) > new Date()) {
-        alert('Birthday cannot be in the future.');
+        swalWarning('Validation Error', 'Birthday cannot be in the future.');
         return;
       }
       if (formData.phone && !/^\d+$/.test(formData.phone)) {
-        alert('Phone number must contain only numeric characters.');
+        swalWarning('Validation Error', 'Phone number must contain only numeric characters.');
         return;
       }
       if (formData.vacationBalance < 0) {
-        alert('Vacation balance cannot be negative.');
+        swalWarning('Validation Error', 'Vacation balance cannot be negative.');
         return;
       }
       try {
-        await updateMutation.mutateAsync({ id: selectedUser.id, data: { ...selectedUser, ...formData } });
+        const mergedData = { ...selectedUser, ...formData };
+        if (!formData.password || formData.password.trim() === '' || isDotsOnly) {
+          delete mergedData.password;
+        }
+
+        // Duplicate fields in snake_case for maximum compatibility
+        if (formData.vacationBalance !== undefined) {
+          mergedData.vacation_balance = Number(formData.vacationBalance);
+          mergedData.vacationBalance = Number(formData.vacationBalance);
+        }
+        if (formData.nibNumber !== undefined) {
+          mergedData.nib_number = formData.nibNumber;
+          mergedData.nibNumber = formData.nibNumber;
+        }
+        if (formData.employmentStatus !== undefined) {
+          mergedData.employment_status = formData.employmentStatus;
+          mergedData.employmentStatus = formData.employmentStatus;
+        }
+        if (formData.bankingInfo !== undefined) {
+          mergedData.banking_info = formData.bankingInfo;
+          mergedData.bankingInfo = formData.bankingInfo;
+        }
+
+        // Sanitize payload: remove null values to prevent production backend validation failures
+        Object.keys(mergedData).forEach(key => {
+          if (mergedData[key] === null) {
+            delete mergedData[key];
+          }
+        });
+
+        if (mergedData.bankingInfo && typeof mergedData.bankingInfo === 'object') {
+          Object.keys(mergedData.bankingInfo).forEach(bKey => {
+            if (mergedData.bankingInfo[bKey] === null) {
+              mergedData.bankingInfo[bKey] = '';
+            }
+          });
+        }
+
+        await updateMutation.mutateAsync({ id: selectedUser.id, data: mergedData });
         setIsModalOpen(false);
       } catch (err) {
-        // error already handled
+        const errorMsg = err.response?.data?.message || err.message || 'An error occurred';
+        swalWarning('Failed to Update User', errorMsg);
       }
     }
   };
@@ -728,28 +901,65 @@ const Users = () => {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 flex-1">
+                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 flex-1">
                   {[
-                    { label: 'Passport', key: 'hasPassport' },
-                    { label: 'D. License', key: 'hasLicense' },
-                    { label: 'NIB Photo', key: 'hasNIB' },
-                    { label: 'Resume', key: 'hasResume' },
-                    { label: 'Profile Pic', key: 'hasProfilePic' },
-                    { label: 'Certs', key: 'hasCerts' }
-                  ].map(doc => (
-                    <div key={doc.label} className="space-y-1.5 flex flex-col">
-                      <p className="text-[9px] font-black text-muted uppercase tracking-tighter truncate">{doc.label}</p>
-                      <label className={`w-full py-2.5 rounded-lg text-[9px] font-black uppercase border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${user[doc.key] ? 'bg-success/20 border-success/40 text-success' : 'bg-white/5 border-white/10 text-muted hover:border-accent/40 hover:text-accent'}`}>
-                        <input
-                          type="file"
-                          className="hidden"
-                          onChange={() => updateMutation.mutate({ id: user.id, data: { [doc.key]: true } })}
-                        />
-                        {user[doc.key] ? <CheckCircle2 size={11} /> : <Plus size={11} />}
-                        {user[doc.key] ? 'Verified' : 'Upload'}
-                      </label>
-                    </div>
-                  ))}
+                    { label: 'Passport', key: 'hasPassport', urlKey: 'passportUrl', type: 'passport' },
+                    { label: 'D. License', key: 'hasLicense', urlKey: 'licenseUrl', type: 'license' },
+                    { label: 'NIB Photo', key: 'hasNIB', urlKey: 'nibUrl', type: 'nib' },
+                    { label: 'Resume', key: 'hasResume', urlKey: 'resumeUrl', type: 'resume' },
+                    { label: 'Profile Pic', key: 'hasProfilePic', urlKey: 'avatar', type: 'profilePic' },
+                    { label: 'Certs', key: 'hasCerts', urlKey: 'certsUrl', type: 'certs' }
+                  ].map(doc => {
+                    const isUploading = uploadingDocs[`${user.id}-${doc.type}`];
+                    const hasDoc = user[doc.key] || !!user[doc.urlKey];
+                    const docUrl = user[doc.urlKey];
+                    
+                    return (
+                      <div key={doc.label} className="space-y-1.5 flex flex-col">
+                        <p className="text-[9px] font-black text-muted uppercase tracking-tighter truncate">{doc.label}</p>
+                        
+                        {hasDoc && docUrl ? (
+                          <div className="flex gap-1 w-full">
+                            <a 
+                              href={docUrl} 
+                              target="_blank" 
+                              rel="noreferrer" 
+                              className="flex-1 py-2.5 rounded-lg text-[9px] font-black uppercase border bg-success/20 border-success/40 text-success hover:bg-success/30 transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <CheckCircle2 size={11} />
+                              View
+                            </a>
+                            <label className="p-2.5 rounded-lg border bg-white/5 border-white/10 text-muted hover:border-accent/40 hover:text-accent cursor-pointer transition-all flex items-center justify-center">
+                              <input
+                                type="file"
+                                className="hidden"
+                                onChange={(e) => handleDocUpload(user.id, doc.type, e)}
+                                disabled={isUploading}
+                              />
+                              <Edit size={11} />
+                            </label>
+                          </div>
+                        ) : (
+                          <label className={`w-full py-2.5 rounded-lg text-[9px] font-black uppercase border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${isUploading ? 'bg-white/5 border-white/10 text-muted cursor-not-allowed' : 'bg-white/5 border-white/10 text-muted hover:border-accent/40 hover:text-accent'}`}>
+                            <input
+                              type="file"
+                              className="hidden"
+                              onChange={(e) => handleDocUpload(user.id, doc.type, e)}
+                              disabled={isUploading}
+                            />
+                            {isUploading ? (
+                              <span>Uploading...</span>
+                            ) : (
+                              <>
+                                <Plus size={11} />
+                                <span>Upload</span>
+                              </>
+                            )}
+                          </label>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -1052,7 +1262,7 @@ const Users = () => {
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Full Name</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Full Name <span className="text-danger">*</span></label>
                   <input
                     type="text"
                     value={formData.name}
@@ -1072,31 +1282,20 @@ const Users = () => {
                     autoComplete="new-phone-number"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Login Password</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={formData.password || ''}
-                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                      className="w-full bg-background border border-border rounded-lg pl-4 pr-10 py-2 text-sm focus:border-accent outline-none font-mono"
-                      placeholder="••••••••"
-                      disabled={modalType === 'view'}
-                      autoComplete="new-password"
-                    />
-                    {modalType !== 'view' && (
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors"
-                      >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    )}
-                  </div>
+                 <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted uppercase">Login Password {modalType === 'add' && <span className="text-danger">*</span>}</label>
+                  <input
+                    type="password"
+                    value={formData.password || ''}
+                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono"
+                    placeholder={modalType === 'edit' ? 'Leave blank to keep unchanged' : '••••••••'}
+                    autoComplete="new-password"
+                    disabled={modalType === 'view'}
+                  />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Email Address</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Email Address <span className="text-danger">*</span></label>
                   <input
                     type="email"
                     value={formData.email}
@@ -1107,7 +1306,7 @@ const Users = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Role</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Role <span className="text-danger">*</span></label>
                   <select
                     value={formData.roleId || ''}
                     onChange={(e) => setFormData({ ...formData, roleId: Number(e.target.value) })}
@@ -1165,12 +1364,11 @@ const Users = () => {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted uppercase">Vacation Balance (Tenure Adjusted)</label>
                   <input
-                    type="number"
-                    min="0"
-                    value={formData.vacationBalance || 0}
+                    type="text"
+                    value={formData.vacationBalance ?? ''}
                     onChange={(e) => {
-                      const val = parseInt(e.target.value);
-                      setFormData({ ...formData, vacationBalance: val >= 0 ? val : 0 });
+                      const val = e.target.value.replace(/\D/g, '');
+                      setFormData({ ...formData, vacationBalance: val === '' ? '' : parseInt(val, 10) });
                     }}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono text-accent"
                     disabled={modalType === 'view'}
@@ -1344,7 +1542,7 @@ const Users = () => {
         <form onSubmit={handleDelegateSubmit} className="space-y-6">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Assignee Profile</label>
+              <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Assignee Profile <span className="text-danger">*</span></label>
               <select
                 value={delegateFormData.assigneeId}
                 onChange={e => setDelegateFormData({ ...delegateFormData, assigneeId: e.target.value })}
@@ -1372,7 +1570,7 @@ const Users = () => {
           </div>
 
           <div className="space-y-1">
-            <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Mission Description</label>
+            <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Mission Description <span className="text-danger">*</span></label>
             <textarea
               value={delegateFormData.task}
               onChange={e => setDelegateFormData({ ...delegateFormData, task: e.target.value })}
@@ -1542,7 +1740,7 @@ const Users = () => {
         }} className="space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-[9px] font-bold text-muted uppercase">Company / Name</label>
+              <label className="text-[9px] font-bold text-muted uppercase">Company / Name <span className="text-danger">*</span></label>
               <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.companyName} onChange={e => setClientFormData({...clientFormData, companyName: e.target.value})} required />
             </div>
             <div className="space-y-1">

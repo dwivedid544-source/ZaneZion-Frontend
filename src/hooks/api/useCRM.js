@@ -75,6 +75,9 @@ export const useCreateUser = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+      }, 500);
     }
   });
 };
@@ -88,6 +91,9 @@ export const useUpdateUser = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+      }, 500);
     }
   });
 };
@@ -101,6 +107,9 @@ export const useDeleteUser = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
+      setTimeout(() => {
+        queryClient.invalidateQueries({ queryKey: ['users'] });
+      }, 500);
     }
   });
 };

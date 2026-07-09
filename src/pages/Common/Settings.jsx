@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { swalSuccess, swalError, swalWarning } from '../../utils/swal';
-import { User, Shield, Bell, Globe, CreditCard, Save, Lock, RotateCcw, Truck, DollarSign, Camera, Plus, Trash2 } from 'lucide-react';
+import { User, Shield, Bell, Globe, CreditCard, Save, Lock, RotateCcw, Truck, DollarSign, Camera, Plus, Trash2, Eye, EyeOff } from 'lucide-react';
 
 import { useData } from '../../context/GlobalDataContext';
 import { normalizeRole } from '../../utils/authUtils';
@@ -42,6 +42,7 @@ const Settings = () => {
     avatarUrl: pickAvatarUrl(currentUser),
   }));
   const [passwords, setPasswords] = useState({ current: '', new: '', confirm: '' });
+  const [showPassword, setShowPassword] = useState(false);
 
   // Get current client data if it's a client
   const clientData = ['client', 'saas_client'].includes(normalizeRole(currentUser?.role)) ? clients.find(c => c.id === (currentUser?.clientId || currentUser?.company_id)) : null;
@@ -464,11 +465,14 @@ const Settings = () => {
                           <div className="relative">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-accent font-black text-sm">$</span>
                             <input
-                              type="number"
-                              min="0"
-                              step="0.01"
+                              type="text"
                               value={shippingCharges[mode]}
-                              onChange={(e) => setShippingCharges((prev) => ({ ...prev, [mode]: e.target.value }))}
+                              onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                const parts = val.split('.');
+                                const cleanVal = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : val;
+                                setShippingCharges((prev) => ({ ...prev, [mode]: cleanVal }));
+                              }}
                               className="bg-black/40 border border-white/10 rounded-lg pl-7 pr-3 py-2.5 w-full text-sm font-black text-white focus:border-accent outline-none transition-all"
                             />
                           </div>
@@ -519,11 +523,11 @@ const Settings = () => {
                         <div className="flex items-center gap-2 text-white font-bold text-sm">
                           <div className="relative flex-1">
                             <input
-                              type="number"
+                              type="text"
                               value={tier.min}
                               onChange={(e) => {
-                                const newMin = e.target.value;
-                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, min: newMin } : p));
+                                const val = e.target.value.replace(/\D/g, '');
+                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, min: val } : p));
                               }}
                               className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 w-full text-sm font-black text-white focus:border-accent outline-none"
                               placeholder="Min"
@@ -532,11 +536,11 @@ const Settings = () => {
                           <span className="text-secondary font-medium">→</span>
                           <div className="relative flex-1">
                             <input
-                              type="number"
+                              type="text"
                               value={tier.max}
                               onChange={(e) => {
-                                const newMax = e.target.value;
-                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, max: newMax } : p));
+                                const val = e.target.value.replace(/\D/g, '');
+                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, max: val } : p));
                               }}
                               className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 w-full text-sm font-black text-white focus:border-accent outline-none"
                               placeholder="Max"
@@ -548,11 +552,13 @@ const Settings = () => {
                           <div className="relative w-full max-w-full min-w-0">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-accent font-black text-sm">$</span>
                             <input
-                              type="number"
+                              type="text"
                               value={tier.price}
                               onChange={(e) => {
-                                const newPrice = e.target.value;
-                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, price: newPrice } : p));
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                const parts = val.split('.');
+                                const cleanVal = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : val;
+                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, price: cleanVal } : p));
                               }}
                               className="bg-black/40 border border-white/10 rounded-lg pl-7 pr-3 py-2.5 w-full min-w-0 text-sm font-black text-white focus:border-accent outline-none transition-all"
                             />
@@ -575,11 +581,11 @@ const Settings = () => {
                         <div className="col-span-3">
                           <div className="relative w-full max-w-[120px] min-w-0 flex items-center gap-1.5">
                             <input
-                              type="number"
+                              type="text"
                               value={tier.min}
                               onChange={(e) => {
-                                const newMin = e.target.value;
-                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, min: newMin } : p));
+                                const val = e.target.value.replace(/\D/g, '');
+                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, min: val } : p));
                               }}
                               className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 w-full min-w-0 text-sm font-black text-white focus:border-accent outline-none transition-all"
                             />
@@ -589,11 +595,11 @@ const Settings = () => {
                         <div className="col-span-3">
                           <div className="relative w-full max-w-[120px] min-w-0 flex items-center gap-1.5">
                             <input
-                              type="number"
+                              type="text"
                               value={tier.max}
                               onChange={(e) => {
-                                const newMax = e.target.value;
-                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, max: newMax } : p));
+                                const val = e.target.value.replace(/\D/g, '');
+                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, max: val } : p));
                               }}
                               className="bg-black/40 border border-white/10 rounded-lg px-3 py-2 w-full min-w-0 text-sm font-black text-white focus:border-accent outline-none transition-all"
                             />
@@ -604,11 +610,13 @@ const Settings = () => {
                           <div className="relative w-full max-w-[120px] min-w-0">
                             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-accent font-black text-sm">$</span>
                             <input
-                              type="number"
+                              type="text"
                               value={tier.price}
                               onChange={(e) => {
-                                const newPrice = e.target.value;
-                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, price: newPrice } : p));
+                                const val = e.target.value.replace(/[^0-9.]/g, '');
+                                const parts = val.split('.');
+                                const cleanVal = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : val;
+                                setDeliveryPricing(deliveryPricing.map(p => p.id === tier.id ? { ...p, price: cleanVal } : p));
                               }}
                               className="bg-black/40 border border-white/10 rounded-lg pl-7 pr-3 py-2 w-full min-w-0 text-sm font-black text-white focus:border-accent outline-none transition-all"
                             />
@@ -704,10 +712,14 @@ const Settings = () => {
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-accent font-black">$</span>
                         <input
-                          type="number"
-                          step="0.01"
+                          type="text"
                           value={pricingSettings.chauffeur_base_price}
-                          onChange={(e) => setPricingSettings({ ...pricingSettings, chauffeur_base_price: e.target.value })}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '');
+                            const parts = val.split('.');
+                            const cleanVal = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : val;
+                            setPricingSettings({ ...pricingSettings, chauffeur_base_price: cleanVal });
+                          }}
                           className="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-5 py-4 text-sm focus:border-accent outline-none font-bold transition-all text-white"
                         />
                       </div>
@@ -721,10 +733,14 @@ const Settings = () => {
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-accent font-black">$</span>
                         <input
-                          type="number"
-                          step="0.01"
+                          type="text"
                           value={pricingSettings.delivery_base_price}
-                          onChange={(e) => setPricingSettings({ ...pricingSettings, delivery_base_price: e.target.value })}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '');
+                            const parts = val.split('.');
+                            const cleanVal = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : val;
+                            setPricingSettings({ ...pricingSettings, delivery_base_price: cleanVal });
+                          }}
                           className="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-5 py-4 text-sm focus:border-accent outline-none font-bold transition-all text-white"
                         />
                       </div>
@@ -738,10 +754,14 @@ const Settings = () => {
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-accent font-black">$</span>
                         <input
-                          type="number"
-                          step="0.01"
+                          type="text"
                           value={pricingSettings.pickup_charges}
-                          onChange={(e) => setPricingSettings({ ...pricingSettings, pickup_charges: e.target.value })}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '');
+                            const parts = val.split('.');
+                            const cleanVal = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : val;
+                            setPricingSettings({ ...pricingSettings, pickup_charges: cleanVal });
+                          }}
                           className="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-5 py-4 text-sm focus:border-accent outline-none font-bold transition-all text-white"
                         />
                       </div>
@@ -755,10 +775,14 @@ const Settings = () => {
                       <div className="relative">
                         <span className="absolute left-4 top-1/2 -translate-y-1/2 text-accent font-black">$</span>
                         <input
-                          type="number"
-                          step="0.01"
+                          type="text"
                           value={pricingSettings.per_km_charges}
-                          onChange={(e) => setPricingSettings({ ...pricingSettings, per_km_charges: e.target.value })}
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^0-9.]/g, '');
+                            const parts = val.split('.');
+                            const cleanVal = parts.length > 2 ? `${parts[0]}.${parts.slice(1).join('')}` : val;
+                            setPricingSettings({ ...pricingSettings, per_km_charges: cleanVal });
+                          }}
                           className="w-full bg-black/20 border border-white/10 rounded-xl pl-10 pr-5 py-4 text-sm focus:border-accent outline-none font-bold transition-all text-white"
                         />
                       </div>
@@ -858,35 +882,65 @@ const Settings = () => {
                 <form onSubmit={handlePasswordChange} className="max-w-2xl space-y-8">
                   <div className="space-y-2">
                     <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Current password</label>
-                    <input
-                      type="password"
-                      placeholder="••••••••••••"
-                      value={passwords.current}
-                      onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                      className="w-full bg-black/20 border border-white/10 rounded-xl px-5 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
-                    />
+                    <div className="relative">
+                      <input
+                        type={showPassword ? "text" : "password"}
+                        placeholder="••••••••••••"
+                        value={passwords.current}
+                        onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                        className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
+                        title={showPassword ? "Hide password" : "Show password"}
+                      >
+                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">New password</label>
-                      <input
-                        type="password"
-                        placeholder="••••••••••••"
-                        value={passwords.new}
-                        onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-5 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••••••"
+                          value={passwords.new}
+                          onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                          className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
+                          title={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Confirm new password</label>
-                      <input
-                        type="password"
-                        placeholder="••••••••••••"
-                        value={passwords.confirm}
-                        onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-5 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
-                      />
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••••••"
+                          value={passwords.confirm}
+                          onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                          className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
+                          title={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
                     </div>
                   </div>
 

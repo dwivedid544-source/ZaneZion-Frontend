@@ -144,7 +144,7 @@ const Users = () => {
     }
     const statusLower = String(u.status || '').toLowerCase();
     if (activeTab === 'users') {
-      return statusLower === 'active';
+      return statusLower !== 'pending';
     }
     if (activeTab === 'pending') {
       return statusLower === 'pending';
@@ -341,11 +341,12 @@ const Users = () => {
         swalWarning('Failed to Register User', errorMsg);
       }
     } else if (modalType === 'edit') {
+      const isDotsOnly = /^[\u2022\u25CF\s]*$/.test(formData.password || '');
       if (formData.name && formData.name.length < 2) {
         swalWarning('Validation Error', 'Name must be at least 2 characters.');
         return;
       }
-      if (formData.password && formData.password.length < 6) {
+      if (formData.password && !isDotsOnly && formData.password.length < 6) {
         swalWarning('Validation Error', 'Password must be at least 6 characters.');
         return;
       }
@@ -363,6 +364,9 @@ const Users = () => {
       }
       try {
         const mergedData = { ...selectedUser, ...formData };
+        if (!formData.password || formData.password.trim() === '' || isDotsOnly) {
+          delete mergedData.password;
+        }
 
         // Duplicate fields in snake_case for maximum compatibility
         if (formData.vacationBalance !== undefined) {
@@ -1278,14 +1282,15 @@ const Users = () => {
                     autoComplete="new-phone-number"
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Login Password <span className="text-danger">*</span></label>
+                 <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted uppercase">Login Password {modalType === 'add' && <span className="text-danger">*</span>}</label>
                   <input
                     type="password"
                     value={formData.password || ''}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono"
-                    placeholder="••••••••"
+                    placeholder={modalType === 'edit' ? 'Leave blank to keep unchanged' : '••••••••'}
+                    autoComplete="new-password"
                     disabled={modalType === 'view'}
                   />
                 </div>

@@ -61,9 +61,9 @@ const ClientDashboard = () => {
   const clientInvoices = (invoices || []).filter(inv =>
     inv.clientId === clientData.id || inv.company_id === clientData.id || inv.client === clientData.name
   );
-  const clientChauffeurRequests = (chauffeurRequests || []).filter(req => 
-    String(req.clientId) === String(clientData.id) || 
-    String(req.company_id) === String(clientData.id) || 
+  const clientChauffeurRequests = (chauffeurRequests || []).filter(req =>
+    String(req.clientId) === String(clientData.id) ||
+    String(req.company_id) === String(clientData.id) ||
     String(req.clientName) === String(clientData.name) ||
     (req.created_by && String(req.created_by) === String(currentUser?.id)) ||
     (normalizeRole(currentUser?.role) === 'customer' || normalizeRole(currentUser?.role) === 'client')
@@ -213,7 +213,7 @@ const ClientDashboard = () => {
 
         {/* Client Profile Section */}
         <div className="glass-card p-6 sm:p-10 relative">
-          <button 
+          <button
             onClick={() => { setProfileForm({ id: clientData.id, business_name: clientData.business_name || '', contact_person: clientData.contact_person || clientData.name || '', email: clientData.email || '', location: clientData.location || '', phone: clientData.phone || '' }); setIsProfileModalOpen(true); }}
             className="absolute top-6 right-6 p-2 text-white/50 hover:text-accent transition-colors"
           >
@@ -249,7 +249,7 @@ const ClientDashboard = () => {
           <div className="p-6">
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-lg font-black text-white uppercase italic">Edit Profile</h2>
-              <button onClick={() => setIsProfileModalOpen(false)}><X size={20} className="text-white"/></button>
+              <button onClick={() => setIsProfileModalOpen(false)}><X size={20} className="text-white" /></button>
             </div>
             <div className="space-y-4">
               <input type="text" placeholder="Business Name" className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white" value={profileForm.business_name} onChange={e => setProfileForm({ ...profileForm, business_name: e.target.value })} />

@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import StatusBadge from '../../components/StatusBadge';
-import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment } from '../../hooks/api/useFinance';
+import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment, useUpdateInvoice } from '../../hooks/api/useFinance';
+import { swalSuccess, swalError, swalConfirm } from '../../utils/swal';
 import { RefreshCcw } from 'lucide-react';
 import Pagination from '../../components/Common/Pagination';
 import { normalizeRole } from '../../utils/authUtils';
@@ -24,10 +25,11 @@ const Invoices = () => {
     const invoices = invoicesData?.data?.invoices || [];
     const totalItems = invoicesData?.data?.total || 0;
     const totalPages = invoicesData?.data?.totalPages || 1;
-    
+
     const createInvoiceMutation = useCreateInvoice();
     const updateInvoiceStatusMutation = useUpdateInvoiceStatus();
     const createPaymentMutation = useCreatePayment();
+    const updateInvoiceMutation = useUpdateInvoice();
 
     React.useEffect(() => {
         fetchOrders();
@@ -96,9 +98,9 @@ const Invoices = () => {
                     tax: 0,
                     discount: 0
                 }))
-                : [{ 
-                    itemId: 1, 
-                    quantity: 1, 
+                : [{
+                    itemId: 1,
+                    quantity: 1,
                     unitPrice: Number(formData.totalAmount) || 0,
                     tax: 0,
                     discount: 0
@@ -116,13 +118,38 @@ const Invoices = () => {
                 const apiErrorMsg = err.response?.data?.message || err.message || '';
                 alert(`Failed to generate invoice. ${apiErrorMsg || "Please ensure the order/delivery is completed with POD."}`);
             }
+        } else if (modalType === 'edit') {
+            try {
+                await updateInvoiceMutation.mutateAsync({
+                    // Always use the integer primary key (row.id) — never invoiceNumber
+                    id: selectedInvoice.id,
+                    invoiceData: {
+                        clientId: String(formData.clientId).startsWith('user_') ? Number(String(formData.clientId).replace('user_', '')) : Number(formData.clientId),
+                        orderId: Number(formData.orderId),
+                        totalAmount: Number(formData.totalAmount),
+                        paidAmount: Number(formData.paidAmount),
+                        // Pass status only when Cancelled (backend derives all other statuses automatically)
+                        ...(formData.status === 'Cancelled' ? { status: 'Cancelled' } : {}),
+                        dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : undefined
+                    }
+                });
+                swalSuccess(`Invoice ${selectedInvoice.invoiceNumber || selectedInvoice.id} updated successfully.`);
+            } catch (err) {
+                const apiErrorMsg = err.response?.data?.message || err.message || '';
+                swalError(`Failed to update invoice. ${apiErrorMsg}`);
+            }
         }
         setIsModalOpen(false);
         setFormData({ orderId: '', clientId: '', totalAmount: 0, paidAmount: 0, status: 'Unpaid', dueDate: '' });
     };
 
     const columns = [
-        { header: "Invoice ID", accessor: "id" },
+        {
+            // Show human-readable invoiceNumber; the integer id is used for API calls
+            header: "Invoice #",
+            accessor: "invoiceNumber",
+            render: (row) => <span className="font-mono font-bold text-accent/80 text-xs">{row.invoiceNumber || row.id}</span>
+        },
         { header: "Order Ref", accessor: "orderId" },
         {
             header: "Client",
@@ -154,8 +181,8 @@ const Invoices = () => {
                 );
             }
         },
-        { 
-            header: "Date", 
+        {
+            header: "Date",
             accessor: "date",
             render: (row) => {
                 const d = row.date || row.invoiceDate || row.createdAt;
@@ -185,13 +212,31 @@ const Invoices = () => {
             });
         } else {
             setSelectedInvoice(inv);
+            const mapStatusToUi = (status) => {
+                if (!status) return 'Unpaid';
+                const s = status.toLowerCase();
+                if (s === 'generated' || s === 'unpaid' || s === 'draft' || s === 'approved' || s === 'sent') return 'Unpaid';
+                if (s === 'partially_paid') return 'Partially Paid';
+                if (s === 'paid') return 'Paid';
+                if (s === 'overdue') return 'Overdue';
+                if (s === 'cancelled') return 'Cancelled';
+                return 'Unpaid';
+            };
             setFormData({
                 orderId: inv.orderId || '',
                 clientId: inv.clientId || '',
                 totalAmount: inv.totalAmount || 0,
                 paidAmount: inv.paidAmount || 0,
-                status: inv.status || 'Unpaid',
-                dueDate: inv.dueDate || (inv.date ? new Date(new Date(inv.date).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '')
+                // Map backend status to UI label
+                status: (() => {
+                    const s = (inv.status || '').toLowerCase();
+                    if (s === 'paid') return 'Paid';
+                    if (s === 'partially_paid') return 'Partially Paid';
+                    if (s === 'overdue') return 'Overdue';
+                    if (s === 'cancelled') return 'Cancelled';
+                    return 'Unpaid';
+                })(),
+                dueDate: inv.dueDate ? new Date(inv.dueDate).toISOString().split('T')[0] : (inv.date ? new Date(new Date(inv.date).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '')
             });
         }
         setIsModalOpen(true);
@@ -301,6 +346,8 @@ const Invoices = () => {
                                     </button>
                                 )}
                                 onView={(inv) => handleAction('view', inv)}
+                                onEdit={(inv) => handleAction('edit', inv)}
+                                canEdit={!procurementInvoiceReadOnly && hasMenuPermission('Invoices', 'can_edit')}
                             />
                             <div className="mt-6 border-t border-white/5 pt-6">
                                 <Pagination
@@ -346,7 +393,7 @@ const Invoices = () => {
                                     >
                                         <option value="">Select Order...</option>
                                         {orders.filter(o => !invoices.some(i => String(i.orderId) === String(o.id)) || String(o.id) === String(formData.orderId)).map(o => (
-                                            <option key={o.id} value={o.id}>{o.id} - {o.client || 'Institutional Order'} (${o.total})</option>
+                                            <option key={o.id} value={o.id}>{o.id} - {o.orderType || o.type || 'Institutional Order'} (${o.total})</option>
                                         ))}
                                     </select>
                                 </div>
@@ -396,10 +443,30 @@ const Invoices = () => {
                                             type="number"
                                             className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-accent outline-none font-bold"
                                             value={formData.paidAmount}
-                                            onChange={(e) => setFormData({ ...formData, paidAmount: parseFloat(e.target.value) })}
+                                            onChange={(e) => setFormData({ ...formData, paidAmount: parseFloat(e.target.value) || 0 })}
                                             required
                                         />
                                     </div>
+                                </div>
+                                {/* Live Due Amount — auto-calculated, read-only */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest">Due Amount (Auto-Calculated)</label>
+                                    <div className="relative">
+                                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            className={`w-full bg-background/50 border rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none font-black cursor-not-allowed ${
+                                                (Number(formData.totalAmount) - Number(formData.paidAmount)) <= 0
+                                                    ? 'border-success/40 text-success'
+                                                    : 'border-danger/40 text-danger'
+                                            }`}
+                                            value={`$${Math.max(0, Number(formData.totalAmount) - Number(formData.paidAmount)).toLocaleString()}`}
+                                        />
+                                    </div>
+                                    <p className="text-[9px] text-muted/60 font-bold uppercase tracking-widest">
+                                        Invoiced Amount − Paid Amount • Status auto-derived on save
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest">Payment Status</label>
@@ -415,6 +482,9 @@ const Invoices = () => {
                                         <option value="Overdue">Overdue</option>
                                         <option value="Cancelled">Cancelled</option>
                                     </select>
+                                    <p className="text-[9px] text-muted/60 font-bold uppercase tracking-widest">
+                                        Only "Cancelled" is applied — all other statuses are auto-derived by the system
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest">Date of Maturity (Due Date)</label>

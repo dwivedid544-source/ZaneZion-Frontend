@@ -3784,7 +3784,7 @@ export const GlobalDataProvider = ({ children }) => {
         order.pickupLocation ?? order.pickup_location ?? null;
 
       const res = await api.post("/orders", {
-        clientId: isCustomer ? currentUser?.id : targetClientId,
+        clientId: isCustomer ? (currentUser?.clientId || targetClientId) : targetClientId,
         companyId: isCustomer
           ? customerOrderCompanyId
           : userRole !== "super_admin"

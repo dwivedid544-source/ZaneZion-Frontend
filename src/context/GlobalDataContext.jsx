@@ -645,7 +645,7 @@ function extractTransportModeFromOrder(row) {
 
   let meta = {};
   if (typeof row.metadata === "string") {
-    try { meta = JSON.parse(row.metadata); } catch (e) {}
+    try { meta = JSON.parse(row.metadata); } catch (e) { }
   } else if (row.metadata && typeof row.metadata === "object") {
     meta = row.metadata;
   }
@@ -716,19 +716,19 @@ export const GlobalDataProvider = ({ children }) => {
               // Auto-kick out if on a restricted page
               const path = window.location.pathname;
               const search = window.location.search;
-              
+
               const isDashboardIndexWithoutTab = (path === '/dashboard' || path === '/dashboard/') && !search.includes('tab=');
-              
+
               if (path.startsWith('/dashboard') && !isDashboardIndexWithoutTab && !['/dashboard/settings', '/dashboard/profile'].includes(path)) {
                 const hasPermission = realUser.menuPermissions.some(p =>
                   p.can_view &&
                   p.path &&
                   menuPathGrantsAccess(path, search, p.path)
                 );
-                
+
                 const role = normalizeRole(realUser.role);
                 const isPrivileged = ['superadmin', 'admin', 'saas_client', 'staff', 'customer', 'client', 'concierge', 'inventory', 'logistics'].includes(role);
-                
+
                 if (!hasPermission && !isPrivileged) {
                   window.location.href = '/dashboard';
                 }
@@ -877,7 +877,7 @@ export const GlobalDataProvider = ({ children }) => {
     // Determine the base URL for the socket connection from the API URL
     const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
     const socketURL = baseURL.replace('/api/v1', '');
-    
+
     const socket = io(socketURL, {
       transports: ['websocket', 'polling']
     });
@@ -1927,11 +1927,11 @@ export const GlobalDataProvider = ({ children }) => {
         const transportMode = extractTransportModeFromOrder(o);
         let meta = {};
         if (typeof o.metadata === "string") {
-          try { meta = JSON.parse(o.metadata); } catch (e) {}
+          try { meta = JSON.parse(o.metadata); } catch (e) { }
         } else if (o.metadata && typeof o.metadata === "object") {
           meta = o.metadata;
         }
-        
+
         return {
           ...o,
           ...meta,
@@ -2393,12 +2393,12 @@ export const GlobalDataProvider = ({ children }) => {
         // Backend already scopes notifications to the current user via user_id and role_target+company_id.
         // No additional client-side filtering needed — this prevents false notifications for new accounts.
         let notifs = res.data.data || [];
-        
+
         // TEMPORARY FIX: Ignore default mock notifications that leak from outdated mockApi fallback
         if (notifs.length === 2 && notifs[0]?.id === 1 && notifs[1]?.id === 2 && notifs[0]?.title === "New Purchase Order") {
-            notifs = [];
+          notifs = [];
         }
-        
+
         setNotifications(notifs);
         // Compute unread count directly from the scoped list to prevent phantom badges
         setUnreadCount(notifs.filter(n => !(n.isRead || n.is_read)).length);
@@ -2491,7 +2491,7 @@ export const GlobalDataProvider = ({ children }) => {
           const rawData = res.data?.data;
           const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
           setRoles(rolesArray);
-        }).catch(() => {}));
+        }).catch(() => { }));
       }
       await Promise.all(fetches);
     } catch (err) {
@@ -2529,7 +2529,7 @@ export const GlobalDataProvider = ({ children }) => {
     const canAccessOrders = ["superadmin", "admin", "saas_client", "operations", "logistics", "concierge"].includes(role);
     const canAccessProjects = ["superadmin", "admin", "saas_client", "operations"].includes(role);
     const canAccessDeliveries = ["superadmin", "admin", "saas_client", "operations", "logistics", "driver"].includes(role);
-    
+
     const refreshOperationalState = () => {
       if (canAccessOrders) fetchOrders();
       if (canAccessDeliveries) fetchDeliveries();
@@ -4134,7 +4134,7 @@ export const GlobalDataProvider = ({ children }) => {
         patchBody.assigned_driver = (assignId !== null && Number.isFinite(n) && !Number.isNaN(n)) ? n : assignId;
         patchBody.driverId = patchBody.assigned_driver; // for mock API compatibility
       }
-      
+
       console.log('Sending patch to /logistics/deliveries/' + patchId, patchBody);
       const res = await api.patch(`/logistics/deliveries/${patchId}`, patchBody);
       console.log('Patch response:', res.data);
@@ -4911,7 +4911,7 @@ export const GlobalDataProvider = ({ children }) => {
       if (updated.status === 'in_progress' || updated.status === 'assigned') {
         await api.put(`/missions/${updated.rawId}/assign`, { driverId: updated.assigneeId, vehicleId: 1 });
       }
-      
+
       if (updated.status === 'Completed' || updated.status === 'Delivered') {
         const podPayload = {
           receiverName: updated.receiverName || 'System Verified',
@@ -5201,7 +5201,7 @@ export const GlobalDataProvider = ({ children }) => {
   const updatePurchaseRequest = async (updated) => {
     try {
       const identifier = updated.id ?? updated.requestId;
-      
+
       // Optimistic update for instant UI feedback
       setPurchaseRequests((prev) =>
         prev.map((r) => {
@@ -5361,7 +5361,7 @@ export const GlobalDataProvider = ({ children }) => {
       const res = await api.put(`/purchase-orders/${numericId}/approve-receipt`);
       if (res.data?.success) {
         await fetchPurchaseOrders();
-          
+
         addLog({
           action: "Receipt Approved",
           detail: `Admin approved receipt for PO ${poId}.`,
@@ -6045,7 +6045,7 @@ export const GlobalDataProvider = ({ children }) => {
       } catch {
         piObj = {};
       }
-      
+
       piObj.chauffeur_status = updated.status;
       patch.passenger_info = JSON.stringify(piObj);
 
@@ -6214,7 +6214,7 @@ export const GlobalDataProvider = ({ children }) => {
       };
 
       const res = await api.put(`/support/events/${updated.id}`, payload);
-      
+
       try {
         console.debug(
           `PUT /support/events/${updated.id} payload:`,
@@ -6222,7 +6222,7 @@ export const GlobalDataProvider = ({ children }) => {
           "response:",
           res?.data || res,
         );
-      } catch (e) {}
+      } catch (e) { }
 
       // Optimistically update local state so UI reflects changes immediately.
       const uiUpdate = {};

@@ -156,7 +156,7 @@ const ClientStore = () => {
         }
     }, [location, isRetailPersonal]);
 
-    const marketplaceInventory = inventory.filter(item => item.inventoryType === 'Marketplace' || !item.inventoryType);
+    const marketplaceInventory = inventory.filter(item => item.inventoryType?.toUpperCase() === 'MARKETPLACE' || !item.inventoryType);
 
     const filteredInventory = marketplaceInventory.filter(item => {
         const q = searchTerm.toLowerCase();

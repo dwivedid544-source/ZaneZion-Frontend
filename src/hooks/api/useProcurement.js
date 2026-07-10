@@ -71,7 +71,7 @@ export const useUpdateRFQ = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }) => {
-      const res = await api.put(`/rfqs/${id}`, data);
+      const res = await api.put(`/rfqs/${id}/status`, data);
       return res.data;
     },
     onSuccess: () => queryClient.invalidateQueries(['rfqs'])

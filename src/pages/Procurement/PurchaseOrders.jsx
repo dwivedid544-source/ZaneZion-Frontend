@@ -733,7 +733,7 @@ const PurchaseOrders = () => {
                           {purchaseRequests
                             .filter((r) => {
                               const status = String(r.status || "").toLowerCase();
-                              return status === "pending" || status === "approved";
+                              return status === "pending" || status === "approved" || status === "rfq_created";
                             })
                             .map((r) => (
                               <option key={r.id} value={r.id}>

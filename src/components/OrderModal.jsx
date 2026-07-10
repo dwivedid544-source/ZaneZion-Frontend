@@ -124,8 +124,41 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         if (modalType === 'add') {
             const requestDate = normalizeIsoDate(initialData?.requestDate) || todayIso();
             const dueDate = clampDueDateToRequest(requestDate, initialData?.dueDate || initialData?.date);
+            
+            let initialRaw = initialData?.items || initialData?.customItems || [];
+            if (typeof initialRaw === 'string') {
+                try {
+                    initialRaw = JSON.parse(initialRaw);
+                } catch (e) {
+                    initialRaw = [];
+                }
+            }
+            if (!Array.isArray(initialRaw)) {
+                initialRaw = [];
+            }
+            let initialParsed = initialRaw.map(itm => {
+                const name = itm.name || itm.item?.name || '';
+                const qty = itm.qty || itm.quantity || 1;
+                const price = itm.price !== undefined ? itm.price : (itm.unitPrice !== undefined ? itm.unitPrice : '');
+                return {
+                    name,
+                    qty: Number(qty),
+                    price: price !== '' ? Number(price) : ''
+                };
+            });
+            if (initialParsed.length === 0 && (initialData?.product || initialData?.price)) {
+                initialParsed = [{
+                    name: initialData?.product || '',
+                    qty: 1,
+                    price: initialData?.price !== undefined && initialData?.price !== null ? Number(initialData?.price) : ''
+                }];
+            }
+            if (initialParsed.length === 0) {
+                initialParsed = [{ name: '', qty: 1, price: '' }];
+            }
+
             setFormData({
-                items: initialData?.items || [{ name: initialData?.product || '', qty: 1, price: initialData?.price || '' }],
+                items: initialParsed,
                 location: initialData?.location || '',
                 status: coerceOrderStatusToApi(initialData?.status, 'created'),
                 requestDate,
@@ -136,7 +169,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 vendor: initialData?.vendor || '',
                 vendorId: initialData?.vendorId || '',
                 isPreferredVendor: false,
-                type: initialData?.type || 'Custom Order',
+                type: initialData?.orderType || initialData?.type || 'Custom Order',
                 deliveryType: initialData?.deliveryType || initialData?.delivery_mode || initialData?.deliveryMode || initialData?.mode || 'Road',
                 pickupLocation: initialData?.pickupLocation || initialData?.pickup_location || '',
                 pickupTime: initialData?.pickupTime || initialData?.pickup_time || '',
@@ -151,14 +184,38 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 amenities: initialData?.amenities || ''
             });
         } else if (selectedOrder) {
-            let parsedItems = selectedOrder.items;
-            if (typeof selectedOrder.items === 'string') {
+            let rawItems = selectedOrder.items || selectedOrder.customItems || selectedOrder.metadata?.customItems;
+            if (typeof rawItems === 'string') {
                 try {
-                    parsedItems = JSON.parse(selectedOrder.items);
+                    rawItems = JSON.parse(rawItems);
                 } catch (e) {
-                    parsedItems = [];
+                    rawItems = [];
                 }
             }
+            if (!Array.isArray(rawItems)) {
+                rawItems = [];
+            }
+            let parsedItems = rawItems.map(itm => {
+                const name = itm.name || itm.item?.name || '';
+                const qty = itm.qty || itm.quantity || 1;
+                const price = itm.price !== undefined ? itm.price : (itm.unitPrice !== undefined ? itm.unitPrice : '');
+                return {
+                    name,
+                    qty: Number(qty),
+                    price: price !== '' ? Number(price) : ''
+                };
+            });
+            if (parsedItems.length === 0 && (selectedOrder.product || selectedOrder.qty)) {
+                parsedItems = [{
+                    name: selectedOrder.product || '',
+                    qty: parseInt(selectedOrder.qty) || 1,
+                    price: selectedOrder.price !== undefined && selectedOrder.price !== null ? Number(selectedOrder.price) : ''
+                }];
+            }
+            if (parsedItems.length === 0) {
+                parsedItems = [{ name: '', qty: 1, price: '' }];
+            }
+
             const requestDate = normalizeIsoDate(selectedOrder.requestDate || selectedOrder.order_date || selectedOrder.created_at) || todayIso();
             const dueDate = clampDueDateToRequest(requestDate, selectedOrder.dueDate || selectedOrder.due_date);
             // Try to match existing order's client in dropdown list
@@ -170,7 +227,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 client: (typeof selectedOrder.client === 'object' && selectedOrder.client !== null ? (selectedOrder.client.companyName || selectedOrder.client.name || '') : selectedOrder.client) || selectedOrder.customer_name || selectedOrder.created_by_name || '',
                 clientId: existingClientId,
                 clientDropdownId: matchedDropdown?.id || '',
-                items: (Array.isArray(parsedItems) && parsedItems.length > 0) ? parsedItems : [{ name: selectedOrder.product || '', qty: parseInt(selectedOrder.qty) || 1, price: selectedOrder.price ?? '' }],
+                items: parsedItems,
                 location: selectedOrder.location || '',
                 status: coerceOrderStatusToApi(selectedOrder.status, 'created'),
                 requestDate,
@@ -179,7 +236,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 vendor: selectedOrder.vendor || '',
                 vendorId: selectedOrder.vendorId || selectedOrder.vendor_id || '',
                 isPreferredVendor: !!(selectedOrder.vendorId || selectedOrder.vendor_id),
-                type: selectedOrder.type || 'Custom Order',
+                type: selectedOrder.orderType || selectedOrder.type || 'Custom Order',
                 deliveryType: selectedOrder.deliveryType || selectedOrder.delivery_mode || selectedOrder.deliveryMode || selectedOrder.mode || 'Road',
                 pickupLocation: selectedOrder.pickupLocation || selectedOrder.pickup_location || '',
                 pickupTime: selectedOrder.pickupTime || '',
@@ -197,9 +254,30 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     }, [isOpen, selectedOrder, modalType]);
 
     useEffect(() => {
+        if (currentModalType === 'view') return;
+
+        // If editing an existing order, and the locations or transport mode haven't changed from their initial values,
+        // and we already have a loaded totalDistance, skip recalculating to preserve the database value.
+        if (modalType === 'edit' && selectedOrder) {
+            const initialPickup = selectedOrder.pickupLocation || selectedOrder.pickup_location || '';
+            const initialLocation = selectedOrder.location || '';
+            const initialMode = selectedOrder.deliveryType || selectedOrder.delivery_mode || selectedOrder.deliveryMode || selectedOrder.mode || 'Road';
+            const initialDistance = selectedOrder.totalDistance || selectedOrder.total_distance || '';
+
+            if (
+                formData.pickupLocation === initialPickup &&
+                formData.location === initialLocation &&
+                formData.deliveryType === initialMode &&
+                String(formData.totalDistance) === String(initialDistance) &&
+                formData.totalDistance !== ''
+            ) {
+                return;
+            }
+        }
+
         const calculateDistance = async () => {
             if (formData.pickupLocation && formData.location) {
-                const res = await calculateOSRMRouteDistance(formData.pickupLocation, formData.location);
+                const res = await calculateOSRMRouteDistance(formData.pickupLocation, formData.location, formData.deliveryType);
                 if (res && res.distanceKm != null) {
                     setFormData(prev => ({ ...prev, totalDistance: String(res.distanceKm) }));
                 } else {
@@ -213,7 +291,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             calculateDistance();
         }, 1000);
         return () => clearTimeout(timer);
-    }, [formData.pickupLocation, formData.location]);
+    }, [formData.pickupLocation, formData.location, formData.deliveryType, currentModalType]);
 
     const handleAddItem = () => {
         setFormData({ ...formData, items: [...formData.items, { name: '', qty: 1, price: '' }] });

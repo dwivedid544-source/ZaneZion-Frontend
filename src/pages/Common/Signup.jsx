@@ -113,7 +113,7 @@ const Signup = () => {
     const { name, value, files } = e.target;
     let val = files ? files[0] : value;
     if (name === 'phone') {
-      val = val.replace(/\D/g, '');
+      val = val.replace(/\D/g, '').slice(0, 10);
     }
     setForm(prev => ({
       ...prev,

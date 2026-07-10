@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Swal from 'sweetalert2';
 import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied } from '../../utils/swal';
 import { createPortal } from 'react-dom';
 import { useData } from '../../context/GlobalDataContext';
@@ -72,6 +73,12 @@ const Clients = () => {
     companyName: '', logo: '', plan: 'Starter', billingCycle: 'Monthly', paymentMethod: 'Wire Transfer',
     contact: '', address: '', status: 'active'
   });
+
+  React.useEffect(() => {
+    if (!showEditModal && !showAddModal) {
+      setSearchTerm('');
+    }
+  }, [showEditModal, showAddModal]);
 
   // --- Personal Client Orders (for View Modal) ---
   const [clientOrders, setClientOrders] = useState([]);
@@ -293,7 +300,12 @@ const Clients = () => {
         }
         swalSuccess('Updated', 'Request updated successfully');
       } else {
-        const updatePayload = { ...selectedClient, ...formData, client_type: formData.clientType };
+        const updatePayload = { 
+          ...selectedClient, 
+          ...formData, 
+          contactPerson: formData.contact, 
+          client_type: formData.clientType 
+        };
         if (isAdminRole) {
           updatePayload.companyName = formData.name;
         }
@@ -329,6 +341,7 @@ const Clients = () => {
     try {
       const result = await createMutation.mutateAsync({
         ...formData,
+        contactPerson: formData.contact,
         source: 'Manual',
         client_type: formData.clientType,
         clientType: formData.clientType,
@@ -522,6 +535,8 @@ const Clients = () => {
           <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" size={18} />
           <input
             type="text"
+            name="client-search"
+            autoComplete="off"
             placeholder="Search by name, email, or ID..."
             className="w-full bg-sidebar/50 border border-border rounded-2xl py-4 pl-12 pr-4 text-sm focus:outline-none focus:border-accent transition-all text-white font-medium"
             value={searchTerm}
@@ -670,7 +685,7 @@ const Clients = () => {
                                 if (isPersonal) {
                                   await cancelPersonalMembership(client.signup_user_id || client.id);
                                 } else {
-                                  await updateClient({ ...client, plan: 'Free' });
+                                  await updateMutation.mutateAsync({ id: client.id, data: { ...client, plan: 'Free' } });
                                 }
                                 swalSuccess('Cancelled', 'Plan/membership set to Free / cancelled.');
                                 if (fetchClients) fetchClients();
@@ -1063,8 +1078,8 @@ const Clients = () => {
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Phone Number</label>
-                    <input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold" placeholder="+1 234 567 890" />
+                    <input type="text" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold" placeholder="9876543210" />
                   </div>
                   <div className="space-y-2">
                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Contact Person</label>
@@ -1174,16 +1189,43 @@ const Clients = () => {
                 {showEditModal && (
                   <button 
                     onClick={async () => {
-                      const _r = await swalConfirm('Reset Password', 'A new password will be generated.');
-                      if (_r.isConfirmed) {
-                        try {
-                          const result = await updateClient({ ...selectedClient, resetPassword: true });
-                          if (result?.credentials) {
-                            swalCredentials("Credentials Reset", result.credentials.email, result.credentials.password);
+                      const { value: newPassword } = await Swal.fire({
+                        title: 'Reset Password',
+                        input: 'password',
+                        inputLabel: 'Enter the new password for this customer account',
+                        inputPlaceholder: 'Minimum 6 characters',
+                        showCancelButton: true,
+                        inputAttributes: {
+                          autocapitalize: 'off',
+                          autocorrect: 'off'
+                        },
+                        background: '#1a1a2e',
+                        color: '#fff',
+                        confirmButtonColor: '#C8A96A',
+                        cancelButtonColor: '#555',
+                        inputValidator: (value) => {
+                          if (!value) {
+                            return 'Password cannot be empty!';
                           }
+                          if (value.length < 6) {
+                            return 'Password must be at least 6 characters!';
+                          }
+                        }
+                      });
+
+                      if (newPassword) {
+                        try {
+                          await updateMutation.mutateAsync({
+                            id: selectedClient.id,
+                            data: {
+                              ...selectedClient,
+                              password: newPassword
+                            }
+                          });
+                          swalSuccess("Success", "Password reset successfully!");
                           setShowEditModal(false);
                         } catch (e) {
-                          swalError('Error', e.message);
+                          swalError('Error', e.message || 'Failed to reset password');
                         }
                       }
                     }} 

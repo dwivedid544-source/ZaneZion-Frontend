@@ -128,13 +128,15 @@ const Orders = () => {
 
 
   const handleDelete = async (id) => {
-    try {
-      if (window.confirm('Are you sure you want to delete this order?')) {
+    const result = await swalConfirm('Delete Order', `Are you sure you want to delete order #${id}?`);
+    if (result.isConfirmed) {
+      try {
         await deleteOrderMutation.mutateAsync(id);
         setIsModalOpen(false);
+        swalSuccess(`Order #${id} has been successfully deleted.`);
+      } catch (err) {
+        swalError('Failed to delete order.');
       }
-    } catch (err) {
-      alert('Failed to delete order.');
     }
   };
 

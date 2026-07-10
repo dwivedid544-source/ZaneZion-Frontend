@@ -98,8 +98,8 @@ const Dashboard = () => {
 
   const columns = [
     { header: "Order ID", accessor: "id" },
-    { 
-      header: "Client Entity", 
+    {
+      header: "Client Entity",
       accessor: "client",
       render: (item) => {
         if (typeof item.client === 'string') return item.client;
@@ -260,133 +260,133 @@ const Dashboard = () => {
         <div className="lg:col-span-2 space-y-8">
           {/* Revenue Intelligence */}
           {(hasMenuPermission('Invoices', 'can_view') || hasMenuPermission('Payments', 'can_view') || isSuperAdmin) && (
-          <div className="glass-card p-8 border-white/5 relative overflow-hidden">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 md:mb-10">
-              <div className="flex items-center gap-3">
-                <div className="p-2 md:p-3 bg-primary/10 rounded-2xl text-primary">
-                  <Activity size={24} className="md:hidden" />
-                  <Activity size={24} className="hidden md:block" />
+            <div className="glass-card p-8 border-white/5 relative overflow-hidden">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 md:mb-10">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 md:p-3 bg-primary/10 rounded-2xl text-primary">
+                    <Activity size={24} className="md:hidden" />
+                    <Activity size={24} className="hidden md:block" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl md:text-2xl font-bold tracking-tight">Institutional Revenue</h3>
+                    <p className="text-[10px] text-muted font-medium uppercase tracking-widest mt-1">Real-time financial flow monitoring.</p>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-xl md:text-2xl font-bold tracking-tight">Institutional Revenue</h3>
-                  <p className="text-[10px] text-muted font-medium uppercase tracking-widest mt-1">Real-time financial flow monitoring.</p>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <p className="text-[8px] font-black text-danger uppercase tracking-widest">Asset Loss</p>
+                    <p className="text-sm font-bold text-white">
+                      ${stockMovements.filter(m => m.type === 'Loss').reduce((a, b) => a + (b.value || 0), 0).toLocaleString()}
+                    </p>
+                  </div>
+                  <Link to="/dashboard/reports" className="text-[9px] md:text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-2 hover:translate-x-1 transition-all group">
+                    Access Audit <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                  </Link>
                 </div>
               </div>
-              <div className="flex items-center gap-4">
-                <div className="text-right">
-                  <p className="text-[8px] font-black text-danger uppercase tracking-widest">Asset Loss</p>
-                  <p className="text-sm font-bold text-white">
-                    ${stockMovements.filter(m => m.type === 'Loss').reduce((a, b) => a + (b.value || 0), 0).toLocaleString()}
-                  </p>
-                </div>
-                <Link to="/dashboard/reports" className="text-[9px] md:text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-2 hover:translate-x-1 transition-all group">
-                  Access Audit <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
-                </Link>
+              <div className="h-[250px] md:h-[340px] w-full min-w-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={getRevenueChartData()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <defs>
+                      <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#C8A96A" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#C8A96A" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#ffffff03" vertical={false} />
+                    <XAxis dataKey="name" stroke="#6B7280" tick={{ fontSize: 9, fontWeight: 900 }} tickFormatter={(val) => val.toUpperCase()} axisLine={false} />
+                    <YAxis stroke="#6B7280" tick={{ fontSize: 10, fontWeight: 700 }} axisLine={false} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#131316', border: '1px solid #ffffff10', borderRadius: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}
+                      itemStyle={{ color: '#C8A96A', fontWeight: 'bold' }}
+                    />
+                    <Area type="monotone" dataKey="revenue" stroke="#C8A96A" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={5} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             </div>
-            <div className="h-[250px] md:h-[340px] w-full min-w-0">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={getRevenueChartData()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#C8A96A" stopOpacity={0.4} />
-                      <stop offset="95%" stopColor="#C8A96A" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#ffffff03" vertical={false} />
-                  <XAxis dataKey="name" stroke="#6B7280" tick={{ fontSize: 9, fontWeight: 900 }} tickFormatter={(val) => val.toUpperCase()} axisLine={false} />
-                  <YAxis stroke="#6B7280" tick={{ fontSize: 10, fontWeight: 700 }} axisLine={false} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#131316', border: '1px solid #ffffff10', borderRadius: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}
-                    itemStyle={{ color: '#C8A96A', fontWeight: 'bold' }}
-                  />
-                  <Area type="monotone" dataKey="revenue" stroke="#C8A96A" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={5} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
             {/* INVENTORY LOGISTICS */}
             {(hasMenuPermission('Inventory', 'can_view') || hasMenuPermission('StockHub', 'can_view') || isSuperAdmin) && (
-            <div className="glass-card p-6 md:p-8 border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent flex flex-col h-full">
-              <div className="flex items-center justify-between mb-6 md:mb-8">
-                <h3 className="text-xl font-bold tracking-tight">Inventory Pulse</h3>
-                <div className="p-2 bg-accent/10 rounded-xl text-accent">
-                  <Package size={18} />
+              <div className="glass-card p-6 md:p-8 border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent flex flex-col h-full">
+                <div className="flex items-center justify-between mb-6 md:mb-8">
+                  <h3 className="text-xl font-bold tracking-tight">Inventory Pulse</h3>
+                  <div className="p-2 bg-accent/10 rounded-xl text-accent">
+                    <Package size={18} />
+                  </div>
                 </div>
+                <div className="space-y-4 flex-1">
+                  <div className="bg-white/5 p-4 rounded-xl border border-white/5">
+                    <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
+                      <span className="text-secondary">System-Wide Stock</span>
+                      <span className="text-white">{inventory.length} SKUs</span>
+                    </div>
+                    <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+                      <div className="h-full bg-accent" style={{ width: `${Math.min(100, (inventory.length / 50) * 100)}%` }} />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                      <p className="text-[8px] font-bold text-muted uppercase tracking-widest mb-1">Low Stock</p>
+                      <p className="text-lg font-bold text-danger">{stats.lowStockItems} Items</p>
+                    </div>
+                    <div className="bg-white/5 p-3 rounded-xl border border-white/5">
+                      <p className="text-[8px] font-bold text-muted uppercase tracking-widest mb-1">Value on Hand</p>
+                      <p className="text-lg font-bold text-success">${(inventory.reduce((a, b) => a + (b.price * b.qty), 0) / 1000).toFixed(1)}K</p>
+                    </div>
+                  </div>
+                </div>
+                <button onClick={() => navigate('/dashboard/inventory')} className="w-full py-3.5 md:py-4 mt-6 text-[9px] md:text-[10px] font-black text-accent uppercase tracking-widest border border-accent/20 rounded-2xl hover:bg-accent/5 transition-all">
+                  Audit All Warehouses
+                </button>
               </div>
-              <div className="space-y-4 flex-1">
-                <div className="bg-white/5 p-4 rounded-xl border border-white/5">
-                  <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
-                    <span className="text-secondary">System-Wide Stock</span>
-                    <span className="text-white">{inventory.length} SKUs</span>
-                  </div>
-                  <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                    <div className="h-full bg-accent" style={{ width: `${Math.min(100, (inventory.length / 50) * 100)}%` }} />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                    <p className="text-[8px] font-bold text-muted uppercase tracking-widest mb-1">Low Stock</p>
-                    <p className="text-lg font-bold text-danger">{stats.lowStockItems} Items</p>
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-xl border border-white/5">
-                    <p className="text-[8px] font-bold text-muted uppercase tracking-widest mb-1">Value on Hand</p>
-                    <p className="text-lg font-bold text-success">${(inventory.reduce((a, b) => a + (b.price * b.qty), 0) / 1000).toFixed(1)}K</p>
-                  </div>
-                </div>
-              </div>
-              <button onClick={() => navigate('/dashboard/inventory')} className="w-full py-3.5 md:py-4 mt-6 text-[9px] md:text-[10px] font-black text-accent uppercase tracking-widest border border-accent/20 rounded-2xl hover:bg-accent/5 transition-all">
-                Audit All Warehouses
-              </button>
-            </div>
             )}
 
             {/* OPERATIONS PROTOCOL */}
             {(hasMenuPermission('Orders', 'can_view') || hasMenuPermission('Projects', 'can_view') || hasMenuPermission('Missions', 'can_view') || isSuperAdmin) && (
-            <div className="glass-card p-6 md:p-8 border-white/5 bg-gradient-to-tr from-white/[0.02] to-transparent flex flex-col h-full">
-              <div className="flex items-center justify-between mb-6 md:mb-8">
-                <h3 className="text-xl font-black italic font-heading tracking-tight">Active Operations</h3>
-                <div className="p-2 bg-primary/10 rounded-xl text-primary">
-                  <Activity size={18} />
+              <div className="glass-card p-6 md:p-8 border-white/5 bg-gradient-to-tr from-white/[0.02] to-transparent flex flex-col h-full">
+                <div className="flex items-center justify-between mb-6 md:mb-8">
+                  <h3 className="text-xl font-black italic font-heading tracking-tight">Active Operations</h3>
+                  <div className="p-2 bg-primary/10 rounded-xl text-primary">
+                    <Activity size={18} />
+                  </div>
                 </div>
+                <div className="space-y-4 flex-1">
+                  <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                      <span className="text-xs font-bold text-white">Live Dispatches</span>
+                    </div>
+                    <span className="text-lg font-bold text-white">{stats.pendingDeliveries}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
+                      <span className="text-xs font-bold text-white">Chauffeur Requests</span>
+                    </div>
+                    <span className="text-lg font-bold text-accent">{stats.activeChauffeurs}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-warning" />
+                      <span className="text-xs font-bold text-white">Open Support Tickets</span>
+                    </div>
+                    <span className="text-lg font-bold text-warning">{stats.openTickets}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
+                    <div className="flex items-center gap-3">
+                      <div className="w-2 h-2 rounded-full bg-warning" />
+                      <span className="text-xs font-bold text-white">Active Projects</span>
+                    </div>
+                    <span className="text-lg font-bold text-white">{stats.activeProjects}</span>
+                  </div>
+                </div>
+                <button onClick={() => navigate('/dashboard/projects')} className="w-full py-3.5 md:py-4 mt-6 text-[9px] md:text-[10px] font-black text-primary uppercase tracking-widest bg-primary/5 hover:bg-primary hover:text-black rounded-2xl transition-all border border-primary/20">
+                  Manage Operations
+                </button>
               </div>
-              <div className="space-y-4 flex-1">
-                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                    <span className="text-xs font-bold text-white">Live Dispatches</span>
-                  </div>
-                  <span className="text-lg font-bold text-white">{stats.pendingDeliveries}</span>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-accent animate-pulse" />
-                    <span className="text-xs font-bold text-white">Chauffeur Requests</span>
-                  </div>
-                  <span className="text-lg font-bold text-accent">{stats.activeChauffeurs}</span>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-warning" />
-                    <span className="text-xs font-bold text-white">Open Support Tickets</span>
-                  </div>
-                  <span className="text-lg font-bold text-warning">{stats.openTickets}</span>
-                </div>
-                <div className="flex items-center justify-between p-4 bg-white/5 rounded-2xl border border-white/5">
-                  <div className="flex items-center gap-3">
-                    <div className="w-2 h-2 rounded-full bg-warning" />
-                    <span className="text-xs font-bold text-white">Active Projects</span>
-                  </div>
-                  <span className="text-lg font-bold text-white">{stats.activeProjects}</span>
-                </div>
-              </div>
-              <button onClick={() => navigate('/dashboard/projects')} className="w-full py-3.5 md:py-4 mt-6 text-[9px] md:text-[10px] font-black text-primary uppercase tracking-widest bg-primary/5 hover:bg-primary hover:text-black rounded-2xl transition-all border border-primary/20">
-                Manage Operations
-              </button>
-            </div>
             )}
           </div>
         </div>
@@ -431,7 +431,7 @@ const Dashboard = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-6 mb-8 md:mb-10 relative z-10">
           <div>
             <h3 className="text-2xl md:text-3xl font-bold tracking-tight text-white truncate">
-               Recent Operations Ledger
+              Recent Operations Ledger
             </h3>
             <p className="text-[10px] md:text-[11px] text-secondary/70 font-bold uppercase tracking-widest mt-2">
               Real-time supply chain synchronization & audit.

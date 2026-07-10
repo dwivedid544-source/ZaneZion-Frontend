@@ -863,6 +863,7 @@ export const GlobalDataProvider = ({ children }) => {
   const urgentApiUnavailableRef = React.useRef(false);
   const lastFetchedUserIdRef = React.useRef(null);
   const [stockMovements, setStockMovements] = useState([]);
+  const [lossAssessments, setLossAssessments] = useState([]);
   const [cart, setCart] = useState([]);
   const [leaveRequests, setLeaveRequests] = useState([]);
   const [revenueFilter, setRevenueFilter] = useState("Weekly");
@@ -1442,25 +1443,67 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchStockMovements = React.useCallback(async () => {
     try {
-      const res = await api.get("/inventory/movements");
-      if (res.data?.success) {
+      const res = await api.get("/stock/movements");
+      const movementsData = res.data?.success ? (res.data.data?.movements || res.data.data) : [];
+      if (Array.isArray(movementsData)) {
         setStockMovements(
-          res.data.data.map((m) => ({
-            id: m.id,
-            item: m.item_name || "Deleted Asset",
-            type: m.type,
-            quantity: m.quantity,
-            reason: m.reason || "Routine Adjustment",
-            issuedBy: m.performed_by_name || "System User",
-            date:
-              m.created_at?.split("T")[0] ||
-              new Date().toISOString().split("T")[0],
-            time: m.created_at?.split("T")[1]?.slice(0, 5) || "",
-          })),
+          movementsData.map((m) => {
+            let typeLabel = "ADJUSTMENT";
+            const mType = String(m.movementType || '').toUpperCase();
+            const rType = String(m.referenceType || '').toUpperCase();
+            
+            if (rType === 'LOSS' || mType === 'LOSS' || rType === 'ASSET_LOSS' || mType === 'ASSET_LOSS') {
+              typeLabel = 'ASSET_LOSS';
+            } else if (mType === 'IN' || rType === 'GRN') {
+              typeLabel = 'STOCK_ENTRY';
+            } else if (mType === 'OUT' || rType === 'TRANSFER_OUT') {
+              typeLabel = 'STOCK_ISSUE';
+            }
+
+            return {
+              id: m.id,
+              item: m.item?.name || m.item_name || "Deleted Asset",
+              type: typeLabel,
+              quantity: m.quantity,
+              reason: m.remarks || m.reason || "Routine Adjustment",
+              issuedBy: m.performerName || m.performed_by_name || "System User",
+              date: (m.createdAt || m.created_at || new Date().toISOString()).split("T")[0],
+              time: (m.createdAt || m.created_at || "").split("T")[1]?.slice(0, 5) || "",
+              referenceType: m.referenceType,
+              movementType: m.movementType,
+              remarks: m.remarks
+            };
+          }),
         );
       }
     } catch (e) {
       console.error("Fetch stock movements failed", e);
+    }
+  }, []);
+
+  const fetchLossAssessments = React.useCallback(async () => {
+    try {
+      const res = await api.get("/inventory/loss");
+      const lossesData = res.data?.success ? (res.data.data?.losses || res.data.data) : [];
+      if (Array.isArray(lossesData)) {
+        setLossAssessments(
+          lossesData.map((l) => ({
+            id: l.id,
+            item: l.item?.name || l.item_name || "Deleted Asset",
+            quantity: l.quantity,
+            lossType: l.lossType,
+            explanation: l.explanation,
+            reportedBy: l.reportedBy,
+            status: l.investigationStatus || "Pending",
+            evidenceUrl: l.evidenceUrl || "",
+            date: (l.createdAt || new Date().toISOString()).split("T")[0],
+            time: (l.createdAt || "").split("T")[1]?.slice(0, 5) || "",
+            financialLoss: (parseFloat(l.item?.price || 0) * parseFloat(l.quantity || 0))
+          })),
+        );
+      }
+    } catch (e) {
+      console.error("Fetch loss assessments failed", e);
     }
   }, []);
 
@@ -2008,26 +2051,29 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchFinance = React.useCallback(async () => {
     try {
-      const res = await api.get("/finance/invoices");
+      const res = await api.get("/invoices");
       let rawData = res.data?.success
-        ? res.data.data
+        ? (res.data.data?.invoices || res.data.data)
         : Array.isArray(res.data)
           ? res.data
-          : [];
+          : (res.data?.invoices || []);
       if (rawData && !Array.isArray(rawData) && typeof rawData === 'object') {
         rawData = rawData.data || rawData.items || rawData.orders || rawData.missions || rawData.invoices || rawData.projects || Object.values(rawData).find(Array.isArray) || [];
       }
       setInvoices(
-        rawData.map((i) => ({
-          ...i,
-          orderId: i.order_id,
-          clientId: i.client_id,
-          totalAmount: parseFloat(i.amount || 0),
-          paidAmount: parseFloat(i.paid_amount || 0), // Assuming backend provides this or default to 0
-          date: i.created_at ? i.created_at.split("T")[0] : "",
-          dueDate: i.due_date ? i.due_date.split("T")[0] : "",
-          clientName: i.client_name,
-        })),
+        rawData.map((i) => {
+          const paidAmount = i.paidAmount || (i.payments ? i.payments.reduce((sum, p) => sum + p.amount, 0) : 0);
+          return {
+            ...i,
+            orderId: i.orderId || i.order_id,
+            clientId: i.clientId || i.client_id,
+            totalAmount: parseFloat(i.totalAmount || i.amount || 0),
+            paidAmount: parseFloat(paidAmount),
+            date: i.invoiceDate || i.date || i.created_at || i.createdAt ? (i.invoiceDate || i.date || i.created_at || i.createdAt).split("T")[0] : "",
+            dueDate: i.dueDate || i.due_date ? (i.dueDate || i.due_date).split("T")[0] : "",
+            clientName: i.clientName || i.client_name || i.client?.companyName || i.client?.name || "",
+          };
+        }),
       );
     } catch (e) {
       console.error("Fetch finance failed", e);
@@ -2112,7 +2158,7 @@ export const GlobalDataProvider = ({ children }) => {
           rawId: m.id,
           source: 'mission',
           task: m.metadata?.task || m.missionType,
-          location: m.metadata?.location || 'N/A',
+          location: m.metadata?.location || m.delivery?.dropLocation || m.delivery?.pickupLocation || (m.delivery?.client?.address ? [m.delivery.client.address, m.delivery.client.city, m.delivery.client.country].filter(Boolean).join(', ') : '') || 'N/A',
           assignee: m.assignee ? `${m.assignee.firstName} ${m.assignee.lastName}` : 'System',
           assigneeId: m.assignedEmployeeId,
           priority: m.metadata?.priority || 'Normal',
@@ -2467,6 +2513,7 @@ export const GlobalDataProvider = ({ children }) => {
         fetchTracking(),
         fetchUrgentTasks(),
         fetchStockMovements(),
+        fetchLossAssessments(),
         fetchTickets(),
         fetchNotifications(),
       ];
@@ -2485,8 +2532,8 @@ export const GlobalDataProvider = ({ children }) => {
         fetches.push(fetchPayHistory());
       }
 
-      // Only fetch roles if the role has Security menu permission
-      if (canAccessRoles) {
+      // Only fetch roles if the role has Security menu permission or can access users
+      if (canAccessRoles || canAccessUsers) {
         fetches.push(api.get('/roles').then(res => {
           const rawData = res.data?.data;
           const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
@@ -3909,28 +3956,33 @@ export const GlobalDataProvider = ({ children }) => {
 
   const generateInvoiceFromOrder = async (order) => {
     try {
-      const total = (order.items || []).reduce(
-        (acc, item) =>
-          acc +
-          parseFloat(item.price || item.unit_price || 0) *
-          parseInt(item.qty || item.quantity || 0),
-        0,
-      );
+      const items = (order.items && order.items.length > 0)
+        ? order.items.map(item => ({
+          itemId: Number(item.itemId || item.id || 1),
+          quantity: Number(item.quantity || item.qty || 1),
+          unitPrice: Number(item.unitPrice || item.price || 0),
+          tax: 0,
+          discount: 0
+        }))
+        : [{
+          itemId: 1,
+          quantity: 1,
+          unitPrice: Number(order.totalAmount || order.total || 0),
+          tax: 0,
+          discount: 0
+        }];
 
-      const reqData = buildFinanceInvoiceCreatePayload({
-        orderId: order.id,
-        clientId: order.clientId || order.client_id,
-        totalAmount: total,
-        dueDate:
-          order.dueDate ||
-          new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
-            .toISOString()
-            .split("T")[0],
-        paidAmount: 0,
-        status: "unpaid",
-      });
+      const isoDueDate = order.dueDate
+        ? new Date(order.dueDate).toISOString()
+        : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-      await api.post("/finance/invoices", reqData);
+      const reqData = {
+        deliveryId: order.id,
+        dueDate: isoDueDate,
+        items
+      };
+
+      await api.post("/invoices", reqData);
 
       // Re-fetch to sync
       await fetchFinance();
@@ -3952,17 +4004,20 @@ export const GlobalDataProvider = ({ children }) => {
           ? invoiceId.split("-")[1]
           : invoiceId;
 
-      await api.post(`/finance/invoices/${numericId}/pay`, {
-        amount: paymentData.amount,
-        payment_method: paymentData.method || "Institutional Settlement",
-        transaction_id: `TXN-${Date.now()}`,
+      await api.post("/payments", {
+        invoiceId: Number(numericId),
+        paymentMethod: paymentData.method || "bank_transfer",
+        amount: Number(paymentData.amount),
+        referenceNumber: `TXN-${Date.now()}`,
+        remarks: paymentData.remarks || "Institutional Settlement"
       });
 
       await fetchFinance();
+
       addLog({
-        action: "Payment Processed",
-        detail: `Invoice ${invoiceId} settled via ${paymentData.method || "Corporate Settlement"}.`,
-        type: "system",
+        action: "Ledger Settlement",
+        detail: `Paid $${paymentData.amount} for invoice ${invoiceId}.`,
+        type: "finance",
       });
     } catch (error) {
       console.error("Failed to settle invoice:", error);
@@ -6831,6 +6886,7 @@ export const GlobalDataProvider = ({ children }) => {
         updateLuxuryItem,
         deleteLuxuryItem,
         stockMovements,
+        fetchStockMovements,
         addStockEntry,
         issueStock,
 
@@ -7004,6 +7060,8 @@ export const GlobalDataProvider = ({ children }) => {
         // Dashboard & Settings
         dashboardStats,
         fetchDashboardStats,
+        lossAssessments,
+        fetchLossAssessments,
         systemSettings,
         fetchSystemSettings,
         setSystemSettings,

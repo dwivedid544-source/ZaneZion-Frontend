@@ -38,7 +38,7 @@ const Profile = () => {
     const handleChange = (e) => {
         let val = e.target.value;
         if (e.target.name === 'phone') {
-            val = val.replace(/\D/g, '');
+            val = val.replace(/\D/g, '').slice(0, 10);
         }
         setFormData({ ...formData, [e.target.name]: val });
     };

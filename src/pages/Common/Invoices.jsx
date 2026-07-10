@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import StatusBadge from '../../components/StatusBadge';
-import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment } from '../../hooks/api/useFinance';
+import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment, useUpdateInvoice } from '../../hooks/api/useFinance';
+import { swalSuccess, swalError, swalConfirm } from '../../utils/swal';
 import { RefreshCcw } from 'lucide-react';
 import Pagination from '../../components/Common/Pagination';
 import { normalizeRole } from '../../utils/authUtils';
@@ -24,16 +25,16 @@ const Invoices = () => {
     const invoices = invoicesData?.data?.invoices || [];
     const totalItems = invoicesData?.data?.total || 0;
     const totalPages = invoicesData?.data?.totalPages || 1;
-    
+
     const createInvoiceMutation = useCreateInvoice();
     const updateInvoiceStatusMutation = useUpdateInvoiceStatus();
     const createPaymentMutation = useCreatePayment();
-
+    const updateInvoiceMutation = useUpdateInvoice();
     React.useEffect(() => {
         fetchOrders();
         fetchDeliveries();
         fetchClients();
-        fetchCustomerUsers();
+        fetchCustomerUsers({ include_all: true, include_client_role: true });
     }, [fetchOrders, fetchDeliveries, fetchClients, fetchCustomerUsers]);
 
     // Merge company clients + personal customers for the dropdown
@@ -96,9 +97,9 @@ const Invoices = () => {
                     tax: 0,
                     discount: 0
                 }))
-                : [{ 
-                    itemId: 1, 
-                    quantity: 1, 
+                : [{
+                    itemId: 1,
+                    quantity: 1,
                     unitPrice: Number(formData.totalAmount) || 0,
                     tax: 0,
                     discount: 0
@@ -106,15 +107,41 @@ const Invoices = () => {
 
             const isoDueDate = formData.dueDate ? new Date(formData.dueDate).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+            const parsedClientId = String(formData.clientId).startsWith('user_')
+                ? Number(String(formData.clientId).replace('user_', ''))
+                : Number(formData.clientId);
+
             try {
                 await createInvoiceMutation.mutateAsync({
                     deliveryId,
                     dueDate: isoDueDate,
-                    items
+                    items,
+                    clientId: parsedClientId,
+                    paidAmount: Number(formData.paidAmount) || 0
                 });
             } catch (err) {
                 const apiErrorMsg = err.response?.data?.message || err.message || '';
                 alert(`Failed to generate invoice. ${apiErrorMsg || "Please ensure the order/delivery is completed with POD."}`);
+            }
+        } else if (modalType === 'edit') {
+            try {
+                await updateInvoiceMutation.mutateAsync({
+                    // Always use the integer primary key (row.id) — never invoiceNumber
+                    id: selectedInvoice.id,
+                    invoiceData: {
+                        clientId: String(formData.clientId).startsWith('user_') ? Number(String(formData.clientId).replace('user_', '')) : Number(formData.clientId),
+                        orderId: Number(formData.orderId),
+                        totalAmount: Number(formData.totalAmount),
+                        paidAmount: Number(formData.paidAmount),
+                        // Pass status only when Cancelled (backend derives all other statuses automatically)
+                        ...(formData.status === 'Cancelled' ? { status: 'Cancelled' } : {}),
+                        dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : undefined
+                    }
+                });
+                swalSuccess(`Invoice ${selectedInvoice.invoiceNumber || selectedInvoice.id} updated successfully.`);
+            } catch (err) {
+                const apiErrorMsg = err.response?.data?.message || err.message || '';
+                swalError(`Failed to update invoice. ${apiErrorMsg}`);
             }
         }
         setIsModalOpen(false);
@@ -122,7 +149,12 @@ const Invoices = () => {
     };
 
     const columns = [
-        { header: "Invoice ID", accessor: "id" },
+        {
+            // Show human-readable invoiceNumber; the integer id is used for API calls
+            header: "Invoice #",
+            accessor: "invoiceNumber",
+            render: (row) => <span className="font-mono font-bold text-accent/80 text-xs">{row.invoiceNumber || row.id}</span>
+        },
         { header: "Order Ref", accessor: "orderId" },
         {
             header: "Client",
@@ -131,7 +163,7 @@ const Invoices = () => {
                 const client = findClientById(row.clientId);
                 return (
                     <div className="flex flex-col">
-                        <span className="font-bold">{client?.name || row.clientName || 'Institutional Asset'}</span>
+                        <span className="font-bold">{client?.name || client?.companyName || row.client?.companyName || row.clientName || 'Institutional Asset'}</span>
                         <span className="text-[10px] text-muted">{row.clientId}</span>
                     </div>
                 );
@@ -154,8 +186,8 @@ const Invoices = () => {
                 );
             }
         },
-        { 
-            header: "Date", 
+        {
+            header: "Date",
             accessor: "date",
             render: (row) => {
                 const d = row.date || row.invoiceDate || row.createdAt;
@@ -185,13 +217,31 @@ const Invoices = () => {
             });
         } else {
             setSelectedInvoice(inv);
+            const mapStatusToUi = (status) => {
+                if (!status) return 'Unpaid';
+                const s = status.toLowerCase();
+                if (s === 'generated' || s === 'unpaid' || s === 'draft' || s === 'approved' || s === 'sent') return 'Unpaid';
+                if (s === 'partially_paid') return 'Partially Paid';
+                if (s === 'paid') return 'Paid';
+                if (s === 'overdue') return 'Overdue';
+                if (s === 'cancelled') return 'Cancelled';
+                return 'Unpaid';
+            };
             setFormData({
                 orderId: inv.orderId || '',
                 clientId: inv.clientId || '',
                 totalAmount: inv.totalAmount || 0,
                 paidAmount: inv.paidAmount || 0,
-                status: inv.status || 'Unpaid',
-                dueDate: inv.dueDate || (inv.date ? new Date(new Date(inv.date).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '')
+                // Map backend status to UI label
+                status: (() => {
+                    const s = (inv.status || '').toLowerCase();
+                    if (s === 'paid') return 'Paid';
+                    if (s === 'partially_paid') return 'Partially Paid';
+                    if (s === 'overdue') return 'Overdue';
+                    if (s === 'cancelled') return 'Cancelled';
+                    return 'Unpaid';
+                })(),
+                dueDate: inv.dueDate ? new Date(inv.dueDate).toISOString().split('T')[0] : (inv.date ? new Date(new Date(inv.date).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : '')
             });
         }
         setIsModalOpen(true);
@@ -301,6 +351,8 @@ const Invoices = () => {
                                     </button>
                                 )}
                                 onView={(inv) => handleAction('view', inv)}
+                                onEdit={(inv) => handleAction('edit', inv)}
+                                canEdit={!procurementInvoiceReadOnly && hasMenuPermission('Invoices', 'can_edit')}
                             />
                             <div className="mt-6 border-t border-white/5 pt-6">
                                 <Pagination
@@ -346,7 +398,7 @@ const Invoices = () => {
                                     >
                                         <option value="">Select Order...</option>
                                         {orders.filter(o => !invoices.some(i => String(i.orderId) === String(o.id)) || String(o.id) === String(formData.orderId)).map(o => (
-                                            <option key={o.id} value={o.id}>{o.id} - {o.client || 'Institutional Order'} (${o.total})</option>
+                                            <option key={o.id} value={o.id}>{o.id} - {o.orderType || o.type || 'Institutional Order'} (${o.total})</option>
                                         ))}
                                     </select>
                                 </div>
@@ -382,8 +434,8 @@ const Invoices = () => {
                                         <input
                                             type="number"
                                             className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-accent outline-none font-bold"
-                                            value={formData.totalAmount}
-                                            onChange={(e) => setFormData({ ...formData, totalAmount: parseFloat(e.target.value) })}
+                                            value={formData.totalAmount === 0 ? '' : formData.totalAmount}
+                                            onChange={(e) => setFormData({ ...formData, totalAmount: parseFloat(e.target.value) || 0 })}
                                             required
                                         />
                                     </div>
@@ -395,11 +447,31 @@ const Invoices = () => {
                                         <input
                                             type="number"
                                             className="w-full bg-background border border-border rounded-xl pl-10 pr-4 py-2.5 text-sm focus:border-accent outline-none font-bold"
-                                            value={formData.paidAmount}
-                                            onChange={(e) => setFormData({ ...formData, paidAmount: parseFloat(e.target.value) })}
+                                            value={formData.paidAmount === 0 ? '' : formData.paidAmount}
+                                            onChange={(e) => setFormData({ ...formData, paidAmount: parseFloat(e.target.value) || 0 })}
                                             required
                                         />
                                     </div>
+                                </div>
+                                {/* Live Due Amount — auto-calculated, read-only */}
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest">Due Amount (Auto-Calculated)</label>
+                                    <div className="relative">
+                                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                                        <input
+                                            type="text"
+                                            readOnly
+                                            className={`w-full bg-background/50 border rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none font-black cursor-not-allowed ${
+                                                (Number(formData.totalAmount) - Number(formData.paidAmount)) <= 0
+                                                    ? 'border-success/40 text-success'
+                                                    : 'border-danger/40 text-danger'
+                                            }`}
+                                            value={`${Math.max(0, Number(formData.totalAmount) - Number(formData.paidAmount)).toLocaleString()}`}
+                                        />
+                                    </div>
+                                    <p className="text-[9px] text-muted/60 font-bold uppercase tracking-widest">
+                                        Invoiced Amount − Paid Amount • Status auto-derived on save
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest">Payment Status</label>
@@ -415,6 +487,9 @@ const Invoices = () => {
                                         <option value="Overdue">Overdue</option>
                                         <option value="Cancelled">Cancelled</option>
                                     </select>
+                                    <p className="text-[9px] text-muted/60 font-bold uppercase tracking-widest">
+                                        Only "Cancelled" is applied — all other statuses are auto-derived by the system
+                                    </p>
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest">Date of Maturity (Due Date)</label>
@@ -591,7 +666,12 @@ const Invoices = () => {
                         <div className="grid grid-cols-2 gap-8 mb-6 px-1 print-section">
                             <div className="border-l-2 border-black pl-4">
                                 <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 underline italic">Bill To Counterparty:</p>
-                                <p className="text-base font-black italic tracking-tight uppercase leading-tight">{clients.find(c => String(c.id) === String(selectedInvoice.clientId))?.name || selectedInvoice.clientName}</p>
+                                <p className="text-base font-black italic tracking-tight uppercase leading-tight">
+                                    {(() => {
+                                        const cl = findClientById(selectedInvoice.clientId);
+                                        return cl?.name || cl?.companyName || selectedInvoice.client?.companyName || selectedInvoice.clientName || 'Institutional Asset';
+                                    })()}
+                                </p>
                                 <p className="text-[8px] text-gray-500 mt-0.5 font-medium leading-tight italic">Institutional Account Partner</p>
                                 <p className="text-[7px] font-black mt-1 text-gray-400">REGISTRY: {selectedInvoice.clientId || 'ZN-ACC-EXT'}</p>
                             </div>
@@ -599,9 +679,15 @@ const Invoices = () => {
                                 <div className="inline-block bg-black text-white px-3 py-1 rounded-sm transform -skew-x-12">
                                     <p className="text-[8px] font-black uppercase tracking-widest skew-x-12 leading-none">Status: {selectedInvoice.status}</p>
                                 </div>
-                                <div className="mt-2">
-                                    <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 leading-none">Maturity Date:</p>
-                                    <p className="text-sm font-black italic uppercase leading-none">{selectedInvoice.dueDate || 'Immediate Settlement'}</p>
+                                <div className="flex gap-4 mt-2 justify-end text-right">
+                                    <div>
+                                        <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 leading-none">Maturity Date:</p>
+                                        <p className="text-xs font-black italic uppercase leading-none">{selectedInvoice.dueDate || 'Immediate'}</p>
+                                    </div>
+                                    <div className="border-l border-gray-300 pl-4">
+                                        <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 leading-none">Due Amount:</p>
+                                        <p className="text-xs font-black italic uppercase leading-none text-red-600">${parseFloat(selectedInvoice.totalAmount - (selectedInvoice.paidAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -656,19 +742,23 @@ const Invoices = () => {
 
                         {/* Financial Totals & Verification */}
                         <div className="flex justify-end mb-6 pr-2 print-section">
-                            <div className="w-64">
-                                <div className="flex justify-between items-center py-1.5 border-t border-black mb-1.5">
-                                    <p className="text-[8px] font-black uppercase tracking-tighter opacity-100 italic">Subtotal Across Ledger</p>
+                            <div className="w-64 space-y-1">
+                                <div className="flex justify-between items-center py-1 border-t border-black">
+                                    <p className="text-[8px] font-black uppercase tracking-tighter opacity-100 italic">Total Invoiced Amount</p>
                                     <span className="text-sm font-bold italic">${parseFloat(selectedInvoice.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                 </div>
-                                <div className="flex justify-between items-center p-3 bg-black text-white rounded-none">
-                                    <div className="flex flex-col">
-                                        <p className="text-[6px] font-black uppercase tracking-widest opacity-60">Total Institutional Debt</p>
-                                        <p className="text-[7px] font-bold leading-none mt-0.5">Fixed Fiscal Registry</p>
-                                    </div>
-                                    <h3 className="text-xl font-black italic tracking-tighter">${parseFloat(selectedInvoice.totalAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD</h3>
+                                <div className="flex justify-between items-center py-1 border-t border-gray-200">
+                                    <p className="text-[8px] font-black uppercase tracking-tighter opacity-100 italic">Total Paid Amount</p>
+                                    <span className="text-sm font-bold italic">${parseFloat(selectedInvoice.paidAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                 </div>
-                                <p className="text-[6px] text-gray-400 font-bold italic mt-1.5 text-right uppercase tracking-widest">Auth Code: ZZ-{selectedInvoice.id}</p>
+                                <div className="flex justify-between items-center p-3 border border-black bg-gray-50 text-black rounded-none">
+                                    <div className="flex flex-col text-left">
+                                        <p className="text-[6px] font-black uppercase tracking-widest text-black">Total Due Amount</p>
+                                        <p className="text-[7px] font-bold leading-none mt-0.5 text-gray-500">Fixed Fiscal Registry</p>
+                                    </div>
+                                    <h3 className="text-xl font-black italic tracking-tighter text-black">${parseFloat(selectedInvoice.totalAmount - (selectedInvoice.paidAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD</h3>
+                                </div>
+                                <p className="text-[6px] text-gray-400 font-bold italic mt-1 text-right uppercase tracking-widest">Auth Code: ZZ-{selectedInvoice.id}</p>
                             </div>
                         </div>
 

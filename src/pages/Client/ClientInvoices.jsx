@@ -2,10 +2,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied } from '../../utils/swal';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
-import { 
-    FileText, Download, Search, CreditCard, Clock, 
-    CheckCircle2, MoreHorizontal, Zap, Landmark, 
-    QrCode, Banknote, CreditCard as CardIcon, 
+import {
+    FileText, Download, Search, CreditCard, Clock,
+    CheckCircle2, MoreHorizontal, Zap, Landmark,
+    QrCode, Banknote, CreditCard as CardIcon,
     Printer, Plus, Eye, ChevronRight, ShieldCheck,
     X, Wallet, Receipt
 } from 'lucide-react';
@@ -308,7 +308,7 @@ const ClientInvoices = () => {
                         </div>
                         <p className="text-[10px] text-secondary font-black uppercase tracking-widest mb-1">Sovereign Debt</p>
                         <p className="text-3xl font-black text-warning italic tracking-tighter tabular-nums">${outstanding.toLocaleString()}</p>
-                        <button 
+                        <button
                             onClick={handlePayAll}
                             disabled={outstanding <= 0}
                             className="mt-4 w-full py-2.5 bg-warning text-black font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-white transition-all disabled:opacity-30 flex items-center justify-center gap-2 group/btn"
@@ -324,7 +324,7 @@ const ClientInvoices = () => {
                         <p className="text-[10px] text-secondary font-black uppercase tracking-widest mb-1">Registry Density</p>
                         <p className="text-3xl font-black text-white italic tracking-tighter tabular-nums">{myInvoices.length} Records</p>
                         <p className="mt-4 text-[10px] font-black uppercase tracking-[0.1em] text-success italic flex items-center gap-2">
-                             ✓ Active Operational Registry
+                            ✓ Active Operational Registry
                         </p>
                     </div>
                 </div>
@@ -385,7 +385,7 @@ const ClientInvoices = () => {
             {/* Settlement Modal (RE-REFINED) */}
             <Modal
                 isOpen={isPaymentModalOpen}
-                onClose={() => { if(!isProcessing) setIsPaymentModalOpen(false); }}
+                onClose={() => { if (!isProcessing) setIsPaymentModalOpen(false); }}
                 title="Sovereign Payment Terminal"
                 width="max-w-md"
             >
@@ -419,7 +419,7 @@ const ClientInvoices = () => {
                                             <p className="text-[10px] font-black text-accent uppercase italic">Security Secured</p>
                                         </div>
                                     </div>
-                                    
+
                                     <div className="space-y-1">
                                         <p className="text-[10px] font-black text-muted uppercase tracking-[0.2em]">Total Output Payable</p>
                                         <div className="flex items-baseline gap-2">
@@ -460,11 +460,10 @@ const ClientInvoices = () => {
                                                 key={method.id}
                                                 onClick={() => setSettlementMethod(method.id)}
                                                 disabled={isProcessing}
-                                                className={`flex items-center gap-3 p-4 rounded-xl border transition-all ${
-                                                    settlementMethod === method.id 
-                                                    ? 'bg-accent/10 border-accent text-accent shadow-lg shadow-accent/10' 
-                                                    : 'bg-white/5 border-white/5 text-secondary hover:border-white/20'
-                                                }`}
+                                                className={`flex items-center gap-3 p-4 rounded-xl border transition-all ${settlementMethod === method.id
+                                                        ? 'bg-accent/10 border-accent text-accent shadow-lg shadow-accent/10'
+                                                        : 'bg-white/5 border-white/5 text-secondary hover:border-white/20'
+                                                    }`}
                                             >
                                                 {method.icon && <method.icon size={18} />}
                                                 <span className="text-[10px] font-black uppercase tracking-tighter">{method.label}</span>
@@ -476,14 +475,14 @@ const ClientInvoices = () => {
 
                             {/* Actions */}
                             <div className="flex gap-3 pt-6 border-t border-white/5">
-                                <button 
-                                    onClick={() => setIsPaymentModalOpen(false)} 
+                                <button
+                                    onClick={() => setIsPaymentModalOpen(false)}
                                     disabled={isProcessing}
                                     className="flex-1 py-4 bg-white/5 text-secondary font-black rounded-xl hover:bg-white/10 hover:text-white transition-all uppercase text-[10px] tracking-widest disabled:opacity-30"
                                 >
                                     Abort
                                 </button>
-                                <button 
+                                <button
                                     onClick={confirmSettlement}
                                     disabled={isProcessing || !paymentAmount}
                                     className="flex-[2] py-4 bg-accent text-black font-black rounded-xl hover:bg-white transition-all uppercase text-[10px] tracking-[0.2em] flex items-center justify-center gap-2 shadow-xl shadow-accent/20 disabled:opacity-30 relative overflow-hidden"

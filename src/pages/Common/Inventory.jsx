@@ -49,10 +49,20 @@ const Inventory = () => {
   const { data: unitsData } = useItemUnits();
   const apiUnits = unitsData?.units || unitsData?.itemUnits || (Array.isArray(unitsData) ? unitsData : []);
 
-  const { inventory: mockInventory, addInventory, updateInventory, deleteInventory, users, currentUser, marketplaceVendors = [], stockMovements, addStockEntry, issueStock, projects, purchaseRequests, addPurchaseRequest, updateProject, recordLoss, clients, fetchClients, fetchVendors, hasMenuPermission, fetchPurchaseRequests } = useData();
+  const { inventory: mockInventory, addInventory, updateInventory, deleteInventory, users, currentUser, marketplaceVendors = [], stockMovements, lossAssessments, deliveries, addStockEntry, issueStock, projects, purchaseRequests, addPurchaseRequest, updateProject, recordLoss, clients, fetchClients, fetchVendors, hasMenuPermission, fetchPurchaseRequests, fetchStockMovements, fetchLossAssessments, fetchDeliveries, fetchDashboardStats } = useData();
 
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+
+  /** API sometimes returns []; keep seed clients so "Client owner" dropdown always has options in dev. */
+  const clientListForSelect = useMemo(() => {
+    const list = Array.isArray(clients) && clients.length > 0 ? clients : CLIENTS_SEED;
+    return list.map((c) => ({
+      ...c,
+      id: c.id ?? c.client_id ?? c.clientId,
+      companyName: c.business_name || c.companyName || c.name,
+    }));
+  }, [clients]);
   
   const { data: itemsData, isLoading, error } = useItems(page, 10, searchTerm);
   const realInventory = (itemsData?.items || itemsData?.data || []).map(i => {
@@ -69,19 +79,59 @@ const Inventory = () => {
       qty: totalQty,
       price: i.price ?? i.unit_price ?? i.unitPrice ?? 0,
       location: (warehouses.find(w => String(w.id) === String(mainLoc))?.name) || mainLoc || i.warehouse_name || i.warehouseId || 'General Storage',
-      inventoryType: i.inventoryType === 'INTERNAL' ? 'Marketplace' : (i.inventoryType || 'Marketplace')
+      inventoryType: i.clientId ? 'Client' : 'Marketplace'
     };
   });
   
   // Offline Resilience Fallback
-  const inventory = realInventory.length > 0 ? realInventory : mockInventory;
+  const rawInventory = realInventory.length > 0 ? realInventory : mockInventory;
+  const inventory = rawInventory.map(item => {
+    const owner = clientListForSelect.find((c) => String(c.id) === String(item.clientId));
+    let calculatedType = 'Marketplace';
+    if (item.clientId) {
+      if (owner && isSaaSPortfolioClient(owner)) {
+        calculatedType = 'SaaS';
+      } else if (owner && isBusinessPortfolioClient(owner)) {
+        calculatedType = 'Business';
+      } else {
+        calculatedType = 'Business';
+      }
+    }
+    return {
+      ...item,
+      type: calculatedType,
+      inventoryType: item.clientId ? 'Client' : 'Marketplace',
+      clientName: owner ? (owner.companyName || owner.business_name || owner.name) : (item.clientName || '—')
+    };
+  });
   const meta = itemsData?.meta || { totalPages: itemsData?.totalPages || 1, totalItems: itemsData?.total || inventory.length };
+
+  // Stock Issue stats
+  const issues = (stockMovements || []).filter(m => m && m.type === 'STOCK_ISSUE');
+  const totalItemsIssued = issues.reduce((acc, curr) => acc + Math.abs(curr.quantity || 0), 0);
+  const todayStr = new Date().toISOString().split('T')[0];
+  const assetsIssuedToday = issues.filter(m => m.date === todayStr).reduce((acc, curr) => acc + Math.abs(curr.quantity || 0), 0);
+  const activeDispatchesCount = (deliveries && Array.isArray(deliveries))
+    ? deliveries.filter(d => d && ['Dispatched', 'In Transit', 'Out for Delivery'].includes(d.status)).length
+    : 0;
+
+  // Loss Assessment stats
+  const totalLossEvents = (lossAssessments || []).length;
+  const totalQtyLost = (lossAssessments || []).reduce((sum, l) => sum + (l.quantity || 0), 0);
+  const financialLossValue = (lossAssessments || []).reduce((sum, l) => sum + (l.financialLoss || 0), 0);
+  const pendingInvestigations = (lossAssessments || []).filter(l => l && ['Pending', 'Under Investigation'].includes(l.status)).length;
+  const theftCases = (lossAssessments || []).filter(l => l && l.lossType === 'Theft').length;
+  const damageCases = (lossAssessments || []).filter(l => l && l.lossType === 'Damage').length;
+  const expiredInventory = (lossAssessments || []).filter(l => l && l.lossType === 'Expired').length;
 
   React.useEffect(() => {
     fetchClients();
     fetchVendors();
     fetchPurchaseRequests();
-  }, [fetchClients, fetchVendors, fetchPurchaseRequests]);
+    fetchStockMovements();
+    fetchLossAssessments();
+    fetchDeliveries();
+  }, [fetchClients, fetchVendors, fetchPurchaseRequests, fetchStockMovements, fetchLossAssessments, fetchDeliveries]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -126,14 +176,7 @@ const Inventory = () => {
   }, [formData.item, inventory, modalType, isModalOpen]);
 
   /** API sometimes returns []; keep seed clients so "Client owner" dropdown always has options in dev. */
-  const clientListForSelect = useMemo(() => {
-    const list = Array.isArray(clients) && clients.length > 0 ? clients : CLIENTS_SEED;
-    return list.map((c) => ({
-      ...c,
-      id: c.id ?? c.client_id ?? c.clientId,
-      companyName: c.business_name || c.companyName || c.name,
-    }));
-  }, [clients]);
+  // Moved to top declaration area to prevent TDZ ReferenceError with inventory mapping
 
   const businessClientsForInventorySelect = useMemo(
     () =>
@@ -263,8 +306,11 @@ const Inventory = () => {
         qty: '',
         warehouse: whName,
         warehouseId: wh ? wh.id : (item?.warehouse_id || null),
-        reason: '',
-        issuedBy: currentUser?.name || ''
+        lossType: 'Theft',
+        explanation: '',
+        reportedBy: currentUser?.name || '',
+        investigationStatus: 'Pending',
+        evidenceUrl: ''
       });
     }
     else {
@@ -399,16 +445,18 @@ const Inventory = () => {
 
         try {
           if (!wid) wid = 1;
-          await realApi.post('/stock/adjust', {
+          await realApi.post('/inventory/issue', {
             warehouseId: Number(wid),
             itemId: Number(itemObj.id),
             quantity: issueQty,
-            type: 'DEDUCT',
-            remarks: `Issued to ${formData.issuedTo || formData.client || formData.clientId}`
+            issuedBy: formData.issuedBy || currentUser?.name || 'System User',
+            issuedTo: formData.issuedTo || 'Default Recipient',
+            clientId: formData.clientId ? Number(formData.clientId) : null,
+            remarks: formData.reason || formData.remarks || ''
           });
-          console.log('[REAL_API_SUCCESS] Stock deducted via real API');
+          console.log('[REAL_API_SUCCESS] Stock issued via real API');
         } catch (e) {
-          console.warn('[REAL_API_FAILED] Stock adjust failed on real API', e);
+          console.warn('[REAL_API_FAILED] Stock issue failed on real API', e);
         }
         
         // Always update mock state for UI consistency since fetchInventory uses mock DB
@@ -422,7 +470,81 @@ const Inventory = () => {
           }
         }
       } else if (modalType === 'loss') {
-        await recordLoss(formData);
+        if (!formData.item || !formData.item.trim()) {
+          swalWarning('Select asset', 'Please select an asset to record loss.');
+          setIsSaving(false);
+          return;
+        }
+        const lossQty = Number(formData.qty);
+        if (!lossQty || lossQty <= 0) {
+          swalWarning('Invalid quantity', 'Please enter a valid quantity lost.');
+          setIsSaving(false);
+          return;
+        }
+
+        const itemObj = inventory.find(i => i.name === formData.item);
+        if (!itemObj) {
+          swalWarning('Asset not found', 'The selected asset could not be found.');
+          setIsSaving(false);
+          return;
+        }
+
+        if (lossQty > itemObj.qty) {
+          swalWarning('Invalid Quantity', `Cannot record loss of ${lossQty}. Only ${itemObj.qty} available.`);
+          setIsSaving(false);
+          return;
+        }
+
+        let whObj = warehouses.find(w => w.name === formData.warehouse);
+        let wid = whObj ? whObj.id : (formData.warehouseId ?? formData.warehouse_id);
+        if (!wid && itemObj.inventoryStock && itemObj.inventoryStock.length > 0) {
+          wid = itemObj.inventoryStock[0].warehouseId;
+        }
+        if (!wid) {
+          wid = warehouses.length > 0 ? warehouses[0].id : 1;
+        }
+
+        try {
+          const apiPayload = {
+            warehouseId: Number(wid),
+            itemId: Number(itemObj.id),
+            quantity: lossQty,
+            lossType: formData.lossType || 'Theft',
+            explanation: formData.explanation || 'No details provided',
+            reportedBy: formData.reportedBy || currentUser?.name || 'Auditor',
+            investigationStatus: formData.investigationStatus || 'Pending',
+            evidenceUrl: formData.evidenceUrl || null
+          };
+
+          await realApi.post('/inventory/loss', apiPayload);
+          console.log('[REAL_API_SUCCESS] Strategic Loss Assessment recorded successfully');
+
+          // Invalidate queries so that the items inventory list, stock levels, and capacity widgets update automatically
+          await queryClient.invalidateQueries({ queryKey: ['items'] });
+          await queryClient.invalidateQueries({ queryKey: ['stock'] });
+          await queryClient.invalidateQueries({ queryKey: ['movements'] });
+
+          // Refresh the Dashboard stats to ensure Requirement 9 is met ("Ensure all inventory dashboard widgets refresh immediately after recording a loss")
+          try {
+            await fetchDashboardStats();
+            await fetchStockMovements();
+            await fetchLossAssessments();
+          } catch (e) {
+            console.warn('Dashboard stats refresh failed', e);
+          }
+
+          // Show Requirement 8 success notification: "Show a success notification indicating the quantity deducted and the remaining available stock"
+          const remainingStock = itemObj.qty - lossQty;
+          swalSuccess(
+            'Asset Loss Recorded',
+            `Deducted ${lossQty} unit(s) of "${itemObj.name}". Remaining stock available is now ${remainingStock}.`
+          );
+
+          setIsModalOpen(false);
+        } catch (e) {
+          console.error('[REAL_API_FAILED] Record loss failed', e);
+          swalError('Failed to Record Loss', e.response?.data?.message || 'Could not record strategic asset loss.');
+        }
       } else if (modalType === 'edit') {
         // Frontend validation
         if (!formData.item || formData.item.trim().length < 2) {
@@ -612,6 +734,55 @@ const Inventory = () => {
         />
       </div>
 
+      {/* Redesigned Separated Statistics Dashboards */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Stock Issue Dashboard */}
+        <div className="glass-card p-6 border-accent/10">
+          <h3 className="text-xs font-black text-accent uppercase tracking-widest mb-4 flex items-center gap-2">
+            <History size={16} /> Outbound Logistics / Stock Issue Stats
+          </h3>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl text-center">
+              <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Total Issued</p>
+              <p className="text-xl font-black text-white">{totalItemsIssued}</p>
+            </div>
+            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl text-center">
+              <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Issued Today</p>
+              <p className="text-xl font-black text-white">{assetsIssuedToday}</p>
+            </div>
+            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl text-center">
+              <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Active Dispatches</p>
+              <p className="text-xl font-black text-accent">{activeDispatchesCount}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Loss Assessment Dashboard */}
+        <div className="glass-card p-6 border-danger/10">
+          <h3 className="text-xs font-black text-danger uppercase tracking-widest mb-4 flex items-center gap-2">
+            <AlertTriangle size={16} /> Strategic Loss Assessment Stats
+          </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl text-center">
+              <p className="text-[8px] font-black text-muted uppercase tracking-widest mb-1">Loss Events</p>
+              <p className="text-lg font-black text-white">{totalLossEvents}</p>
+            </div>
+            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl text-center">
+              <p className="text-[8px] font-black text-muted uppercase tracking-widest mb-1 font-mono">Financial Cost</p>
+              <p className="text-lg font-black text-danger">${financialLossValue >= 1000 ? `${(financialLossValue / 1000).toFixed(1)}K` : financialLossValue.toFixed(0)}</p>
+            </div>
+            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl text-center">
+              <p className="text-[8px] font-black text-muted uppercase tracking-widest mb-1">Theft / Damage</p>
+              <p className="text-lg font-black text-white">{theftCases} / {damageCases}</p>
+            </div>
+            <div className="bg-white/[0.02] border border-white/5 p-4 rounded-xl text-center">
+              <p className="text-[8px] font-black text-muted uppercase tracking-widest mb-1">Pending Invest</p>
+              <p className="text-lg font-black text-yellow-400">{pendingInvestigations}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           <div className="glass-card p-6">
@@ -692,19 +863,21 @@ const Inventory = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.03]">
-                  {stockMovements.map((log) => (
+                  {stockMovements.filter(m => m.type !== 'ASSET_LOSS').map((log) => (
                     <tr key={log.id} className="text-xs group hover:bg-white/[0.01]">
                       <td className="py-4 font-mono font-bold text-accent px-2">{log.id}</td>
                       <td className="py-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${log.type === 'Entry' ? 'bg-success/10 text-success' :
-                          log.type === 'Loss' ? 'bg-danger/10 text-danger' : 'bg-info/10 text-info'
-                          }`}>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                          log.type === 'STOCK_ENTRY' ? 'bg-success/10 text-success' :
+                          log.type === 'ASSET_LOSS' ? 'bg-danger/10 text-danger' :
+                          log.type === 'STOCK_ISSUE' ? 'bg-blue-500/10 text-blue-400' : 'bg-warning/10 text-warning'
+                        }`}>
                           {log.type}
                         </span>
                       </td>
                       <td className="py-4 font-bold text-white italic">{log.item}</td>
                       <td className="py-4 text-secondary font-medium">{log.client || log.vendor || 'Internal'}</td>
-                      <td className="py-4 font-bold text-center">{log.qty}</td>
+                      <td className="py-4 font-bold text-center">{log.quantity}</td>
                       <td className="py-4 text-right">
                         <div className="font-bold text-white">{log.date}</div>
                         <div className="text-[10px] text-muted uppercase">{log.time}</div>
@@ -717,13 +890,14 @@ const Inventory = () => {
 
             {/* Mobile View for Stock Movements */}
             <div className="sm:hidden space-y-4">
-              {stockMovements.map((log) => (
+              {stockMovements.filter(m => m.type !== 'ASSET_LOSS').map((log) => (
                 <div key={log.id} className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-mono font-bold text-accent">{log.id}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${log.type === 'Entry' ? 'bg-success/10 text-success' :
-                      log.type === 'Loss' ? 'bg-danger/10 text-danger' : 'bg-info/10 text-info'
-                      }`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${
+                      log.type === 'STOCK_ENTRY' ? 'bg-success/10 text-success' :
+                      log.type === 'STOCK_ISSUE' ? 'bg-blue-500/10 text-blue-400' : 'bg-warning/10 text-warning'
+                    }`}>
                       {log.type}
                     </span>
                   </div>
@@ -733,14 +907,73 @@ const Inventory = () => {
                       <p className="text-[10px] text-secondary mt-0.5">{log.client || log.vendor || 'Internal'}</p>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm font-black text-white">Qty: {log.qty}</p>
+                      <p className="text-sm font-black text-white">Qty: {log.quantity}</p>
                       <p className="text-[9px] text-muted uppercase tracking-widest mt-0.5">{log.time}</p>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
+          </div>
 
+          {/* Loss Assessment History (Asset Loss Register) */}
+          <div className="glass-card p-6 border-danger/10">
+            <h3 className="text-sm font-bold text-white uppercase tracking-widest mb-6 flex items-center gap-2">
+              <AlertTriangle className="text-danger" size={20} /> Loss Assessment History (Asset Loss Register)
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left">
+                <thead>
+                  <tr className="border-b border-white/5">
+                    <th className="pb-4 text-[10px] uppercase font-bold text-muted tracking-widest px-2">Loss ID</th>
+                    <th className="pb-4 text-[10px] uppercase font-bold text-muted tracking-widest">Asset Name</th>
+                    <th className="pb-4 text-[10px] uppercase font-bold text-muted tracking-widest text-center">Quantity Lost</th>
+                    <th className="pb-4 text-[10px] uppercase font-bold text-muted tracking-widest">Loss Type</th>
+                    <th className="pb-4 text-[10px] uppercase font-bold text-muted tracking-widest">Status</th>
+                    <th className="pb-4 text-[10px] uppercase font-bold text-muted tracking-widest">Explanation</th>
+                    <th className="pb-4 text-[10px] uppercase font-bold text-muted tracking-widest">Recorded By</th>
+                    <th className="pb-4 text-[10px] uppercase font-bold text-muted tracking-widest text-right">Date/Time</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/[0.03]">
+                  {lossAssessments.length > 0 ? (
+                    lossAssessments.map((log) => (
+                      <tr key={log.id} className="text-xs group hover:bg-white/[0.01]">
+                        <td className="py-4 font-mono font-bold text-danger px-2">{log.id}</td>
+                        <td className="py-4 font-bold text-white italic">{log.item}</td>
+                        <td className="py-4 font-bold text-center text-danger">{log.quantity}</td>
+                        <td className="py-4">
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-bold uppercase bg-danger/10 text-danger">
+                            {log.lossType}
+                          </span>
+                        </td>
+                        <td className="py-4">
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
+                            log.status === 'Closed' ? 'bg-success/10 text-success' :
+                            log.status === 'Confirmed' ? 'bg-orange-500/10 text-orange-400' :
+                            log.status === 'Under Investigation' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-white/10 text-white'
+                          }`}>
+                            {log.status}
+                          </span>
+                        </td>
+                        <td className="py-4 text-secondary font-medium max-w-[200px] truncate" title={log.explanation}>{log.explanation}</td>
+                        <td className="py-4 text-secondary">{log.reportedBy}</td>
+                        <td className="py-4 text-right">
+                          <div className="font-bold text-white">{log.date}</div>
+                          <div className="text-[10px] text-muted uppercase">{log.time}</div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="8" className="text-center py-8 text-xs text-secondary italic">
+                        No recorded asset losses found in register.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
           {userRoleNorm === 'superadmin' && (
             <div className="mt-6 flex flex-col sm:flex-row items-center gap-4 border-t border-white/5 pt-6">
@@ -1316,12 +1549,33 @@ const Inventory = () => {
               </div>
             </div>
           ) : modalType === 'loss' ? (
-            <div className="grid grid-cols-1 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-muted uppercase tracking-widest">Asset Lost</label>
                 <select
                   value={formData.item}
-                  onChange={(e) => setFormData({ ...formData, item: e.target.value })}
+                  onChange={(e) => {
+                    const itemName = e.target.value;
+                    const matchedItem = inventory.find(i => i.name === itemName);
+                    let whId = null;
+                    let whName = '';
+                    if (matchedItem) {
+                      if (matchedItem.inventoryStock && matchedItem.inventoryStock.length > 0) {
+                        whId = matchedItem.inventoryStock[0].warehouseId;
+                      } else {
+                        whId = matchedItem.warehouseId;
+                      }
+                      const wh = warehouses.find(w => w.id === whId || w.name === matchedItem.location);
+                      whId = wh ? wh.id : whId;
+                      whName = wh ? wh.name : (matchedItem.location || '');
+                    }
+                    setFormData({
+                      ...formData,
+                      item: itemName,
+                      warehouse: whName,
+                      warehouseId: whId
+                    });
+                  }}
                   className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white"
                 >
                   <option value="">Select Asset...</option>
@@ -1329,7 +1583,7 @@ const Inventory = () => {
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Quantity of Loss</label>
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Quantity Lost</label>
                 <input
                   type="number"
                   value={formData.qty}
@@ -1338,12 +1592,61 @@ const Inventory = () => {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Reason for Loss</label>
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Loss Type</label>
+                <select
+                  value={formData.lossType || 'Theft'}
+                  onChange={(e) => setFormData({ ...formData, lossType: e.target.value })}
+                  className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white"
+                >
+                  <option value="Theft">Theft</option>
+                  <option value="Damage">Damage</option>
+                  <option value="Expired">Expired</option>
+                  <option value="Missing During Audit">Missing During Audit</option>
+                  <option value="Destroyed">Destroyed</option>
+                  <option value="Lost in Transit">Lost in Transit</option>
+                  <option value="Natural Disaster">Natural Disaster</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Investigation Status</label>
+                <select
+                  value={formData.investigationStatus || 'Pending'}
+                  onChange={(e) => setFormData({ ...formData, investigationStatus: e.target.value })}
+                  className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white"
+                >
+                  <option value="Pending">Pending</option>
+                  <option value="Under Investigation">Under Investigation</option>
+                  <option value="Confirmed">Confirmed</option>
+                  <option value="Closed">Closed</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Reported By</label>
+                <input
+                  type="text"
+                  value={formData.reportedBy}
+                  onChange={(e) => setFormData({ ...formData, reportedBy: e.target.value })}
+                  className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Supporting Evidence (URL)</label>
+                <input
+                  type="text"
+                  value={formData.evidenceUrl || ''}
+                  onChange={(e) => setFormData({ ...formData, evidenceUrl: e.target.value })}
+                  placeholder="Supporting link/image URL"
+                  className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white"
+                />
+              </div>
+              <div className="space-y-1 col-span-1 md:col-span-2">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Detailed Explanation</label>
                 <textarea
-                  value={formData.reason}
-                  onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                  value={formData.explanation}
+                  onChange={(e) => setFormData({ ...formData, explanation: e.target.value })}
                   className="w-full bg-background border border-white/10 rounded-lg px-4 py-3 text-sm focus:border-accent outline-none font-bold text-white resize-none"
-                  placeholder="Theft, Damage, Expiry, etc..."
+                  placeholder="Describe context, items state, or findings..."
                   rows={3}
                 />
               </div>

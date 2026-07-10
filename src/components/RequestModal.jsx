@@ -111,7 +111,7 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
 
     // Allow linking to any user found in the system to make it robust and fully functional
     return true;
-  }).slice(0, 5);
+  });
 
   const handleSelectUser = (user) => {
     setFormData({ ...formData, requester: user.name, requester_id: user.id });

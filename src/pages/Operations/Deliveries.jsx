@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Pagination from '../../components/Common/Pagination';
-import { useDeliveries, useCreateDelivery, useUpdateDelivery, useCancelDelivery, useCreateMission, useStartMission, useSubmitPOD } from '../../hooks/api/useLogistics';
+import { useDeliveries, useCreateDelivery, useUpdateDelivery, useCancelDelivery, useDeleteDelivery, useCreateMission, useStartMission, useSubmitPOD } from '../../hooks/api/useLogistics';
 
 import { useData } from '../../context/GlobalDataContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
@@ -45,10 +45,11 @@ const Deliveries = () => {
     totalPages: deliveriesData?.data?.totalPages || deliveriesData?.totalPages || 1,
     totalItems: deliveriesData?.data?.total || deliveriesData?.total || deliveries.length
   };
-  
+
   const createDeliveryMutation = useCreateDelivery();
   const updateDeliveryMutation = useUpdateDelivery();
   const cancelDeliveryMutation = useCancelDelivery();
+  const deleteDeliveryMutation = useDeleteDelivery();
   const createMissionMutation = useCreateMission();
   const startMissionMutation = useStartMission();
   const submitPODMutation = useSubmitPOD();
@@ -247,18 +248,18 @@ const Deliveries = () => {
       : (del?.items && del.items.length > 0)
         ? del.items.map(it => ({ name: it.item?.name || 'Asset', qty: it.quantity, weight: '', length: '', width: '', height: '' }))
         : [{ name: '', qty: 1, weight: '', length: '', width: '', height: '' }];
-    
+
     const podData = del?.pod || (del?.proofsOfDelivery?.[0] ? {
-        signature: del.proofsOfDelivery[0].receiverSignature,
-        image: del.proofsOfDelivery[0].deliveryPhoto,
-        notes: del.proofsOfDelivery[0].remarks,
-        actualTime: del.proofsOfDelivery[0].createdAt
-      } : (del?.proofs?.[0] ? {
-        signature: del.proofs[0].receiverSignature,
-        image: del.proofs[0].deliveryPhoto,
-        notes: del.proofs[0].remarks,
-        actualTime: del.proofs[0].createdAt
-      } : {}));
+      signature: del.proofsOfDelivery[0].receiverSignature,
+      image: del.proofsOfDelivery[0].deliveryPhoto,
+      notes: del.proofsOfDelivery[0].remarks,
+      actualTime: del.proofsOfDelivery[0].createdAt
+    } : (del?.proofs?.[0] ? {
+      signature: del.proofs[0].receiverSignature,
+      image: del.proofs[0].deliveryPhoto,
+      notes: del.proofs[0].remarks,
+      actualTime: del.proofs[0].createdAt
+    } : {}));
 
     const nextFormData = del && del.id ? {
       ...del,
@@ -290,7 +291,7 @@ const Deliveries = () => {
       missionType: 'Delivery',
       passengerInfo: { name: '', count: 1, phone: '' },
       packageDetails: { weight: '', dimensions: '', type: 'General' },
-      orderId: '',
+      orderId: `ORD-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
       clientId: '',
       client: '',
       companyId: '',
@@ -313,7 +314,7 @@ const Deliveries = () => {
       delivery_fee: 0,
       pod: { signature: null, image: null, actualTime: null },
       ...(del && !del.id ? {
-        orderId: del.orderId || '',
+        orderId: del.orderId || `ORD-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
         clientId: del.clientId || del.client_id || del.customer_id || '',
         client: del.client || del.clientName || '',
         customerId: del.customerId || del.customer_id || del.client_id || '',
@@ -416,63 +417,79 @@ const Deliveries = () => {
       };
 
       if (formData.status === 'Completed' || formData.status === 'Delivered') {
-         // It's a POD completion
-         submitPODMutation.mutateAsync({
-           id: finalData.id,
-           podData: {
-             receiverName: typeof finalData.client === 'object' 
-               ? (finalData.client?.name || finalData.client?.companyName || 'Authorized Receiver') 
-               : (finalData.client || finalData.passengerInfo?.name || 'Authorized Receiver'),
-             receiverSignature: finalData.pod?.signature || '',
-             remarks: finalData.pod?.notes || 'Delivered'
-           }
-         }).catch(() => swalError("Error", "Could not submit POD"));
+        // It's a POD completion
+        submitPODMutation.mutateAsync({
+          id: finalData.id,
+          podData: {
+            receiverName: typeof finalData.client === 'object'
+              ? (finalData.client?.name || finalData.client?.companyName || 'Authorized Receiver')
+              : (finalData.client || finalData.passengerInfo?.name || 'Authorized Receiver'),
+            receiverSignature: finalData.pod?.signature || '',
+            remarks: finalData.pod?.notes || 'Delivered'
+          }
+        }).catch(() => swalError("Error", "Could not submit POD"));
       } else {
-         // Standard update of form fields
-         updateDeliveryMutation.mutateAsync({ id: finalData.id, data: updatePayload })
-           .then(() => {
-             // If driver is assigned, create mission
-             if (finalData.assigned_driver) {
-               createMissionMutation.mutateAsync({
-                 deliveryId: finalData.id,
-                 assignedEmployeeId: finalData.assigned_driver,
-                 vehicleId: 1
-               }).catch(() => console.error("Driver assigned but mission already exists or failed"));
-             }
-           })
-           .catch(() => swalError("Error", "Could not update delivery"));
+        // Standard update of form fields
+        updateDeliveryMutation.mutateAsync({ id: finalData.id, data: updatePayload })
+          .then(() => {
+            // If driver is assigned, create mission
+            if (finalData.assigned_driver) {
+              createMissionMutation.mutateAsync({
+                deliveryId: finalData.id,
+                assignedEmployeeId: finalData.assigned_driver,
+                vehicleId: 1
+              }).catch(() => console.error("Driver assigned but mission already exists or failed"));
+            }
+          })
+          .catch(() => swalError("Error", "Could not update delivery"));
       }
     } else if (modalType === 'delete') {
-      cancelDeliveryMutation.mutateAsync(selectedDelivery.db_id || selectedDelivery.id)
-        .catch(() => swalError("Error", "Could not cancel delivery"));
+      deleteDeliveryMutation.mutateAsync(selectedDelivery.id)
+        .catch(() => swalError("Error", "Could not delete delivery"));
     }
     setIsModalOpen(false);
   };
 
   const columns = [
     { header: "Dispatch ID", accessor: "id" },
-    { header: "Order Ref", accessor: "orderId" },
+    {
+      header: "Order Ref",
+      accessor: "orderId",
+      render: (item) => item.order?.orderNumber || item.orderId || '—'
+    },
     { header: "Client", accessor: "client", render: (item) => (typeof item.client === 'object' ? item.client?.companyName : item.client) || item.clientName || '—' },
-    { header: "Personnel", accessor: "driver" },
+    {
+      header: "Personnel",
+      accessor: "driver",
+      render: (item) => {
+        if (item.assignee) {
+          return `${item.assignee.firstName} ${item.assignee.lastName}`;
+        }
+        return item.driver || '—';
+      }
+    },
     {
       header: "Manifest Summary",
       accessor: "items",
       render: (item) => {
-        if (!item.items || item.items.length === 0) return item.item || "No Items";
-        if (item.items.length === 1) return item.items[0].name;
-        return `${item.items[0].name} (+${item.items.length - 1})`;
-      }
-    },
-    {
-      header: "Instructions",
-      accessor: "delivery_instructions",
-      render: (item) => {
-        const t = String(item.delivery_instructions || item.order_instructions || '').replace(/\[request_meta\].*/g, '').trim();
-        return (
-          <span className="text-[10px] text-secondary max-w-[160px] truncate block" title={t || undefined}>
-            {t || "—"}
-          </span>
-        );
+        let manifestItems = [];
+        if (item.remarks) {
+          try {
+            const parsed = JSON.parse(item.remarks);
+            if (parsed && Array.isArray(parsed.manifestItems)) {
+              manifestItems = parsed.manifestItems;
+            }
+          } catch (e) {}
+        }
+        if (manifestItems.length === 0 && item.items) {
+          manifestItems = item.items.map(it => ({ name: it.item?.name || 'Asset', qty: it.quantity }));
+        }
+
+        if (manifestItems.length === 0) return item.item || "—";
+        const first = manifestItems[0];
+        const name = first.name || first.itemName || 'Asset';
+        if (manifestItems.length === 1) return `${name} (x${first.qty || first.quantity || 1})`;
+        return `${name} (x${first.qty || first.quantity || 1}) (+${manifestItems.length - 1})`;
       }
     },
     {
@@ -494,20 +511,20 @@ const Deliveries = () => {
       render: (item) => {
         const label = displayDeliveryStatus(item.status);
         return (
-        <div className="space-y-1">
-          <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase text-center border ${item.status === 'Completed' || item.status === 'Delivered' ? 'bg-success/10 border-success/30 text-success' :
-            item.status === 'Failed' ? 'bg-danger/10 border-danger/30 text-danger' :
-              item.status === 'Re-routed' ? 'bg-warning/10 border-warning/30 text-warning' :
-                'bg-accent/10 border-accent/30 text-accent'
-            }`}>
-            {label}
-          </div>
-          {item.clientConfirmed && (
-            <div className="flex items-center justify-center gap-1 text-[8px] font-bold text-success uppercase">
-              <CheckCircle2 size={8} /> Client Verified
+          <div className="space-y-1">
+            <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase text-center border ${item.status === 'Completed' || item.status === 'Delivered' ? 'bg-success/10 border-success/30 text-success' :
+              item.status === 'Failed' ? 'bg-danger/10 border-danger/30 text-danger' :
+                item.status === 'Re-routed' ? 'bg-warning/10 border-warning/30 text-warning' :
+                  'bg-accent/10 border-accent/30 text-accent'
+              }`}>
+              {label}
             </div>
-          )}
-        </div>
+            {item.clientConfirmed && (
+              <div className="flex items-center justify-center gap-1 text-[8px] font-bold text-success uppercase">
+                <CheckCircle2 size={8} /> Client Verified
+              </div>
+            )}
+          </div>
         );
       }
     },
@@ -570,7 +587,7 @@ const Deliveries = () => {
               customAction={(item) => {
                 const statusLower = String(item.status || '').toLowerCase();
                 const isDelivered = statusLower === 'completed' || statusLower === 'delivered';
-                
+
                 return (
                   <div className="flex items-center gap-1 flex-wrap justify-end">
                     {canAssignDriverUi && (
@@ -593,11 +610,10 @@ const Deliveries = () => {
                         e.stopPropagation();
                         handleAction('delivered', item);
                       }}
-                      className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide transition-all ${
-                        isDelivered
+                      className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide transition-all ${isDelivered
                           ? 'text-success/30 border border-success/10 bg-success/5 cursor-not-allowed opacity-50'
                           : 'text-success border border-success/30 bg-success/10 hover:bg-success/20'
-                      }`}
+                        }`}
                       title={isDelivered ? "Already Delivered" : "Complete Delivery (POD)"}
                       disabled={isDelivered}
                     >
@@ -939,15 +955,22 @@ const Deliveries = () => {
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted uppercase">ZaneZion Reference</label>
-                    <input type="text" value={formData.orderId} onChange={(e) => setFormData({ ...formData, orderId: e.target.value })} className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold" disabled={modalType === 'view'} placeholder="ORD-XXXX" />
+                    <input
+                      type="text"
+                      value={formData.orderId}
+                      onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
+                      className="w-full bg-background/50 border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold text-muted cursor-not-allowed"
+                      disabled={true}
+                      placeholder="ORD-XXXX"
+                    />
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted uppercase">Linked Client</label>
                     <select
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold appearance-none cursor-pointer"
                       value={
-                        clientOptions.some(c => c.value === formData.clientId) 
-                          ? formData.clientId 
+                        clientOptions.some(c => c.value === formData.clientId)
+                          ? formData.clientId
                           : clientOptions.find(c => String(c.id) === String(formData.clientId))?.value || formData.clientId || ''
                       }
                       onChange={(e) => {

@@ -42,7 +42,7 @@ const StaffSignup = () => {
         const { name, value } = e.target;
         let val = value;
         if (name === 'phone') {
-            val = value.replace(/\D/g, '');
+            val = value.replace(/\D/g, '').slice(0, 10);
         }
         setFormData(prev => ({ ...prev, [name]: val }));
     };

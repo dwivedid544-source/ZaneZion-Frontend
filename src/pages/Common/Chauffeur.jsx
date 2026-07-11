@@ -126,6 +126,14 @@ const Chauffeur = () => {
     const updateMutation = useUpdateChauffeurMission();
     const deleteMutation = useDeleteChauffeurMission();
 
+    const updateChauffeurRequest = (updated) => {
+        updateMutation.mutate({
+            id: updated.id,
+            data: updated
+        });
+        setEditingRequest(updated);
+    };
+
     useEffect(() => {
         if (editingRequest && editingRequest.id) {
             const updated = (chauffeurRequests || []).find(r => r.id === editingRequest.id);

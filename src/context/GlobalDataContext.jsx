@@ -1402,11 +1402,63 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchInventory = React.useCallback(async () => {
     try {
-      const res = await api.get("/inventory");
-      const data = res.data?.success
-        ? res.data.data
-        : Array.isArray(res.data)
-          ? res.data
+      // Try real DB stock endpoint first
+      const res = await api.get("/stock", { params: { limit: 500 } });
+      const raw = res.data?.data;
+      // real API: { stock: [...], total: N } or just an array
+      const stockArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.stock) ? raw.stock : []);
+
+      if (stockArr.length > 0) {
+        setInventory(
+          stockArr.map((i) => ({
+            ...i,
+            id: i.id,
+            name: i.item?.name || i.name || "",
+            image: inventoryImageFromApiRow(i) || "",
+            qty: i.quantity ?? i.qty ?? 0,
+            quantity: i.quantity ?? i.qty ?? 0,
+            location: i.warehouse?.name || i.warehouse_name || i.location || "",
+            warehouse_name: i.warehouse?.name || i.warehouse_name || "",
+            warehouseId: i.warehouseId || i.warehouse_id || null,
+            itemId: i.itemId || i.item_id || null,
+            inventoryType: i.item?.inventoryType || i.inventory_type || i.inventoryType || "Marketplace",
+            clientId: i.item?.clientId || i.client_id || i.clientId || null,
+            clientName: i.item?.client?.companyName || i.client_name || i.clientName || "",
+            vendor_id: i.vendor_id ?? i.vendorId ?? null,
+            vendorName: i.vendor_name || i.vendorName || i.vendor || "",
+            category: canonicalMarketplaceCategory(
+              i.item?.category?.name || i.category?.name || i.category || ""
+            ),
+            sku: i.item?.sku || i.sku || "",
+            price: i.item?.price || i.price || 0,
+            size: i.size || "",
+            color: i.color || "",
+            material: i.material || "",
+            specifications: i.specifications || "",
+            description: i.item?.description || i.description || "",
+            status:
+              i.quantity <= 0
+                ? "Critical"
+                : i.item?.reorderLevel && i.quantity <= i.item.reorderLevel
+                  ? "Warning"
+                  : i.status === "in_stock"
+                    ? "Normal"
+                    : i.status === "low_stock"
+                      ? "Warning"
+                      : i.status === "out_of_stock"
+                        ? "Critical"
+                        : i.status || "Normal",
+          }))
+        );
+        return;
+      }
+
+      // Fallback to mock /inventory endpoint if real stock is empty
+      const res2 = await api.get("/inventory");
+      const data = res2.data?.success
+        ? res2.data.data
+        : Array.isArray(res2.data)
+          ? res2.data
           : [];
       setInventory(
         data.map((i) => ({
@@ -1433,7 +1485,7 @@ export const GlobalDataProvider = ({ children }) => {
                 : i.status === "out_of_stock"
                   ? "Critical"
                   : i.status || "Normal",
-        })),
+        }))
       );
     } catch (e) {
       console.error("Fetch inventory failed", e);
@@ -1451,7 +1503,7 @@ export const GlobalDataProvider = ({ children }) => {
             let typeLabel = "ADJUSTMENT";
             const mType = String(m.movementType || '').toUpperCase();
             const rType = String(m.referenceType || '').toUpperCase();
-            
+
             if (rType === 'LOSS' || mType === 'LOSS' || rType === 'ASSET_LOSS' || mType === 'ASSET_LOSS') {
               typeLabel = 'ASSET_LOSS';
             } else if (mType === 'IN' || rType === 'GRN') {
@@ -1697,80 +1749,153 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchDeliveries = React.useCallback(async () => {
     try {
-      const res = await api.get("/logistics/deliveries");
-      if (res.data && res.data.success) {
-        setDeliveries(
-          res.data.data.map((d) => {
-            let items = [];
-            if (d.package_details) {
-              try {
-                items = JSON.parse(d.package_details);
-              } catch {
-                items = [];
-              }
-            }
-            if (!Array.isArray(items)) items = [];
-            const transportMode = extractTransportModeFromOrder(d);
-            const orderRef = d.order_id
-              ? `ORD-${String(d.order_id).padStart(3, "0")}`
-              : null;
-            return {
-              id: `DEL-${String(d.id).padStart(3, "0")}`,
-              db_id: d.id,
-              orderId: orderRef,
-              order_id_raw: d.order_id,
-              company_id: d.company_id ?? null,
-              client_id: d.client_id ?? null,
-              customer_id: d.customer_id ?? null,
-              clientId: d.client_id ?? d.customer_id ?? null,
-              client: d.client_name || d.customer_name || "",
-              clientName: d.client_name || d.customer_name || "",
-              mission_type: d.mission_type,
-              item:
-                items.length > 0
-                  ? items[0].name
-                  : d.mission_type === "Chauffeur"
-                    ? "VIP Chauffeur Service"
-                    : orderRef
-                      ? `Order ${orderRef}`
-                      : "Internal Mission",
-              items: items,
-              package_details: d.package_details,
-              order_instructions: d.order_instructions || null,
-              status: d.status,
-              driverId:
-                d.assigned_driver ?? d.driver_id ?? d.assigned_to ?? null,
-              driver: d.driver_name,
-              vehicleId: d.plate_number,
-              pickupLocation: d.pickup_location,
-              drop_location: d.drop_location,
-              dropLocation: d.drop_location,
-              route: d.route,
-              location:
-                d.drop_location || d.route || d.pickup_location || "In Transit",
-              mode: d.mission_type === "Chauffeur" ? "Road" : transportMode,
-              deliveryDate: d.delivery_date
-                ? d.delivery_date.split("T")[0]
-                : null,
-              eta: d.delivery_date ? d.delivery_date.split("T")[0] : "TBD",
-              delivery_instructions:
-                d.delivery_instructions ||
-                d.order_instructions ||
-                d.order_notes ||
-                "",
-              delivery_fee:
-                parseFloat(d.delivery_fee ?? d.total_amount ?? d.amount ?? 0) ||
-                0,
-              route_distance: d.route_distance != null ? parseFloat(d.route_distance) : null,
-              staff_pay_rate: d.staff_pay_rate != null ? parseFloat(d.staff_pay_rate) : null,
-              clientConfirmed: !!d.signature,
-              signature: d.signature,
-              payout_status: (d.status === 'Delivered' || d.status === 'Completed') ? 'held' : null,
-              payout_ready_at: (d.status === 'Delivered' || d.status === 'Completed') ? new Date(new Date(d.updated_at || Date.now()).getTime() + 48 * 60 * 60 * 1000).toISOString() : null,
-            };
-          }),
-        );
+      const [resLogistics, resChauffeur] = await Promise.all([
+        api.get("/deliveries"),
+        api.get("/orders", { params: { orderType: 'CHAUFFEUR', limit: 100 } })
+      ]);
+
+      const combined = [];
+
+      const logisticsRaw = resLogistics.data?.data;
+      const logisticsArr = Array.isArray(logisticsRaw)
+        ? logisticsRaw
+        : Array.isArray(logisticsRaw?.deliveries)
+          ? logisticsRaw.deliveries
+          : Array.isArray(logisticsRaw?.data)
+            ? logisticsRaw.data
+            : [];
+
+      if (logisticsArr.length > 0 || (resLogistics.data && resLogistics.data.success)) {
+        combined.push(...logisticsArr.map((d) => {
+          // Real DB uses camelCase; mock API uses snake_case. Support both.
+          const dbItems = Array.isArray(d.items) ? d.items : [];
+          let items = [];
+          if (dbItems.length > 0) {
+            // Real DB response: d.items = [{ item: { name: '...' }, quantity: N, itemId: N }]
+            items = dbItems.map(di => ({
+              name: di.item?.name || di.name || 'Item',
+              qty: di.quantity,
+              quantity: di.quantity,
+              itemId: di.itemId,
+            }));
+          } else if (d.package_details) {
+            try { items = JSON.parse(d.package_details); } catch { items = []; }
+          }
+          if (!Array.isArray(items)) items = [];
+
+          const transportMode = extractTransportModeFromOrder(d);
+          // Support both real DB (orderId) and mock (order_id)
+          const rawOrderId = d.orderId ?? d.order_id ?? null;
+          const orderRef = rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null;
+          const rawClientId = d.clientId ?? d.client_id ?? d.customer_id ?? null;
+          const rawMissionType = d.missionType ?? d.mission_type ?? null;
+          const rawDriverName = d.driverName ?? d.driver_name ?? null;
+          const rawPlate = d.plateNumber ?? d.plate_number ?? null;
+          const rawPickup = d.pickupLocation ?? d.pickup_location ?? null;
+          const rawDrop = d.dropLocation ?? d.drop_location ?? null;
+          const rawRoute = d.route ?? null;
+          const rawEta = d.etaSchedule ?? d.delivery_date ?? null;
+          const rawFee = d.deliveryFee ?? d.delivery_fee ?? d.total_amount ?? d.amount ?? 0;
+          const rawDriverId = d.driverId ?? d.assigned_driver ?? d.driver_id ?? d.assigned_to ?? null;
+
+          return {
+            id: `DEL-${String(d.id).padStart(3, "0")}`,
+            db_id: d.id,
+            deliveryNumber: d.deliveryNumber || `DEL-${String(d.id).padStart(3, "0")}`,
+            orderId: orderRef,
+            order_id_raw: rawOrderId,
+            company_id: d.companyId ?? d.company_id ?? null,
+            client_id: rawClientId,
+            customer_id: d.customerId ?? d.customer_id ?? null,
+            clientId: rawClientId,
+            client: d.client?.companyName || d.client_name || d.customer_name || "",
+            clientName: d.client?.companyName || d.client_name || d.customer_name || "",
+            mission_type: rawMissionType,
+            item: items.length > 0
+              ? items[0].name
+              : rawMissionType === "Chauffeur"
+                ? "VIP Chauffeur Service"
+                : orderRef
+                  ? `Order ${orderRef}`
+                  : "Internal Mission",
+            items: items,
+            package_details: d.package_details,
+            order_instructions: d.orderInstructions ?? d.order_instructions ?? null,
+            status: d.status,
+            driverId: rawDriverId,
+            driver: rawDriverName,
+            vehicleId: rawPlate,
+            pickupLocation: rawPickup,
+            drop_location: rawDrop,
+            dropLocation: rawDrop,
+            warehouseId: d.warehouseId ?? d.warehouse_id ?? null,
+            warehouse: d.warehouse?.name ?? d.warehouse_name ?? null,
+            route: rawRoute,
+            location: rawDrop || rawRoute || rawPickup || "In Transit",
+            mode: rawMissionType === "Chauffeur" ? "Road" : transportMode,
+            deliveryDate: rawEta ? rawEta.split("T")[0] : null,
+            eta: rawEta ? rawEta.split("T")[0] : "TBD",
+            delivery_instructions: d.deliveryInstructions ?? d.delivery_instructions ?? d.order_instructions ?? d.order_notes ?? "",
+            delivery_fee: parseFloat(rawFee) || 0,
+            route_distance: d.routeDistance != null ? parseFloat(d.routeDistance) : (d.route_distance != null ? parseFloat(d.route_distance) : null),
+            staff_pay_rate: d.staffPayRate != null ? parseFloat(d.staffPayRate) : (d.staff_pay_rate != null ? parseFloat(d.staff_pay_rate) : null),
+            clientConfirmed: !!(d.signature),
+            signature: d.signature,
+            payout_status: (d.status === 'delivered' || d.status === 'Delivered') ? 'held' : null,
+            payout_ready_at: (d.status === 'delivered' || d.status === 'Delivered') ? new Date(new Date(d.updatedAt || Date.now()).getTime() + 48 * 60 * 60 * 1000).toISOString() : null,
+          };
+        }));
       }
+
+      if (resChauffeur.data && resChauffeur.data.success) {
+        const chauffeurOrders = Array.isArray(resChauffeur.data.data)
+          ? resChauffeur.data.data
+          : (resChauffeur.data.data?.orders || []);
+
+        combined.push(...chauffeurOrders.map((order) => {
+          const detail = order.metadata?.customItems?.[0] || order.metadata || {};
+          return {
+            id: `CH-ORD-${String(order.id).padStart(3, "0")}`,
+            db_id: order.id,
+            orderId: order.orderNumber || `ORD-${String(order.id).padStart(3, "0")}`,
+            order_id_raw: order.id,
+            company_id: order.companyId ?? null,
+            client_id: order.clientId ?? null,
+            customer_id: order.customerId ?? null,
+            clientId: order.clientId ?? null,
+            client: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
+            clientName: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
+            mission_type: "Chauffeur",
+            item: "VIP Chauffeur Service",
+            items: [{ name: "VIP Chauffeur Service", qty: 1 }],
+            package_details: JSON.stringify(detail),
+            order_instructions: detail.instructions || null,
+            status: order.status,
+            driverId: order.driver_user_id || detail.driver_user_id || null,
+            driver: order.driverName || detail.driverName || "",
+            vehicleId: order.plateNumber || detail.plateNumber || "",
+            pickupLocation: detail.pickupLocation || "Nassau Area",
+            drop_location: detail.dropLocation || "Destination",
+            dropLocation: detail.dropLocation || "Destination",
+            route: detail.route || "",
+            location: detail.dropLocation || "Destination",
+            mode: "Road",
+            deliveryDate: detail.eta || detail.dueDate || null,
+            eta: detail.eta || detail.dueDate || "TBD",
+            delivery_instructions: detail.delivery_instructions || "",
+            delivery_fee: parseFloat(detail.chauffeurFee ?? detail.chauffeur_fee ?? 0) || 0,
+            route_distance: null,
+            staff_pay_rate: null,
+            clientConfirmed: false,
+            signature: null,
+            payout_status: (order.status === 'Delivered' || order.status === 'Completed' || order.status === 'completed') ? 'held' : null,
+            payout_ready_at: (order.status === 'Delivered' || order.status === 'Completed' || order.status === 'completed') ? new Date(new Date(order.updatedAt || Date.now()).getTime() + 48 * 60 * 60 * 1000).toISOString() : null,
+            remarks: JSON.stringify(detail)
+          };
+        }));
+      }
+
+      setDeliveries(combined);
     } catch (e) {
       console.error("Fetch deliveries failed", e);
     }
@@ -3406,7 +3531,7 @@ export const GlobalDataProvider = ({ children }) => {
         const stageNorm = String(stage || "").toLowerCase();
         if (stageNorm === "logistics" && orderId != null) {
           try {
-            const delRes = await api.get("/logistics/deliveries");
+            const delRes = await api.get("/deliveries");
             const rawDel = delRes.data?.success ? delRes.data.data : [];
             const hasForOrder =
               Array.isArray(rawDel) &&
@@ -4150,6 +4275,36 @@ export const GlobalDataProvider = ({ children }) => {
     const patchId = normalizeDeliveryDbId(updated);
     const apiStatus = toApiDeliveryStatus(updated.status);
 
+    const isChauffeurOrder = updated.mission_type === "Chauffeur" || String(updated.id).startsWith("CH-ORD-");
+    if (isChauffeurOrder) {
+      try {
+        let detail = {};
+        if (updated.remarks) {
+          try {
+            detail = JSON.parse(updated.remarks);
+          } catch {
+            detail = {};
+          }
+        }
+        const payload = {
+          clientId: updated.clientId || updated.client_id || detail.clientId || '',
+          status: apiStatus,
+          items: [{
+            ...detail,
+            driverName: updated.driver || detail.driverName || "",
+            driver_user_id: updated.driverId || detail.driver_user_id || null,
+            plateNumber: updated.vehicleId || detail.plateNumber || "",
+            status: apiStatus
+          }]
+        };
+        await api.put(`/orders/${patchId}`, payload);
+        await fetchDeliveries();
+        return;
+      } catch (e) {
+        console.error("Failed to update Chauffeur order:", e);
+      }
+    }
+
     const applyLocal = () => {
       setDeliveries((prev) =>
         prev.map((x) => {
@@ -4190,9 +4345,9 @@ export const GlobalDataProvider = ({ children }) => {
         patchBody.driverId = patchBody.assigned_driver; // for mock API compatibility
       }
 
-      console.log('Sending patch to /logistics/deliveries/' + patchId, patchBody);
-      const res = await api.patch(`/logistics/deliveries/${patchId}`, patchBody);
-      console.log('Patch response:', res.data);
+      console.log('Sending PUT to /deliveries/' + patchId, patchBody);
+      const res = await api.put(`/deliveries/${patchId}`, patchBody);
+      console.log('PUT response:', res.data);
 
       await fetchDeliveries();
       if (updated.status === "Delivered" || updated.status === "Completed") {
@@ -4240,7 +4395,7 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       const numericId =
         typeof id === "string" && id.includes("-") ? id.split("-")[1] : id;
-      await api.delete(`/logistics/deliveries/${numericId}`);
+      await api.delete(`/deliveries/${numericId}`);
       setDeliveries((prev) =>
         prev.filter((d) => d.id !== id && d.db_id !== id),
       );
@@ -4307,7 +4462,7 @@ export const GlobalDataProvider = ({ children }) => {
       const numericId =
         typeof id === "string" && id.includes("-") ? id.split("-")[1] : id;
 
-      await api.patch(`/logistics/deliveries/${numericId}`, {
+      await api.put(`/deliveries/${numericId}`, {
         status: "delivered",
         signature,
       });
@@ -5574,79 +5729,44 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchChauffeurRequests = React.useCallback(async () => {
     try {
-      const res = await api.get("/logistics/deliveries");
-      if (!res.data?.success || !Array.isArray(res.data.data)) {
-        setChauffeurRequests([]);
-        return;
-      }
-      const mapped = res.data.data
-        .filter(
-          (d) => String(d.mission_type || "").toLowerCase() === "chauffeur",
-        )
-        .map((d) => {
-          let passengerData = {};
-          if (d.passenger_info) {
-            try {
-              passengerData =
-                typeof d.passenger_info === "string"
-                  ? JSON.parse(d.passenger_info)
-                  : d.passenger_info;
-            } catch (e) {
-              /* ignore */
-            }
-          }
-          const due = d.delivery_date?.split("T")[0] || null;
-          return {
-            id: d.id,
-            clientId: d.client_id || d.company_id,
-            company_id: d.company_id,
-            created_by: d.created_by,
-            clientName:
-              d.client_name ||
-              passengerData.clientName ||
-              d.customer_name ||
-              "Client",
-            driverName: d.driver_name || null,
-            plateNumber: d.plate_number || null,
-            driverPhotoUrl:
-              passengerData.driverPhotoUrl ||
-              passengerData.driver_photo_url ||
-              d.driver_profile_url ||
-              null,
-            driver_user_id:
-              passengerData.driver_user_id ||
-              passengerData.driverUserId ||
-              null,
-            serviceType: passengerData.serviceType || "One Way",
-            pickupLocation: d.pickup_location,
-            dropLocation: d.drop_location,
-            dueDate: due,
-            pickupDate: due,
-            pickupTime: d.pickup_time || null,
-            status: passengerData.chauffeur_status || d.status,
-            chauffeurFee:
-              parseFloat(
-                passengerData.chauffeurFee ??
-                passengerData.chauffeur_fee ??
-                d.total_amount ??
-                d.amount ??
-                0,
-              ) || 0,
-            chauffeur_fee_mode: passengerData.chauffeur_fee_mode || "separate",
-            numberOfPassengers: passengerData.passengers || 1,
-            luggage: passengerData.luggage || "No",
-            bags: passengerData.bags || 0,
-            amenities: passengerData.amenities || [],
-            stops: passengerData.stops || "No",
-            stopLocations: passengerData.stopLocations || null,
-            returnDate: passengerData.returnDate || null,
-            returnTime: passengerData.returnTime || null,
-            numberOfDays: passengerData.numberOfDays || null,
-            requestDate: d.created_at?.split("T")[0] || null,
-            adminApproved: !!passengerData.adminApproved,
-            _passengerInfo: passengerData,
-          };
-        });
+      const res = await api.get("/orders", { params: { orderType: 'CHAUFFEUR', limit: 100 } });
+      const orders = Array.isArray(res.data?.data)
+        ? res.data.data
+        : (res.data?.data?.orders || []);
+
+      const mapped = orders.map((order) => {
+        const detail = order.metadata?.customItems?.[0] || order.metadata || {};
+        return {
+          id: order.id,
+          db_id: order.id,
+          clientId: order.clientId,
+          company_id: order.companyId,
+          created_by: order.createdById,
+          clientName: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
+          driverName: order.driverName || detail.driverName || null,
+          plateNumber: order.plateNumber || detail.plateNumber || null,
+          driverPhotoUrl: detail.driverPhotoUrl || null,
+          driver_user_id: order.driver_user_id || detail.driver_user_id || null,
+          serviceType: detail.serviceType || "One Way",
+          pickupLocation: detail.pickupLocation || "Nassau Area",
+          dropLocation: detail.dropLocation || "Destination",
+          dueDate: detail.eta || detail.dueDate || null,
+          pickupDate: detail.eta || detail.dueDate || null,
+          pickupTime: detail.pickupTime || null,
+          status: order.status,
+          chauffeurFee: parseFloat(detail.chauffeurFee ?? detail.chauffeur_fee ?? 0) || 0,
+          chauffeur_fee_mode: detail.chauffeur_fee_mode || "separate",
+          numberOfPassengers: detail.numberOfPassengers || 1,
+          bags: detail.bags || 0,
+          stops: detail.stops || "No",
+          stopLocations: detail.stopLocations || "",
+          amenities: detail.amenities || [],
+          passenger_info: detail,
+          _passengerInfo: detail,
+          remarks: JSON.stringify(detail),
+          adminApproved: !!detail.adminApproved,
+        };
+      });
       setChauffeurRequests(filterDataForCurrentUser(mapped));
     } catch (error) {
       console.error("Failed to fetch chauffeur requests:", error);
@@ -5744,7 +5864,7 @@ export const GlobalDataProvider = ({ children }) => {
         throw new Error("No delivery selected for dispatch.");
       }
 
-      await api.patch(`/logistics/deliveries/${deliveryDbId}`, {
+      await api.put(`/deliveries/${deliveryDbId}`, {
         status: "en_route",
         vehicle_id: data.db_id, // Ensure it's assigned if not already
         route_id: data.routeId || null,
@@ -5755,10 +5875,12 @@ export const GlobalDataProvider = ({ children }) => {
 
       // Re-fetch to sync
       await fetchFleet();
-      const dRes = await api.get("/logistics/deliveries");
+      const dRes = await api.get("/deliveries");
 
       if (dRes.data.success) {
-        const mappedDeliveries = dRes.data.data.map((d) => ({
+        const dRaw = dRes.data?.data;
+        const dArr = Array.isArray(dRaw) ? dRaw : Array.isArray(dRaw?.deliveries) ? dRaw.deliveries : [];
+        const mappedDeliveries = dArr.map((d) => ({
           id: `DEL-${String(d.id).padStart(3, "0")}`,
           db_id: d.id,
           orderId: d.order_id,
@@ -6052,7 +6174,7 @@ export const GlobalDataProvider = ({ children }) => {
         passenger_info: JSON.stringify(passengerPayload),
         status: request.driverName ? "assigned" : "pending",
       };
-      const res = await api.post("/logistics/deliveries", reqData);
+      const res = await api.post("/orders", { clientId: request.clientId || null, orderType: "CHAUFFEUR", status: reqData.status, items: [reqData] });
       if (res.data?.success) {
         await fetchChauffeurRequests();
         await fetchDeliveries();
@@ -6111,7 +6233,23 @@ export const GlobalDataProvider = ({ children }) => {
         patch.assigned_driver =
           Number.isFinite(n) && !Number.isNaN(n) ? n : driverUid;
       }
-      await api.patch(`/logistics/deliveries/${updated.id}`, patch);
+      if (String(updated.id).startsWith("CH-ORD-") || updated.mission_type === "Chauffeur") {
+        const patchId = updated.db_id || updated.id;
+        const payload = {
+          clientId: updated.clientId || updated.client_id || '',
+          status: updated.status,
+          items: [{
+            ...piObj,
+            driverName: updated.driverName || updated.driver || piObj.driverName || "",
+            driver_user_id: driverUid || null,
+            plateNumber: updated.plateNumber || updated.vehicleId || piObj.plateNumber || "",
+            status: updated.status
+          }]
+        };
+        await api.put(`/orders/${patchId}`, payload);
+      } else {
+        await api.put(`/deliveries/${updated.id}`, patch);
+      }
       await fetchChauffeurRequests();
       await fetchDeliveries();
       addLog({
@@ -6126,7 +6264,7 @@ export const GlobalDataProvider = ({ children }) => {
 
   const deleteChauffeurRequest = async (id) => {
     try {
-      await api.delete(`/logistics/deliveries/${id}`);
+      await api.delete(`/orders/${id}`);
       setChauffeurRequests((prev) => prev.filter((r) => r.id !== id));
     } catch (error) {
       console.error("Failed to delete chauffeur request:", error);

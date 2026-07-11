@@ -573,6 +573,9 @@ const Chauffeur = () => {
                                 </div>
 
                                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+                                    <input type="hidden" name="driverUserId" value={(users || []).find(u => u.name === editingRequest?.driverName)?.id || ""} />
+                                    <input type="hidden" name="driverName" value={editingRequest?.driverName || ""} />
+                                    <input type="hidden" name="plateNumber" value={editingRequest?.plateNumber || ""} />
                                     <div className="p-5 sm:p-8 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
                                         {modalType === 'view' ? (
                                         <div className="space-y-6">

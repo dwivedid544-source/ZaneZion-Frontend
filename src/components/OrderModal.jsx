@@ -184,7 +184,18 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 amenities: initialData?.amenities || ''
             });
         } else if (selectedOrder) {
-            let rawItems = selectedOrder.items || selectedOrder.customItems || selectedOrder.metadata?.customItems;
+            let meta = selectedOrder.metadata;
+            if (typeof meta === 'string') {
+                try {
+                    meta = JSON.parse(meta);
+                } catch (e) {
+                    meta = {};
+                }
+            }
+            const isChauffeur = String(selectedOrder.orderType || selectedOrder.type || '').toLowerCase() === 'chauffeur';
+            const firstCustom = (meta?.customItems && meta.customItems[0]) || {};
+
+            let rawItems = selectedOrder.items || selectedOrder.customItems || meta?.customItems;
             if (typeof rawItems === 'string') {
                 try {
                     rawItems = JSON.parse(rawItems);
@@ -195,16 +206,27 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             if (!Array.isArray(rawItems)) {
                 rawItems = [];
             }
-            let parsedItems = rawItems.map(itm => {
-                const name = itm.name || itm.item?.name || '';
-                const qty = itm.qty || itm.quantity || 1;
-                const price = itm.price !== undefined ? itm.price : (itm.unitPrice !== undefined ? itm.unitPrice : '');
-                return {
-                    name,
-                    qty: Number(qty),
-                    price: price !== '' ? Number(price) : ''
-                };
-            });
+
+            let parsedItems = [];
+            if (isChauffeur) {
+                parsedItems = [{
+                    name: `Chauffeur Service (${firstCustom.serviceType || 'Ride'})`,
+                    qty: 1,
+                    price: firstCustom.chauffeurFee || firstCustom.chauffeur_fee || 0
+                }];
+            } else {
+                parsedItems = rawItems.map(itm => {
+                    const name = itm.name || itm.item?.name || '';
+                    const qty = itm.qty || itm.quantity || 1;
+                    const price = itm.price !== undefined ? itm.price : (itm.unitPrice !== undefined ? itm.unitPrice : '');
+                    return {
+                        name,
+                        qty: Number(qty),
+                        price: price !== '' ? Number(price) : ''
+                    };
+                });
+            }
+
             if (parsedItems.length === 0 && (selectedOrder.product || selectedOrder.qty)) {
                 parsedItems = [{
                     name: selectedOrder.product || '',
@@ -223,12 +245,16 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             const matchedDropdown = customerOnlyForDropdown.find(c =>
                 String(c.rawId) === String(existingClientId)
             );
+            
+            const dropLoc = selectedOrder.location || selectedOrder.deliveryAddress || selectedOrder.delivery_address || firstCustom.dropLocation || firstCustom.location || '';
+            const pickLoc = selectedOrder.pickupLocation || selectedOrder.pickup_location || firstCustom.pickupLocation || '';
+
             setFormData({
                 client: (typeof selectedOrder.client === 'object' && selectedOrder.client !== null ? (selectedOrder.client.companyName || selectedOrder.client.name || '') : selectedOrder.client) || selectedOrder.customer_name || selectedOrder.created_by_name || '',
                 clientId: existingClientId,
                 clientDropdownId: matchedDropdown?.id || '',
                 items: parsedItems,
-                location: selectedOrder.location || '',
+                location: dropLoc,
                 status: coerceOrderStatusToApi(selectedOrder.status, 'created'),
                 requestDate,
                 dueDate,
@@ -238,17 +264,17 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 isPreferredVendor: !!(selectedOrder.vendorId || selectedOrder.vendor_id),
                 type: selectedOrder.orderType || selectedOrder.type || 'Custom Order',
                 deliveryType: selectedOrder.deliveryType || selectedOrder.delivery_mode || selectedOrder.deliveryMode || selectedOrder.mode || 'Road',
-                pickupLocation: selectedOrder.pickupLocation || selectedOrder.pickup_location || '',
-                pickupTime: selectedOrder.pickupTime || '',
+                pickupLocation: pickLoc,
+                pickupTime: selectedOrder.pickupTime || firstCustom.pickupTime || '',
                 totalDistance: selectedOrder.totalDistance || selectedOrder.total_distance || '',
-                serviceType: selectedOrder.serviceType || 'One Way',
-                returnDate: selectedOrder.returnDate || '',
-                returnTime: selectedOrder.returnTime || '',
+                serviceType: selectedOrder.serviceType || firstCustom.serviceType || 'One Way',
+                returnDate: selectedOrder.returnDate || firstCustom.returnDate || '',
+                returnTime: selectedOrder.returnTime || firstCustom.returnTime || '',
                 returnLocation: selectedOrder.returnLocation || '',
-                dailyDays: selectedOrder.dailyDays || 1,
-                luggage: selectedOrder.luggage || '',
-                stops: selectedOrder.stops || '',
-                amenities: selectedOrder.amenities || ''
+                dailyDays: selectedOrder.dailyDays || firstCustom.numberOfDays || 1,
+                luggage: selectedOrder.luggage || firstCustom.luggage || '',
+                stops: selectedOrder.stops || firstCustom.stops || '',
+                amenities: selectedOrder.amenities || (firstCustom.amenities ? firstCustom.amenities.join(', ') : '')
             });
         }
     }, [isOpen, selectedOrder, modalType]);

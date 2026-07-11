@@ -4,7 +4,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import {
   Lock, Mail, User, ArrowRight, ShieldCheck,
   LayoutDashboard, Truck, Briefcase, ShoppingCart,
-  Package, Heart, Users, Smartphone, Key
+  Package, Heart, Users, Smartphone, Key, Eye, EyeOff
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useData } from '../../context/GlobalDataContext';
@@ -27,16 +27,17 @@ const Login = ({ onLogin }) => {
   const [newPassword, setNewPassword] = useState('');
   const [otpSent, setOtpSent] = useState(false);
   const [otpValue, setOtpValue] = useState(''); // Store OTP momentarily for testing
+  const [showPassword, setShowPassword] = useState(false);
 
   const demoCredentials = {
     'superadmin': { email: 'superadmin@zanezion.com',      password: 'password123' },
     'admin':      { email: 'admin@zanezion.com',           password: 'password123' },
     'procurement': { email: 'procurement@zanezion.com',     password: 'password123' },
-    'operations': { email: 'operations@zanezion.com',      password: 'password123' },
+    'operations': { email: 'Dog23@gmail.com',              password: 'password123' },
     'logistics':  { email: 'logistics@zanezion.com',       password: 'password123' },
     'inventory':  { email: 'inventory@zanezion.com',       password: 'password123' },
     'concierge':  { email: 'concierge@zanezion.com',       password: 'password123' },
-    'client':     { email: 'businessclient@zanezion.com',  password: 'password123' },
+    'client':     { email: 'testcust@gmail.com',           password: 'password123' },
     'staff':      { email: 'fieldstaff@zanezion.com',      password: 'password123' },
   };
 
@@ -167,15 +168,12 @@ const Login = ({ onLogin }) => {
     }
   };
 
-  const handleQuickLogin = async (role) => {
+  const handleQuickLogin = (role) => {
     const credentials = demoCredentials[role];
     if (credentials) {
       setEmail(credentials.email);
       setPassword(credentials.password);
       setError(null);
-      
-      // Auto-submit login with these credentials directly
-      await performLogin(credentials.email, credentials.password);
     } else {
       setError(`Credentials for ${role} not found.`);
     }
@@ -282,13 +280,20 @@ const Login = ({ onLogin }) => {
                   <div className="relative group">
                     <Lock className="absolute left-4 top-1/2 -translate-y-1/2 text-muted group-focus-within:text-accent transition-colors" size={20} />
                     <input
-                      type="password"
+                      type={showPassword ? "text" : "password"}
                       placeholder="Encryption Key / Password"
-                      className="w-full bg-white/5 border border-border rounded-2xl py-4 pl-12 pr-4 text-white focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all placeholder:text-muted/50"
+                      className="w-full bg-white/5 border border-border rounded-2xl py-4 pl-12 pr-12 text-white focus:outline-none focus:border-accent focus:ring-1 focus:ring-accent/20 transition-all placeholder:text-muted/50"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
                     />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-4 top-1/2 -translate-y-1/2 text-muted hover:text-white transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                    </button>
                   </div>
                   <div className="flex justify-end pr-2">
                     <button

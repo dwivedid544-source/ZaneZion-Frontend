@@ -2158,7 +2158,7 @@ export const GlobalDataProvider = ({ children }) => {
           rawId: m.id,
           source: 'mission',
           task: m.metadata?.task || m.missionType,
-          location: m.metadata?.location || 'N/A',
+          location: m.metadata?.location || m.delivery?.dropLocation || m.delivery?.pickupLocation || (m.delivery?.client?.address ? [m.delivery.client.address, m.delivery.client.city, m.delivery.client.country].filter(Boolean).join(', ') : '') || 'N/A',
           assignee: m.assignee ? `${m.assignee.firstName} ${m.assignee.lastName}` : 'System',
           assigneeId: m.assignedEmployeeId,
           priority: m.metadata?.priority || 'Normal',
@@ -2505,6 +2505,7 @@ export const GlobalDataProvider = ({ children }) => {
       const canAccessUsers = ["superadmin", "admin", "saas_client", "operations"].includes(role);
       // Roles that have access to Security (roles) endpoint
       const canAccessRoles = ["superadmin", "admin", "saas_client"].includes(role);
+      const canAccessStock = ["superadmin", "admin", "operations", "inventory", "inventorymanager", "procurement", "logistics"].includes(role);
 
       const fetches = [
         fetchDashboardStats(),
@@ -2512,11 +2513,14 @@ export const GlobalDataProvider = ({ children }) => {
         fetchInventoryAlerts(),
         fetchTracking(),
         fetchUrgentTasks(),
-        fetchStockMovements(),
-        fetchLossAssessments(),
         fetchTickets(),
         fetchNotifications(),
       ];
+
+      if (canAccessStock) {
+        fetches.push(fetchStockMovements());
+        fetches.push(fetchLossAssessments());
+      }
 
       // Only fetch users if the role has Personnel menu permission
       if (canAccessUsers) {
@@ -3780,7 +3784,7 @@ export const GlobalDataProvider = ({ children }) => {
         order.pickupLocation ?? order.pickup_location ?? null;
 
       const res = await api.post("/orders", {
-        clientId: isCustomer ? currentUser?.id : targetClientId,
+        clientId: isCustomer ? (currentUser?.clientId || targetClientId) : targetClientId,
         companyId: isCustomer
           ? customerOrderCompanyId
           : userRole !== "super_admin"

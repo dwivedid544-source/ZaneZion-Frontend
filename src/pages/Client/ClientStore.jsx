@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied } from '../../utils/swal';
+import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied, Toast } from '../../utils/swal';
 import { useData } from '../../context/GlobalDataContext';
 import { ShoppingCart, Search, Store, Plus, Minus, X, Package, DollarSign, FileText, ChevronRight, Zap, Truck, Tag, Trash2, MapPin, Car } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -34,6 +34,39 @@ const ClientStore = () => {
     const navigate = useNavigate();
     /** Simplified: primary marketplace + optional custom request for personal accounts */
     const [activeTab, setActiveTab] = useState('catalog');
+    const [addedItems, setAddedItems] = useState({});
+
+    const handleAddItemToOrder = (item, group) => {
+        const itemPayload = {
+            ...item,
+            vendor_group_key: group.key,
+            vendorName: item.vendorName || item.vendor_name || group.label,
+            vendor_id: item.vendor_id ?? item.vendorId ?? group.vendorId ?? null,
+        };
+        const isInCart = cart.some(i => i.id === item.id);
+        addToCart(itemPayload);
+        
+        if (isInCart) {
+            Toast.fire({
+                icon: 'success',
+                title: 'Cart Updated',
+            });
+        } else {
+            Toast.fire({
+                icon: 'success',
+                title: '✓ Added to Order',
+            });
+        }
+
+        setAddedItems(prev => ({ ...prev, [item.id]: true }));
+        setTimeout(() => {
+            setAddedItems(prev => {
+                const next = { ...prev };
+                delete next[item.id];
+                return next;
+            });
+        }, 2000);
+    };
     const [customItems, setCustomItems] = useState([{ name: '', qty: 1, price: 0 }]);
     const [searchTerm, setSearchTerm] = useState('');
     const [isCartOpen, setIsCartOpen] = useState(false);
@@ -156,7 +189,7 @@ const ClientStore = () => {
         }
     }, [location, isRetailPersonal]);
 
-    const marketplaceInventory = inventory.filter(item => item.inventoryType === 'Marketplace' || !item.inventoryType);
+    const marketplaceInventory = inventory.filter(item => item.inventoryType?.toUpperCase() === 'MARKETPLACE' || !item.inventoryType);
 
     const filteredInventory = marketplaceInventory.filter(item => {
         const q = searchTerm.toLowerCase();
@@ -778,15 +811,18 @@ const ClientStore = () => {
 
                                                 <button
                                                     type="button"
-                                                    onClick={() => addToCart({
-                                                        ...item,
-                                                        vendor_group_key: group.key,
-                                                        vendorName: item.vendorName || item.vendor_name || group.label,
-                                                        vendor_id: item.vendor_id ?? item.vendorId ?? group.vendorId ?? null,
-                                                    })}
-                                                    className="w-full mt-6 py-4 bg-white/[0.03] border border-white/10 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] hover:bg-accent hover:text-black hover:border-accent transition-all flex items-center justify-center gap-3 active:scale-[0.98] shadow-lg shadow-black/20"
+                                                    onClick={() => handleAddItemToOrder(item, group)}
+                                                    className={`w-full mt-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] transition-all flex items-center justify-center gap-3 active:scale-[0.98] shadow-lg shadow-black/20 ${
+                                                        addedItems[item.id]
+                                                            ? 'bg-success text-white border-success scale-[1.03] duration-300'
+                                                            : 'bg-white/[0.03] border border-white/10 text-white hover:bg-accent hover:text-black hover:border-accent duration-200'
+                                                    }`}
                                                 >
-                                                    <Plus size={14} /> {isRetailPersonal ? 'Add to order' : 'Add to Manifest'}
+                                                    {addedItems[item.id] ? (
+                                                        <>✓ Added</>
+                                                    ) : (
+                                                        <><Plus size={14} /> {isRetailPersonal ? 'Add to order' : 'Add to Manifest'}</>
+                                                    )}
                                                 </button>
                                             </div>
                                         </div>

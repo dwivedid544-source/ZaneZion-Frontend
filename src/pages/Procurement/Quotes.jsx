@@ -98,13 +98,8 @@ const Quotes = () => {
     };
   }) : [];
   
-  // Merge real with fallback
-  const mockQuotes = useData().quotes || [];
-  const fallbackRfqs = mockQuotes.filter(q => q.quote_type === 'vendor_request' || q.quoteType === 'vendor');
-  const fallbackQuotations = mockQuotes.filter(q => q.quote_type !== 'vendor_request' && q.quoteType !== 'vendor');
-
-  const mergedRfqs = resolvedRfqs.length > 0 ? resolvedRfqs : fallbackRfqs;
-  const mergedQuotations = resolvedQuotations.length > 0 ? resolvedQuotations : fallbackQuotations;
+  const mergedRfqs = resolvedRfqs;
+  const mergedQuotations = resolvedQuotations;
 
   const combinedQuotes = [...mergedRfqs, ...mergedQuotations].sort((a, b) => new Date(b.date || b.created_at || 0) - new Date(a.date || a.created_at || 0));
 
@@ -216,11 +211,7 @@ const Quotes = () => {
       return;
     }
 
-    const items = normalizeQuoteItems(formData.items).map((row) =>
-      formData.quoteType === 'vendor'
-        ? { ...row, price: 0 }
-        : row
-    );
+    const items = normalizeQuoteItems(formData.items);
     const total = items.reduce((acc, i) => acc + (parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 0), 0);
     const qt = formData.quoteType === 'vendor' ? 'vendor_request' : 'client';
     const parsedVendorId = parseInt(String(formData.vendorId ?? '').trim(), 10);
@@ -411,9 +402,21 @@ const Quotes = () => {
       accessor: "total_amount",
       render: (row) => {
         const isVendorQuote = row.quote_type === 'vendor_request' || row.quoteType === 'vendor';
+        let parsedItems = [];
+        if (isVendorQuote && row.metadata) {
+          let metadata = row.metadata;
+          if (typeof metadata === 'string') {
+            try { metadata = JSON.parse(metadata); } catch(e){}
+          }
+          parsedItems = metadata.items || [];
+        } else {
+          parsedItems = normalizeQuoteItems(row.items || row.remarks);
+        }
+        const computedTotal = parsedItems.reduce((acc, item) => acc + (parseFloat(item.price ?? 0) * parseInt(item.qty ?? 0, 10)), 0);
+        const finalValue = parseFloat(row.total_amount || row.total || computedTotal || 0);
         return (
           <span className="font-black text-white">
-            {isVendorQuote ? 'N/A' : `$${parseFloat(row.total_amount || row.total || 0).toLocaleString()}`}
+            {finalValue > 0 ? `$${finalValue.toLocaleString()}` : 'N/A'}
           </span>
         );
       }
@@ -579,7 +582,7 @@ const Quotes = () => {
                     disabled={modalType === 'view'}
                   >
                     <option value="">Select supply partner...</option>
-                    {(vendors || []).map((v) => {
+                    {(vendors || []).filter(v => String(v.status || '').toLowerCase() === 'active').map((v) => {
                       const label = v.name || v.vendor_name || v.business_name || v.company_name || `Vendor #${v.id}`;
                       return (
                         <option key={String(v.id)} value={v.id}>
@@ -613,13 +616,29 @@ const Quotes = () => {
                     <label className="text-[10px] font-bold text-accent uppercase">Link Purchase Request (Required for RFQ)</label>
                     <select
                       value={formData.purchaseRequestId || ''}
-                      onChange={(e) => setFormData({ ...formData, purchaseRequestId: e.target.value })}
+                      onChange={(e) => {
+                        const prId = e.target.value;
+                        const selectedPr = activePurchaseRequests.find(pr => String(pr.id) === String(prId));
+                        let prItems = [{ name: '', qty: 1, price: 0 }];
+                        if (selectedPr && Array.isArray(selectedPr.items) && selectedPr.items.length > 0) {
+                          prItems = selectedPr.items.map(item => ({
+                            name: item.name || item.itemName || '',
+                            qty: item.qty ?? item.quantity ?? 1,
+                            price: item.price ?? item.estimatedCost ?? item.estimated_cost ?? 0
+                          }));
+                        }
+                        setFormData({
+                          ...formData,
+                          purchaseRequestId: prId,
+                          items: prItems
+                        });
+                      }}
                       className="w-full bg-background border border-accent/30 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
                       disabled={modalType === 'view' || modalType === 'edit'}
                     >
                       <option value="">Select an approved Purchase Request...</option>
                       {activePurchaseRequests
-                        .filter(pr => String(pr.status).toLowerCase() === 'approved' || String(pr.status).toLowerCase() === 'department_approved' || String(pr.status).toLowerCase() === 'procurement_review' || String(pr.status).toLowerCase() === 'pending') // temporarily broadened to show options if none are strictly 'approved'
+                        .filter(pr => String(pr.status).toLowerCase() === 'approved' || String(pr.status).toLowerCase() === 'department_approved' || String(pr.status).toLowerCase() === 'procurement_review' || String(pr.status).toLowerCase() === 'pending' || String(pr.status).toLowerCase() === 'rfq_created') // temporarily broadened to show options if none are strictly 'approved'
                         .map(pr => (
                         <option key={pr.id} value={pr.id}>PR-{pr.id} ({pr.title || pr.item || 'Items'}) - {pr.status}</option>
                       ))}
@@ -716,9 +735,6 @@ const Quotes = () => {
                       </div>
                       <div className="w-20 space-y-1">
                         <label className="text-[8px] text-muted uppercase">Unit Price</label>
-                        {formData.quoteType === 'vendor' ? (
-                          <div className="text-[10px] text-muted font-bold pt-1">Not applicable</div>
-                        ) : (
                           <input
                             type="number"
                             value={item.price}
@@ -731,7 +747,6 @@ const Quotes = () => {
                             disabled={modalType === 'view'}
                             step="0.01"
                           />
-                        )}
                       </div>
                       {modalType !== 'view' && normalizeQuoteItems(formData.items).length > 1 && (
                         <button onClick={() => removeItem(idx)} className="p-1.5 text-danger hover:bg-danger/10 rounded-lg">

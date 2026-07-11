@@ -30,23 +30,19 @@ const ClientTracking = () => {
             (currentUser?.name && c.name?.toLowerCase() === currentUser?.name?.toLowerCase())
         );
 
-    // For customer role: filter by personal details
-    // For other roles: filter by client/company association
     const ownedOrders = (orders || []).filter((o) => {
-        const orderCompany = o.companyId ?? o.company_id;
-        const orderClient = o.clientId ?? o.client_id;
-        const orderCustomer = o.customer_id ?? o.customerId;
-        if (isCustomerRole) {
-            return (
-                String(orderCustomer) === String(currentUser?.id) ||
-                norm(o.email) === norm(currentUser?.email) ||
-                norm(o.client) === norm(currentUser?.name)
-            );
-        }
-        if (myClient) {
-            return String(orderCompany) === String(myClient.id) || String(orderClient) === String(myClient.id);
-        }
-        return false;
+        return myClient ? (
+            String(o.clientId) === String(myClient.id) ||
+            String(o.customer_id) === String(myClient.id) ||
+            String(o.companyId) === String(myClient.id) ||
+            String(o.company_id) === String(myClient.id) ||
+            o.client?.toLowerCase() === myClient.name?.toLowerCase() ||
+            String(o.created_by) === String(currentUser?.id)
+        ) : (
+            String(o.created_by) === String(currentUser?.id) ||
+            String(o.clientId) === String(currentUser?.id) ||
+            String(o.customer_id) === String(currentUser?.id)
+        );
     });
 
     const myOrderIdSet = new Set(

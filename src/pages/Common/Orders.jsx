@@ -121,10 +121,13 @@ const Orders = () => {
         await updateOrderMutation.mutateAsync({ id: selectedOrder.id, orderData: formData });
       }
       setIsModalOpen(false);
+      swalSuccess('Order saved successfully.');
     } catch (err) {
-      alert('Failed to save order.');
+      const errMsg = err?.response?.data?.message || err?.message || 'Failed to save order.';
+      swalError(errMsg);
     }
   };
+
 
 
   const handleDelete = async (id) => {

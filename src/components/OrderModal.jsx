@@ -50,10 +50,16 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         }
     }, [isOpen, fetchVendors, fetchClients, fetchCustomerUsers]);
 
-    // Create-order picker should list only actual customers/personal accounts (no business or SaaS client accounts).
+    // Staff/concierge/admin roles see ALL clients (business + personal).
+    // Customer/client roles see only personal accounts.
+    const isStaffRole = ['superadmin', 'admin', 'operations', 'procurement', 'logistics', 'inventory', 'concierge', 'staff'].includes(portalRole);
+
     const customerOnlyForDropdown = React.useMemo(() => {
         const fromClients = (clients || [])
             .filter((c) => {
+                // Staff roles: show all clients regardless of type
+                if (isStaffRole) return true;
+                // Customer/non-staff: show only personal/individual accounts
                 const ct = String(c.client_type || c.clientType || '').trim().toLowerCase();
                 const tt = String(c.tenant_type || c.tenantType || '').trim().toLowerCase();
                 const role = String(c.role || c.user_role || '').trim().toLowerCase();
@@ -64,7 +70,9 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 rawId: c.id,
                 name: c.name || c.companyName || c.contactPerson || c.business_name || c.company_name || '',
                 email: c.email,
-                type: 'Personal Account',
+                type: isStaffRole
+                    ? (String(c.client_type || c.clientType || 'Business').trim() || 'Business')
+                    : 'Personal Account',
                 source: 'client',
             }));
 
@@ -87,7 +95,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         });
 
         return merged;
-    }, [clients, customerUsers]);
+    }, [clients, customerUsers, isStaffRole]);
     const [formData, setFormData] = useState({
         client: '',
         clientId: '',
@@ -320,6 +328,13 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             swalWarning('Only staff can create orders. Customers can use Marketplace and view their orders.');
             return;
         }
+
+        // Staff roles (including concierge) must select a client explicitly
+        const parsedClientId = formData.clientId ? Number(formData.clientId) : null;
+        if (modalType === 'add' && isStaffRole && (!parsedClientId || isNaN(parsedClientId) || parsedClientId <= 0)) {
+            swalWarning('Please select a client / customer to proceed.');
+            return;
+        }
         if (!formData.clientId && portalRole === 'customer') {
             swalWarning('Please select a client');
             return;
@@ -332,7 +347,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             requestDate, 
             dueDate, 
             totalAmount: parseFloat(calculateTotal()), 
-            clientId: Number(formData.clientId),
+            clientId: parsedClientId || Number(formData.clientId) || undefined,
             orderType: formData.type || 'Custom Order'
         };
         if (!canEditOrderStatus) {

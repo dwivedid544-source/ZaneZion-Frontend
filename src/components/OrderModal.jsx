@@ -23,9 +23,11 @@ const clampDueDateToRequest = (requestDate, dueDate) => {
 const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelete, initialData, role }) => {
     const { currentUser, marketplaceVendors = [], clients, fetchVendors, fetchClients, customerUsers, fetchCustomerUsers } = useData();
     const [currentModalType, setCurrentModalType] = useState(modalType);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     useEffect(() => {
         setCurrentModalType(modalType);
+        setIsDropdownOpen(false);
     }, [modalType, isOpen]);
 
     const handleCancel = () => {
@@ -57,6 +59,10 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     const customerOnlyForDropdown = React.useMemo(() => {
         const fromClients = (clients || [])
             .filter((c) => {
+                // Filter out non-active clients
+                const status = String(c.status || '').trim().toLowerCase();
+                if (status !== 'active') return false;
+
                 // Staff roles: show all clients regardless of type
                 if (isStaffRole) return true;
                 // Customer/non-staff: show only personal/individual accounts
@@ -76,14 +82,20 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 source: 'client',
             }));
 
-        const fromUsers = (customerUsers || []).map((u) => ({
-            id: `user_${u.id}`,
-            rawId: u.id,
-            name: u.name,
-            email: u.email,
-            type: 'Personal Account',
-            source: 'user',
-        }));
+        const fromUsers = (customerUsers || [])
+            .filter((u) => {
+                // Filter out non-active users
+                const status = String(u.status || '').trim().toLowerCase();
+                return status === 'active';
+            })
+            .map((u) => ({
+                id: `user_${u.id}`,
+                rawId: u.id,
+                name: u.name,
+                email: u.email,
+                type: 'Personal Account',
+                source: 'user',
+            }));
 
         // Deduplicate by email first, then by name fallback.
         const seen = new Set();
@@ -427,7 +439,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                 </div>
                             )}
                             {portalRole !== 'client' && portalRole !== 'customer' && (
-                                <div className={`space-y-1 ${modalType === 'add' ? 'col-span-1 md:col-span-2' : ''}`}>
+                                <div className={`space-y-1 relative ${modalType === 'add' ? 'col-span-1 md:col-span-2' : ''}`}>
                                     <label className="text-[10px] font-bold text-muted uppercase">
                                         Client / Customer
                                         {formData.client && modalType !== 'add' && (
@@ -436,32 +448,71 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                             </span>
                                         )}
                                     </label>
-                                    <select
-                                        value={formData.clientDropdownId || ''}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            const selected = customerOnlyForDropdown.find(c => c.id === val);
-                                            setFormData({
-                                                ...formData,
-                                                clientDropdownId: val,
-                                                clientId: selected ? selected.rawId : '',
-                                                client: selected ? selected.name : ''
-                                            });
-                                        }}
-                                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                        disabled={currentModalType === 'view'}
-                                    >
-                                        <option value="">
-                                            {formData.client
-                                                ? `Current: ${formData.client}`
-                                                : 'Select Customer...'}
-                                        </option>
-                                        {customerOnlyForDropdown.map(c => (
-                                            <option key={c.id} value={c.id}>
-                                                {c.name} ({c.type})
-                                            </option>
-                                        ))}
-                                    </select>
+                                    {currentModalType === 'view' ? (
+                                        <input
+                                            type="text"
+                                            value={formData.client || 'No Customer Assigned'}
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-muted cursor-not-allowed"
+                                            disabled
+                                        />
+                                    ) : (
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-left flex justify-between items-center text-white min-h-[38px]"
+                                            >
+                                                <span>
+                                                    {formData.client
+                                                        ? `${formData.client} (${customerOnlyForDropdown.find(c => c.id === formData.clientDropdownId)?.type || 'Account'})`
+                                                        : 'Select Customer...'}
+                                                </span>
+                                                <span className="text-muted text-[10px]">▼</span>
+                                            </button>
+                                            
+                                            {isDropdownOpen && (
+                                                <>
+                                                    <div 
+                                                        className="fixed inset-0 z-[998]" 
+                                                        onClick={() => setIsDropdownOpen(false)}
+                                                    />
+                                                    <div className="absolute z-[999] w-full mt-1 bg-[#1a1a1a] border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto font-bold text-sm">
+                                                        <div 
+                                                            onClick={() => {
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    clientDropdownId: '',
+                                                                    clientId: '',
+                                                                    client: ''
+                                                                });
+                                                                setIsDropdownOpen(false);
+                                                            }}
+                                                            className="px-4 py-2 hover:bg-accent hover:text-black cursor-pointer text-muted"
+                                                        >
+                                                            Select Customer...
+                                                        </div>
+                                                        {customerOnlyForDropdown.map(c => (
+                                                            <div
+                                                                key={c.id}
+                                                                onClick={() => {
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        clientDropdownId: c.id,
+                                                                        clientId: c.rawId,
+                                                                        client: c.name
+                                                                    });
+                                                                    setIsDropdownOpen(false);
+                                                                }}
+                                                                className={`px-4 py-2 hover:bg-accent hover:text-black cursor-pointer text-white ${formData.clientDropdownId === c.id ? 'bg-accent/20 text-accent' : ''}`}
+                                                            >
+                                                                {c.name} ({c.type})
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

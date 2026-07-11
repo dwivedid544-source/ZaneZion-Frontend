@@ -1700,7 +1700,7 @@ export const GlobalDataProvider = ({ children }) => {
       const res = await api.get("/logistics/deliveries");
       if (res.data && res.data.success) {
         setDeliveries(
-          res.data.data.map((d) => {
+          (res.data.data.deliveries || res.data.data || []).map((d) => {
             let items = [];
             if (d.package_details) {
               try {
@@ -1711,20 +1711,20 @@ export const GlobalDataProvider = ({ children }) => {
             }
             if (!Array.isArray(items)) items = [];
             const transportMode = extractTransportModeFromOrder(d);
-            const orderRef = d.order_id
-              ? `ORD-${String(d.order_id).padStart(3, "0")}`
+            const orderRef = (d.order_id || d.orderId)
+              ? `ORD-${String(d.order_id || d.orderId).padStart(3, "0")}`
               : null;
             return {
               id: `DEL-${String(d.id).padStart(3, "0")}`,
               db_id: d.id,
               orderId: orderRef,
-              order_id_raw: d.order_id,
-              company_id: d.company_id ?? null,
-              client_id: d.client_id ?? null,
-              customer_id: d.customer_id ?? null,
-              clientId: d.client_id ?? d.customer_id ?? null,
-              client: d.client_name || d.customer_name || "",
-              clientName: d.client_name || d.customer_name || "",
+              order_id_raw: d.order_id || d.orderId,
+              company_id: d.company_id ?? d.companyId ?? null,
+              client_id: d.client_id ?? d.clientId ?? null,
+              customer_id: d.customer_id ?? d.customerId ?? null,
+              clientId: d.client_id ?? d.clientId ?? d.customer_id ?? d.customerId ?? null,
+              client: d.client_name || d.clientName || d.customer_name || d.customerName || "",
+              clientName: d.client_name || d.clientName || d.customer_name || d.customerName || "",
               mission_type: d.mission_type,
               item:
                 items.length > 0
@@ -1763,8 +1763,8 @@ export const GlobalDataProvider = ({ children }) => {
                 0,
               route_distance: d.route_distance != null ? parseFloat(d.route_distance) : null,
               staff_pay_rate: d.staff_pay_rate != null ? parseFloat(d.staff_pay_rate) : null,
-              clientConfirmed: !!d.signature,
-              signature: d.signature,
+              clientConfirmed: !!(d.signature || (d.proofs && d.proofs.some(p => p.receiverSignature))),
+              signature: d.signature || (d.proofs && d.proofs[0]?.receiverSignature) || "",
               payout_status: (d.status === 'Delivered' || d.status === 'Completed') ? 'held' : null,
               payout_ready_at: (d.status === 'Delivered' || d.status === 'Completed') ? new Date(new Date(d.updated_at || Date.now()).getTime() + 48 * 60 * 60 * 1000).toISOString() : null,
             };
@@ -4307,9 +4307,11 @@ export const GlobalDataProvider = ({ children }) => {
 
   const confirmDeliveryReceipt = async (id, signature) => {
     try {
-      // id might be 'DEL-001' or numeric. The API expects numeric ID.
+      // id might be 'DEL-001' or 'DEL-PENDING-53' or numeric. The API expects numeric ID.
       const numericId =
-        typeof id === "string" && id.includes("-") ? id.split("-")[1] : id;
+        typeof id === "string" && id.includes("-")
+          ? (id.includes("PENDING") ? id.split("-").pop() : id.split("-")[1])
+          : id;
 
       await api.patch(`/logistics/deliveries/${numericId}`, {
         status: "delivered",
@@ -4980,6 +4982,16 @@ export const GlobalDataProvider = ({ children }) => {
         await api.post(`/missions/${updated.rawId}/pod`, podPayload);
       } else {
         await api.put(`/missions/${updated.rawId}/status`, { status: updated.status });
+      }
+
+      if (typeof fetchSupportingDocs === 'function') {
+        await fetchSupportingDocs();
+      }
+      if (typeof fetchDeliveries === 'function') {
+        await fetchDeliveries();
+      }
+      if (typeof fetchOrders === 'function') {
+        await fetchOrders();
       }
 
       setStaffAssignments((prev) =>

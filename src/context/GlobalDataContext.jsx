@@ -2630,6 +2630,7 @@ export const GlobalDataProvider = ({ children }) => {
       const canAccessUsers = ["superadmin", "admin", "saas_client", "operations"].includes(role);
       // Roles that have access to Security (roles) endpoint
       const canAccessRoles = ["superadmin", "admin", "saas_client"].includes(role);
+      const canAccessStock = ["superadmin", "admin", "operations", "inventory", "inventorymanager", "procurement", "logistics"].includes(role);
 
       const fetches = [
         fetchDashboardStats(),
@@ -2637,11 +2638,14 @@ export const GlobalDataProvider = ({ children }) => {
         fetchInventoryAlerts(),
         fetchTracking(),
         fetchUrgentTasks(),
-        fetchStockMovements(),
-        fetchLossAssessments(),
         fetchTickets(),
         fetchNotifications(),
       ];
+
+      if (canAccessStock) {
+        fetches.push(fetchStockMovements());
+        fetches.push(fetchLossAssessments());
+      }
 
       // Only fetch users if the role has Personnel menu permission
       if (canAccessUsers) {
@@ -3905,7 +3909,7 @@ export const GlobalDataProvider = ({ children }) => {
         order.pickupLocation ?? order.pickup_location ?? null;
 
       const res = await api.post("/orders", {
-        clientId: isCustomer ? currentUser?.id : targetClientId,
+        clientId: isCustomer ? (currentUser?.clientId || targetClientId) : targetClientId,
         companyId: isCustomer
           ? customerOrderCompanyId
           : userRole !== "super_admin"
@@ -4458,9 +4462,11 @@ export const GlobalDataProvider = ({ children }) => {
 
   const confirmDeliveryReceipt = async (id, signature) => {
     try {
-      // id might be 'DEL-001' or numeric. The API expects numeric ID.
+      // id might be 'DEL-001' or 'DEL-PENDING-53' or numeric. The API expects numeric ID.
       const numericId =
-        typeof id === "string" && id.includes("-") ? id.split("-")[1] : id;
+        typeof id === "string" && id.includes("-")
+          ? (id.includes("PENDING") ? id.split("-").pop() : id.split("-")[1])
+          : id;
 
       await api.put(`/deliveries/${numericId}`, {
         status: "delivered",
@@ -5131,6 +5137,16 @@ export const GlobalDataProvider = ({ children }) => {
         await api.post(`/missions/${updated.rawId}/pod`, podPayload);
       } else {
         await api.put(`/missions/${updated.rawId}/status`, { status: updated.status });
+      }
+
+      if (typeof fetchSupportingDocs === 'function') {
+        await fetchSupportingDocs();
+      }
+      if (typeof fetchDeliveries === 'function') {
+        await fetchDeliveries();
+      }
+      if (typeof fetchOrders === 'function') {
+        await fetchOrders();
       }
 
       setStaffAssignments((prev) =>

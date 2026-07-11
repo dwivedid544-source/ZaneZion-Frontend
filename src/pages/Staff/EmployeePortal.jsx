@@ -160,8 +160,8 @@ const EmployeePortal = () => {
 
         const updatedAsg = { ...asg, status: newStatus, ...proofData };
 
-        if (asg.source === 'delivery') {
-            const rawId = asg.rawId || asg.id;
+        if (asg.source === 'delivery' || String(asg.id).startsWith('DEL-')) {
+            const rawId = asg.db_id || asg.rawId || asg.id;
             const isAlreadyAssigned = String(asg.status).toLowerCase() === 'assigned';
             let finalStatus = newStatus;
             

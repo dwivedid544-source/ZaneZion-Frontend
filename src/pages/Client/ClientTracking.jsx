@@ -30,23 +30,19 @@ const ClientTracking = () => {
             (currentUser?.name && c.name?.toLowerCase() === currentUser?.name?.toLowerCase())
         );
 
-    // For customer role: filter by personal details
-    // For other roles: filter by client/company association
     const ownedOrders = (orders || []).filter((o) => {
-        const orderCompany = o.companyId ?? o.company_id;
-        const orderClient = o.clientId ?? o.client_id;
-        const orderCustomer = o.customer_id ?? o.customerId;
-        if (isCustomerRole) {
-            return (
-                String(orderCustomer) === String(currentUser?.id) ||
-                norm(o.email) === norm(currentUser?.email) ||
-                norm(o.client) === norm(currentUser?.name)
-            );
-        }
-        if (myClient) {
-            return String(orderCompany) === String(myClient.id) || String(orderClient) === String(myClient.id);
-        }
-        return false;
+        return myClient ? (
+            String(o.clientId) === String(myClient.id) ||
+            String(o.customer_id) === String(myClient.id) ||
+            String(o.companyId) === String(myClient.id) ||
+            String(o.company_id) === String(myClient.id) ||
+            o.client?.toLowerCase() === myClient.name?.toLowerCase() ||
+            String(o.created_by) === String(currentUser?.id)
+        ) : (
+            String(o.created_by) === String(currentUser?.id) ||
+            String(o.clientId) === String(currentUser?.id) ||
+            String(o.customer_id) === String(currentUser?.id)
+        );
     });
 
     const myOrderIdSet = new Set(
@@ -89,7 +85,7 @@ const ClientTracking = () => {
             item: (Array.isArray(o.items) && o.items[0]?.name) ? o.items[0].name : `Order ${o.id}`,
             items: Array.isArray(o.items) ? o.items : [],
             location: o.location || o.deliveryAddress || 'Destination',
-            status: String(o.status || '').toLowerCase().includes('completed') ? 'Delivered' : 'Pending',
+            status: String(o.status || '').toLowerCase().includes('completed') ? 'Delivered' : (o.status || 'Pending'),
             eta: o.dueDate || o.orderDate || 'TBD',
             order_id_raw: o.id,
             clientConfirmed: false,
@@ -107,7 +103,7 @@ const ClientTracking = () => {
     const getStatusKey = (s) => String(s || '').toLowerCase().replace(/\s+/g, '_');
     const isMoving = (s) => {
         const k = getStatusKey(s);
-        return ['in_transit', 'en_route', 'dispatched', 'out_for_delivery', 'assigned', 'accepted'].includes(k);
+        return ['in_transit', 'en_route', 'dispatched', 'out_for_delivery', 'assigned', 'accepted', 'logistics', 'logistics_dispatch', 'ready_for_delivery', 'processing', 'logistics_/_dispatch'].includes(k) || k.includes('logistics') || k.includes('dispatch');
     };
     const isArrived = (s) => {
         const k = getStatusKey(s);
@@ -216,7 +212,12 @@ const ClientTracking = () => {
                                             View Manifest <ChevronRight size={14} className="group-hover:translate-x-1 transition-transform" />
                                         </button>
                                         <button
-                                            className="btn-primary flex items-center gap-2 text-[10px] py-1.5 px-4"
+                                            className={`flex items-center gap-2 text-[10px] py-1.5 px-4 transition-all duration-300 rounded-xl font-bold ${
+                                                isArrived(delivery.status)
+                                                    ? 'bg-accent text-black hover:scale-[1.02] shadow-lg shadow-accent/20'
+                                                    : 'bg-white/5 border border-white/10 text-muted cursor-not-allowed'
+                                            }`}
+                                            disabled={!isArrived(delivery.status)}
                                             onClick={() => {
                                                 setConfirmModal({ isOpen: true, deliveryId: delivery.id, name: currentUser?.name || '' });
                                             }}

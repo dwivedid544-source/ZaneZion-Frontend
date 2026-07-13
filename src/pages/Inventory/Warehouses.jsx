@@ -8,7 +8,13 @@ import { createPortal } from 'react-dom';
 const EMPTY_FORM = { name: '', location: '', capacity: '', manager_id: '', status: 'active' };
 
 const Warehouses = () => {
-  const { hasMenuPermission, users, fetchStaff } = useData();
+  const { hasMenuPermission, users, fetchStaff, currentUser } = useData();
+  const userRole = (currentUser?.role?.name || currentUser?.role || '').toUpperCase();
+  const isB2BClient = userRole === 'CLIENT' || userRole === 'BUSINESS_CLIENT';
+  const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'STAFF'].includes(userRole);
+  const canAdd = isAdmin || isB2BClient || hasMenuPermission('Warehouses', 'can_add');
+  const canEdit = isAdmin || isB2BClient || hasMenuPermission('Warehouses', 'can_edit');
+  const canDelete = isAdmin || isB2BClient || hasMenuPermission('Warehouses', 'can_delete');
 
   const { data: whData, isLoading, error } = useWarehouses();
   // API returns: { success, data: { warehouses: [], total, page, totalPages } }
@@ -82,7 +88,11 @@ const Warehouses = () => {
   };
 
   const getManagerName = (wh) => {
-    if (wh.manager) return `${wh.manager.firstName || ''} ${wh.manager.lastName || ''}`.trim();
+    if (wh.manager) {
+      const empName = `${wh.manager.firstName || ''} ${wh.manager.lastName || ''}`.trim();
+      if (empName) return empName;
+      if (wh.manager.user?.name) return wh.manager.user.name;
+    }
     const mid = wh.managerId ?? wh.manager_id;
     if (!mid) return null;
     const u = (users || []).find(x => String(x.id) === String(mid));
@@ -120,7 +130,7 @@ const Warehouses = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          {hasMenuPermission('Warehouses', 'can_add') && (
+          {canAdd && (
             <button className="btn-primary flex items-center gap-2 px-6" onClick={() => openModal('add')}>
               <Plus size={16} /> Add Facility
             </button>
@@ -207,13 +217,13 @@ const Warehouses = () => {
                           className="p-2 bg-white/5 border border-border text-secondary rounded-lg hover:text-white hover:bg-white/10 transition-all" title="View">
                           <Eye size={15} />
                         </button>
-                        {hasMenuPermission('Warehouses', 'can_edit') && (
+                        {canEdit && (
                           <button onClick={() => openModal('edit', wh)}
                             className="p-2 bg-white/5 border border-border text-secondary rounded-lg hover:text-accent hover:border-accent/30 transition-all" title="Edit">
                             <Edit2 size={15} />
                           </button>
                         )}
-                        {hasMenuPermission('Warehouses', 'can_delete') && (
+                        {canDelete && (
                           <button onClick={() => openModal('delete', wh)}
                             className="p-2 bg-danger/10 border border-danger/20 text-danger rounded-lg hover:bg-danger hover:text-white transition-all" title="Delete">
                             <Trash2 size={15} />
@@ -316,8 +326,9 @@ const Warehouses = () => {
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Manager (User)</label>
-                          <select value={formData.manager_id} onChange={(e) => setFormData({ ...formData, manager_id: e.target.value })}
-                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none cursor-pointer">
+                          <select value={formData.manager_id} onChange={(e) => (isAdmin || isB2BClient) && setFormData({ ...formData, manager_id: e.target.value })}
+                            disabled={!(isAdmin || isB2BClient)}
+                            className={`w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none ${(isAdmin || isB2BClient) ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                             <option value="">Select facility manager…</option>
                             {(users || []).filter(u => u?.name && (u.role?.name === 'INVENTORY' || u.role === 'INVENTORY')).map(u => (
                               <option key={u.id} value={String(u.id)}>{u.name}{u.role ? ` (${u.role?.name || u.role})` : ''}</option>

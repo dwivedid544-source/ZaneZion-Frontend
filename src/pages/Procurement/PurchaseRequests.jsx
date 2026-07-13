@@ -215,8 +215,8 @@ const PurchaseRequests = () => {
               onView={(item) => handleAction('view', item)}
               onEdit={(item) => handleAction('edit', item)}
               onDelete={(item) => handleAction('delete', item)}
-              canEdit={!isCustomer && hasMenuPermission('Purchase Requests', 'can_edit')}
-              canDelete={!isCustomer && hasMenuPermission('Purchase Requests', 'can_delete')}
+              canEdit={hasMenuPermission('Purchase Requests', 'can_edit') || userRole === 'saas_client'}
+              canDelete={hasMenuPermission('Purchase Requests', 'can_delete') || userRole === 'saas_client'}
             />
             <div className="mt-6 border-t border-white/5 pt-6">
               <Pagination currentPage={page} totalPages={meta.totalPages} onPageChange={setPage} totalItems={meta.totalItems} />

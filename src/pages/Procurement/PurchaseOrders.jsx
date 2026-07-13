@@ -23,9 +23,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useData } from "../../context/GlobalDataContext";
 import StatusBadge from "../../components/StatusBadge";
 import Pagination from "../../components/Common/Pagination";
-import { usePurchaseOrders, useCreatePurchaseOrder, useUpdatePurchaseOrder, usePurchaseRequests } from "../../hooks/api/useProcurement";
+import { usePurchaseOrders, useCreatePurchaseOrder, useUpdatePurchaseOrder, usePurchaseRequests, useDeletePurchaseOrder } from "../../hooks/api/useProcurement";
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCcw } from "lucide-react";
+import { swalConfirm, swalSuccess, swalError } from "../../utils/swal";
 
 const PurchaseOrders = () => {
   const queryClient = useQueryClient();
@@ -56,6 +57,27 @@ const PurchaseOrders = () => {
 
   const createPOMutation = useCreatePurchaseOrder();
   const updatePOMutation = useUpdatePurchaseOrder();
+  const deletePOMutation = useDeletePurchaseOrder();
+
+  const canAdd = !isCustomer || ["client", "saas_client", "business_client"].includes(userRole) || hasMenuPermission('Purchase Orders', 'can_add');
+  const canEdit = !isCustomer || ["client", "saas_client", "business_client"].includes(userRole) || hasMenuPermission('Purchase Orders', 'can_edit');
+  const canDelete = !isCustomer || ["client", "saas_client", "business_client"].includes(userRole) || hasMenuPermission('Purchase Orders', 'can_delete');
+
+  const handleDeletePO = async (po) => {
+    const confirm = await swalConfirm(
+      "Are you sure?",
+      `Do you want to delete Purchase Order #${po.id}? This action cannot be undone.`
+    );
+    if (confirm.isConfirmed) {
+      try {
+        await deletePOMutation.mutateAsync(po.id);
+        swalSuccess("Deleted!", "Purchase Order has been deleted successfully.");
+      } catch (e) {
+        console.error("Delete failed:", e);
+        swalError("Error", e.response?.data?.message || "Failed to delete purchase order.");
+      }
+    }
+  };
 
   React.useEffect(() => {
     fetchVendors();
@@ -317,7 +339,7 @@ const PurchaseOrders = () => {
               Sourcing management & goods receiving ledger
             </p>
           </div>
-          {hasMenuPermission('Purchase Orders', 'can_add') && (
+          {canAdd && (
             <button
               onClick={() => {
                 setPoItems([
@@ -492,20 +514,23 @@ const PurchaseOrders = () => {
                         </td>
                         <td className="p-6">
                           <div className="flex items-center gap-2">
-                             {!isCustomer && hasMenuPermission('Purchase Orders', 'can_edit') && (
+                             {canEdit && (
                               <>
-                                <button
-                                  onClick={() => {
-                                    setSelectedPO(po);
-                                    setReceivePackingSlip("");
-                                    setReceiveAdminApprove(false);
-                                    setShowReceiveModal(true);
-                                  }}
-                                  className="p-2.5 bg-accent/10 border border-accent/20 text-accent rounded-lg hover:bg-accent hover:text-black transition-all"
-                                  title="Receive Goods"
-                                >
-                                  <Package size={16} />
-                                </button>
+                                {/* Receive Goods - only for non-customer roles */}
+                                {!isCustomer && (
+                                  <button
+                                    onClick={() => {
+                                      setSelectedPO(po);
+                                      setReceivePackingSlip("");
+                                      setReceiveAdminApprove(false);
+                                      setShowReceiveModal(true);
+                                    }}
+                                    className="p-2.5 bg-accent/10 border border-accent/20 text-accent rounded-lg hover:bg-accent hover:text-black transition-all"
+                                    title="Receive Goods"
+                                  >
+                                    <Package size={16} />
+                                  </button>
+                                )}
                                 <button
                                   onClick={() => {
                                     setSelectedPO(po);
@@ -584,6 +609,16 @@ const PurchaseOrders = () => {
                             >
                               <Eye size={16} />
                             </button>
+                            {canDelete && (
+                              <button
+                                onClick={() => handleDeletePO(po)}
+                                className="p-2.5 bg-danger/10 border border-danger/20 text-danger rounded-lg hover:bg-danger hover:text-white transition-all"
+                                title="Delete PO"
+                                disabled={deletePOMutation.isPending}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </motion.tr>

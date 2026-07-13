@@ -1401,13 +1401,18 @@ export const GlobalDataProvider = ({ children }) => {
   );
 
   const fetchInventory = React.useCallback(async () => {
+    let stockArr = [];
     try {
       // Try real DB stock endpoint first
       const res = await api.get("/stock", { params: { limit: 500 } });
       const raw = res.data?.data;
       // real API: { stock: [...], total: N } or just an array
-      const stockArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.stock) ? raw.stock : []);
+      stockArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.stock) ? raw.stock : []);
+    } catch (e) {
+      console.warn("Fetch real stock API failed (possibly 403), falling back to /inventory", e.message);
+    }
 
+    try {
       if (stockArr.length > 0) {
         setInventory(
           stockArr.map((i) => ({

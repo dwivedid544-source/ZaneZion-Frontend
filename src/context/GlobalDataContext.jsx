@@ -1981,9 +1981,9 @@ export const GlobalDataProvider = ({ children }) => {
   const fetchProcurement = React.useCallback(async () => {
     try {
       const [reqs, quotes, pos] = await Promise.all([
-        api.get("/procurement/requests").catch((e) => ({ data: [] })),
-        api.get("/procurement/quotes").catch((e) => ({ data: [] })),
-        api.get("/procurement/po").catch((e) => ({ data: [] })),
+        api.get("/purchase-requests").catch((e) => ({ data: [] })),
+        api.get("/quotations").catch((e) => ({ data: [] })),
+        api.get("/purchase-orders").catch((e) => ({ data: [] })),
       ]);
       if (reqs.data?.success) {
         setPurchaseRequests(reqs.data.data.map(mapPurchaseRequest));
@@ -2016,7 +2016,7 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchQuotes = React.useCallback(async (params = {}) => {
     try {
-      const res = await api.get("/procurement/quotes", { params });
+      const res = await api.get("/quotations", { params });
       if (res.data?.success) {
         setQuotes(
           res.data.data.map((q) => ({

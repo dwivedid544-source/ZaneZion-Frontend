@@ -35,16 +35,23 @@ const InventoryDashboardRole = () => {
     fetchWarehouses();
   }, [fetchInventory, fetchInventoryAlerts, fetchWarehouses]);
 
-  const lowStockAlerts = useMemo(
-    () =>
-      (inventoryAlerts || []).map((alert) => ({
-        item: alert.name,
-        count: alert.qty,
-        unit: 'Units',
-        type: alert.status === 'Critical' ? 'danger' : 'warning',
-      })),
-    [inventoryAlerts],
-  );
+  const lowStockAlerts = useMemo(() => {
+    return inventory
+      .filter(item => {
+        const qty = parseQty(item.qty ?? item.quantity);
+        const threshold = item.reorderLevel || 5;
+        return qty <= threshold;
+      })
+      .map(item => {
+        const qty = parseQty(item.qty ?? item.quantity);
+        return {
+          item: item.name || 'Unknown Item',
+          count: qty,
+          unit: 'Units',
+          type: qty === 0 ? 'danger' : 'warning'
+        };
+      });
+  }, [inventory]);
 
   const totalSkus = inventory.length;
   const totalUnitsOnHand = useMemo(

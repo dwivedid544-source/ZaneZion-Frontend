@@ -12,7 +12,7 @@ import { useData } from '../../context/GlobalDataContext';
 const ConciergeDashboard = () => {
   const { 
     guestRequests = [], addGuestRequest, events = [], luxuryItems = [], addLuxuryItem, deliveries = [],
-    chauffeurRequests = [], fetchChauffeurRequests,
+    chauffeurRequests = [], fetchChauffeurRequests, clients = [],
     fetchTickets, fetchLuxuryItems, fetchDeliveries, fetchClients 
   } = useData();
 
@@ -44,8 +44,8 @@ const ConciergeDashboard = () => {
   };
 
   // Sort and limit for display
-  const activeRequests = (guestRequests || []).filter(r => r.status !== 'Completed').slice(0, 5);
-  const nextEvents = (events || []).filter(e => e.status !== 'Completed').slice(0, 3);
+  const activeRequests = (guestRequests || []).filter(r => String(r.status || '').toLowerCase() !== 'completed').slice(0, 5);
+  const nextEvents = (events || []).filter(e => String(e.status || '').toLowerCase() !== 'completed').slice(0, 3);
   const highValueAssets = (luxuryItems || []).slice(0, 3);
 
   // Chauffeur-specific stats for Concierge visibility
@@ -92,8 +92,8 @@ const ConciergeDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-        <KpiCard label="Active Requests" value={(guestRequests || []).filter(r => r.status !== 'Completed').length} change="+3" type="increase" icon={Heart} />
-        <KpiCard label="Upcoming Events" value={(events || []).filter(e => e.status !== 'Completed').length} change="Next 7 Days" type="neutral" icon={Calendar} />
+        <KpiCard label="Active Requests" value={(guestRequests || []).filter(r => String(r.status || '').toLowerCase() !== 'completed').length} change="Live" type="increase" icon={Heart} />
+        <KpiCard label="Upcoming Events" value={(events || []).filter(e => String(e.status || '').toLowerCase() !== 'completed').length} change="Next 7 Days" type="neutral" icon={Calendar} />
         <KpiCard
           label="Chauffeur Pending"
           value={pendingChauffeurs.length}
@@ -101,8 +101,8 @@ const ConciergeDashboard = () => {
           type={pendingChauffeurs.length > 0 ? 'decrease' : 'neutral'}
           icon={Car}
         />
-        <KpiCard label="VIP Guests" value="28" change="+2" type="increase" icon={Users} />
-        <KpiCard label="Rating" value="4.9/5" change="+0.1" type="increase" icon={Star} />
+        <KpiCard label="VIP Guests" value={clients.filter(c => c.clientType === 'Personal' || !c.clientType).length || clients.length} change="Verified" type="increase" icon={Users} />
+        <KpiCard label="Vault Assets" value={luxuryItems.length} change="Secured" type="neutral" icon={Gift} />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">

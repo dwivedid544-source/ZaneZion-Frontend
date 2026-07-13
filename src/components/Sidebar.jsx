@@ -119,7 +119,10 @@ const menuItems = {
     { icon: Navigation, label: 'Missions', path: '/dashboard/missions' },
     { icon: Truck, label: 'Deliveries', path: '/dashboard/deliveries' },
     { icon: Package, label: 'Inventory', path: '/dashboard/inventory' },
+    { icon: UserCog, label: 'Staff Management', path: '/dashboard/users' },
     { icon: FileText, label: 'Invoices', path: '/dashboard/invoices' },
+    { icon: CreditCard, label: 'Payroll', path: '/dashboard/payroll' },
+    { icon: BarChart3, label: 'Reports', path: '/dashboard/reports' },
     { icon: Headphones, label: 'Support', path: '/dashboard/support' },
     { icon: Car, label: 'Chauffeur', path: '/dashboard/chauffeur' },
     { icon: Calendar, label: 'Events', path: '/dashboard/events' },
@@ -131,7 +134,10 @@ const menuItems = {
     { icon: FileText, label: 'Purchase Orders', path: '/dashboard/purchase-orders' },
     { icon: Truck, label: 'Fleet', path: '/dashboard/fleet' },
     { icon: Store, label: 'Warehouses', path: '/dashboard/warehouses' },
+    { icon: BarChart3, label: 'Audit Protocol', path: '/dashboard/audits' },
     { icon: Settings, label: 'Settings', path: '/dashboard/settings' },
+    { icon: ShieldCheck, label: 'Security Protocol', path: '/dashboard/roles-permissions' },
+    { icon: Calendar, label: 'Leave & Absence', path: '/dashboard/leave' },
   ],
   saas_client: [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
@@ -233,7 +239,7 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
   const location = useLocation();
   const [isMobile, setIsMobile] = useState(window.innerWidth < 1024);
   const userRole = normalizeRole(role || 'superadmin');
-  
+
   const dbRoleName = typeof currentUser?.role === 'object' ? currentUser?.role?.name : currentUser?.role;
   const displayRole = dbRoleName ? String(dbRoleName).replace(/_/g, ' ') : userRole;
 
@@ -264,12 +270,12 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
   const userPlan = (currentUser?.plan || 'Free').toLowerCase();
   // Personal (customer) users: no Events, no Concierge, no Invoices — pay at checkout; chauffeur + membership
   const planMenuAccess = {
-    free:       ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    basic:      ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    standard:   ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    executive:  ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    platinum:   ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    premium:    ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support', 'Purchase Requests', 'Audit Protocol'],
+    free: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    basic: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    standard: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    executive: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    platinum: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    premium: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support', 'Purchase Requests', 'Audit Protocol'],
     enterprise: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support', 'Purchase Requests', 'Audit Protocol'],
   };
 
@@ -294,12 +300,12 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
       if (['Dashboard', 'Profile', 'Sign Out'].includes(item.label)) {
         return true;
       }
-      
+
       // 2. Bypass DB permissions for external roles, forcing them to use our hardcoded arrays
       if (['staff', 'customer', 'client', 'saas_client', 'concierge', 'inventory', 'logistics'].includes(userRole)) {
         return true;
       }
-      
+
       // 3. Keep DB permission check only for internal staff (admin, procurement, etc.)
       if (hasMenuPermission) {
         return hasMenuPermission(item.label, 'can_view');
@@ -313,10 +319,10 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
 
   const clientBranding = (userRole === 'client' || userRole === 'admin' || userRole === 'saas_client')
     ? (clients || []).find(c =>
-        String(c.id).replace('CLT-', '') === String(currentUser?.clientId).replace('CLT-', '') ||
-        String(c.id) === String(currentUser?.company_id) ||
-        c.name === currentUser?.name
-      )?.branding
+      String(c.id).replace('CLT-', '') === String(currentUser?.clientId).replace('CLT-', '') ||
+      String(c.id) === String(currentUser?.company_id) ||
+      c.name === currentUser?.name
+    )?.branding
     : null;
 
   // Determine display name and tagline for sidebar header
@@ -411,7 +417,7 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
         </nav>
 
         <div className="p-4 md:p-4 pb-6 md:pb-8 border-t border-border mt-auto bg-sidebar/50 backdrop-blur-md shrink-0">
-          <div 
+          <div
             onClick={() => navigate('/dashboard/profile')}
             className="bg-white/5 border border-white/[0.08] rounded-2xl p-3 md:p-4 mb-3 md:mb-4 cursor-pointer hover:bg-white/10 transition-all duration-300"
             title="View Profile"

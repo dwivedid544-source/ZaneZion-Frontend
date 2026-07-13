@@ -7,14 +7,13 @@ export const geocodeLocation = async (query) => {
     
     const fetchGeocode = async (q) => {
         try {
+            const headers = {};
+            if (typeof window === 'undefined') {
+                headers['User-Agent'] = 'ZaneZion-App';
+            }
             const response = await fetch(
                 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
-                {
-                    headers: {
-                        'Accept-Language': 'en',
-                        'User-Agent': 'ZaneZion-App'
-                    }
-                }
+                { headers }
             );
             const data = await response.json();
             if (data && data.length > 0) {

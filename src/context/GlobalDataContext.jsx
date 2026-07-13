@@ -2538,7 +2538,7 @@ export const GlobalDataProvider = ({ children }) => {
 
       // Only fetch roles if the role has Security menu permission or can access users
       if (canAccessRoles || canAccessUsers) {
-        fetches.push(api.get('/roles').then(res => {
+        fetches.push(api.get('/roles?limit=100').then(res => {
           const rawData = res.data?.data;
           const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
           setRoles(rolesArray);

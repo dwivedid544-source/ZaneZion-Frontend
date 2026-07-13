@@ -154,8 +154,10 @@ const Chauffeur = () => {
 
     const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
     /** Admin, concierge, or logistics may approve / assign drivers (client: tenant staff booking on behalf). */
-    const isAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'client'].includes(userRole);
-    const isCustomer = ['customer', 'saas_client'].includes(userRole);
+    const isAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'client', 'saas_client'].includes(userRole);
+    const isCustomer = ['customer'].includes(userRole);
+    const isClientAdmin = ['client', 'saas_client'].includes(userRole);
+    const isFeeLocked = isCustomer || isClientAdmin;
 
     /** Admin-configured base price (Settings → system), fallback to env default */
     const defaultChauffeurFee = useMemo(() => {
@@ -200,7 +202,7 @@ const Chauffeur = () => {
         return ['pending', 'pending_review', 'approved'].includes(k) && !req?.driverName;
     };
     const needsAdminApprove = (req) =>
-        isAdmin && req && !req.driverName && !req.adminApproved && ['pending', 'pending_review'].includes(chauffeurStatusKey(req.status));
+        isAdmin && !isClientAdmin && req && !req.driverName && !req.adminApproved && ['pending', 'pending_review'].includes(chauffeurStatusKey(req.status));
 
     const filteredRequests = chauffeurRequests;
 
@@ -218,10 +220,7 @@ const Chauffeur = () => {
         const selectedClientId = isAdmin ? formData.get('assignClient') : null;
         const selectedClient = isAdmin && selectedClientId ? (clients || []).find(c => String(c.id) === selectedClientId) : null;
         let normalizedFee = 0;
-        if (isAdmin) {
-            const feeInput = parseFloat(formData.get('chauffeurFee') || 0);
-            normalizedFee = Number.isFinite(feeInput) && feeInput >= 0 ? Number(feeInput.toFixed(2)) : 0;
-        } else if (isCustomer) {
+        if (isFeeLocked) {
             const existing = Number(editingRequest?.chauffeurFee ?? editingRequest?.chauffeur_fee ?? editingRequest?.total_amount);
             normalizedFee = editingRequest && Number.isFinite(existing) && existing >= 0
                 ? Number(existing.toFixed(2))
@@ -351,10 +350,10 @@ const Chauffeur = () => {
                 <div>
                     <h1 className="text-3xl font-black tracking-tighter text-white italic uppercase">Chauffeur Protocol</h1>
                     <p className="text-secondary text-xs mt-1 font-black uppercase tracking-[0.2em] opacity-70 italic">
-                        {isAdmin ? 'Elite Fleet Management & Logistic Control' : 'Elite transport & chauffeur protocol'}
+                        {isClientAdmin ? 'Client Chauffeur Protocol & Booking Panel' : (isAdmin ? 'Elite Fleet Management & Logistic Control' : 'Elite transport & chauffeur protocol')}
                     </p>
                 </div>
-                {(isCustomer || hasMenuPermission('Chauffeur', 'can_add')) && (
+                {(isCustomer || isClientAdmin || hasMenuPermission('Chauffeur', 'can_add')) && (
                     <button
                         onClick={() => openModal('create')}
                         className="btn-primary group flex items-center gap-3 px-8 shadow-xl shadow-accent/20"
@@ -374,7 +373,7 @@ const Chauffeur = () => {
                     <div>
                         <h3 className="text-sm font-black text-white italic uppercase tracking-tight">Protocol Status</h3>
                         <p className="text-secondary text-xs font-medium opacity-80 uppercase tracking-widest mt-1">
-                            {isAdmin ? 'System Active' : 'Elite Access Granted'}
+                            {isClientAdmin ? 'Client Portal Active' : (isAdmin ? 'System Active' : 'Elite Access Granted')}
                         </p>
                     </div>
                 </div>
@@ -410,7 +409,7 @@ const Chauffeur = () => {
             <div className="glass-card p-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
                     <h2 className="text-[10px] font-black text-muted uppercase tracking-[0.3em]">
-                        {isAdmin ? 'Fleet Manifest Intelligence' : 'Booking History'}
+                        {isClientAdmin ? 'My Chauffeur Bookings' : (isAdmin ? 'Fleet Manifest Intelligence' : 'Booking History')}
                     </h2>
                     <div className="relative w-full md:w-64">
                         <input
@@ -826,19 +825,21 @@ const Chauffeur = () => {
                                                     <div className="space-y-2">
                                                         <label className="text-[9px] font-black text-muted uppercase tracking-widest">Update Status</label>
                                                         <div className="flex flex-wrap gap-2">
-                                                            {['pending', 'pending_review', 'approved', 'assigned', 'en_route', 'completed', 'cancelled'].map(s => (
-                                                                <button
-                                                                    key={s}
-                                                                    type="button"
-                                                                    onClick={() => updateChauffeurRequest({ ...editingRequest, status: s })}
-                                                                    className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${(editingRequest?.status || '').toLowerCase().replace(/\s+/g, '_') === s
-                                                                        ? 'bg-accent text-black border-accent'
-                                                                        : 'bg-white/5 text-muted border-border hover:text-white hover:border-white/20'
-                                                                        }`}
-                                                                >
-                                                                    {s.replace(/_/g, ' ')}
-                                                                </button>
-                                                            ))}
+                                                            {['pending', 'pending_review', 'approved', 'assigned', 'en_route', 'completed', 'cancelled']
+                                                                .filter(s => !isClientAdmin || ['pending', 'cancelled'].includes(s))
+                                                                .map(s => (
+                                                                    <button
+                                                                        key={s}
+                                                                        type="button"
+                                                                        onClick={() => updateChauffeurRequest({ ...editingRequest, status: s })}
+                                                                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${(editingRequest?.status || '').toLowerCase().replace(/\s+/g, '_') === s
+                                                                            ? 'bg-accent text-black border-accent'
+                                                                            : 'bg-white/5 text-muted border-border hover:text-white hover:border-white/20'
+                                                                            }`}
+                                                                    >
+                                                                        {s.replace(/_/g, ' ')}
+                                                                    </button>
+                                                                ))}
                                                         </div>
                                                     </div>
                                                 </div>
@@ -876,19 +877,19 @@ const Chauffeur = () => {
                                                 </div>
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Due Date (Pickup)</label>
-                                                    <input type="date" name="dueDate" defaultValue={editingRequest?.dueDate} className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                    <input type="date" name="dueDate" defaultValue={editingRequest?.dueDate} required className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
                                                 </div>
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Pickup Time</label>
-                                                    <input type="time" name="pickupTime" defaultValue={editingRequest?.pickupTime} className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                    <input type="time" name="pickupTime" defaultValue={editingRequest?.pickupTime} required className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
                                                 </div>
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Passengers</label>
-                                                    <input type="number" name="numberOfPassengers" min="1" max="10" defaultValue={editingRequest?.numberOfPassengers || 1} placeholder="1" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                    <input type="number" name="numberOfPassengers" min="1" max="10" defaultValue={editingRequest?.numberOfPassengers || 1} required placeholder="1" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
                                                 </div>
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Chauffeur Price (USD)</label>
-                                                    {isCustomer ? (
+                                                    {isFeeLocked ? (
                                                         <>
                                                             <div className="w-full bg-background/80 border border-border rounded-2xl px-5 py-4 text-sm text-white font-bold">
                                                                 ${customerLockedFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -924,6 +925,7 @@ const Chauffeur = () => {
                                                         type="text"
                                                         name="pickupLocation"
                                                         defaultValue={editingRequest?.pickupLocation}
+                                                        required
                                                         className="w-full bg-background border border-border rounded-2xl py-4 pl-14 pr-5 text-sm text-white focus:outline-none focus:border-accent font-bold"
                                                     />
                                                 </div>
@@ -937,6 +939,7 @@ const Chauffeur = () => {
                                                         type="text"
                                                         name="dropLocation"
                                                         defaultValue={editingRequest?.dropLocation}
+                                                        required
                                                         className="w-full bg-background border border-border rounded-2xl py-4 pl-14 pr-5 text-sm text-white focus:outline-none focus:border-accent font-bold"
                                                     />
                                                 </div>
@@ -1048,7 +1051,7 @@ const Chauffeur = () => {
                                                         <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Book For Client</label>
                                                         <select name="assignClient" defaultValue={editingRequest?.clientId || ''} className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer">
                                                             <option value="">Current User ({currentUser?.name})</option>
-                                                            {(clients || []).map(c => (
+                                                            {!isClientAdmin && (clients || []).map(c => (
                                                                 <option key={c.id} value={c.id}>{c.fullName || c.name || c.companyName || c.business_name}</option>
                                                             ))}
                                                         </select>

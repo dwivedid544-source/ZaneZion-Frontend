@@ -10,11 +10,12 @@ const EMPTY_FORM = { name: '', location: '', capacity: '', manager_id: '', statu
 const Warehouses = () => {
   const { hasMenuPermission, users, fetchStaff, currentUser } = useData();
   const userRole = (currentUser?.role?.name || currentUser?.role || '').toUpperCase();
-  const isB2BClient = userRole === 'CLIENT' || userRole === 'BUSINESS_CLIENT';
-  const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'STAFF'].includes(userRole);
-  const canAdd = isAdmin || isB2BClient || hasMenuPermission('Warehouses', 'can_add');
-  const canEdit = isAdmin || isB2BClient || hasMenuPermission('Warehouses', 'can_edit');
-  const canDelete = isAdmin || isB2BClient || hasMenuPermission('Warehouses', 'can_delete');
+  const isInventoryStaff = userRole === 'INVENTORY' || userRole === 'INVENTORY_STAFF';
+  const canEditManager = !isInventoryStaff;
+
+  const canAdd = hasMenuPermission('Warehouses', 'can_add');
+  const canEdit = hasMenuPermission('Warehouses', 'can_edit');
+  const canDelete = hasMenuPermission('Warehouses', 'can_delete');
 
   const { data: whData, isLoading, error } = useWarehouses();
   // API returns: { success, data: { warehouses: [], total, page, totalPages } }
@@ -326,9 +327,9 @@ const Warehouses = () => {
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Manager (User)</label>
-                          <select value={formData.manager_id} onChange={(e) => (isAdmin || isB2BClient) && setFormData({ ...formData, manager_id: e.target.value })}
-                            disabled={!(isAdmin || isB2BClient)}
-                            className={`w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none ${(isAdmin || isB2BClient) ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                          <select value={formData.manager_id} onChange={(e) => canEditManager && setFormData({ ...formData, manager_id: e.target.value })}
+                            disabled={!canEditManager}
+                            className={`w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none ${canEditManager ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                             <option value="">Select facility manager…</option>
                             {(users || []).filter(u => u?.name && (u.role?.name === 'INVENTORY' || u.role === 'INVENTORY')).map(u => (
                               <option key={u.id} value={String(u.id)}>{u.name}{u.role ? ` (${u.role?.name || u.role})` : ''}</option>

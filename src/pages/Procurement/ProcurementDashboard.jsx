@@ -92,10 +92,11 @@ const ProcurementDashboard = () => {
               <p className="text-secondary text-sm py-8 text-center">No purchase requests loaded yet.</p>
             )}
             {reqList.map((req) => {
-              const deptName = typeof req.department === 'object' && req.department !== null ? (req.department.name || '—') : (req.department || '—');
+              const deptName = typeof req.department === 'object' && req.department !== null ? (req.department.name || '—') : (req.department || req.department_name || req.departmentId || '—');
+              const itemName = (Array.isArray(req.items) && req.items.length > 0) ? (req.items[0].name || req.items[0].itemName || req.item || 'Unknown Item') : (req.item || req.title || 'Unknown Item');
               return (
                 <div
-                  key={req.id ?? `req-${req.item}-${deptName}`}
+                  key={req.id ?? req.requestId ?? `req-${itemName}-${deptName}`}
                   className="group bg-white/[0.02] border border-white/5 rounded-2xl p-5 hover:border-accent/30 hover:bg-white/[0.04] transition-all duration-300 shadow-xl"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
@@ -108,10 +109,10 @@ const ProcurementDashboard = () => {
                       </div>
                       <div className="min-w-0">
                         <p className="font-bold text-white text-sm sm:text-base group-hover:text-accent transition-colors truncate">
-                          {req.item}
+                          {itemName}
                         </p>
                         <div className="flex items-center gap-2 mt-1">
-                          <span className="text-[10px] font-black text-muted uppercase tracking-widest">{req.id}</span>
+                          <span className="text-[10px] font-black text-muted uppercase tracking-widest">{req.prNumber || req.requestId || req.id}</span>
                           <span className="text-muted/30">•</span>
                           <span className="text-[10px] font-black text-muted uppercase tracking-widest">{deptName}</span>
                         </div>
@@ -205,10 +206,17 @@ const ProcurementDashboard = () => {
                 const v =
                   vendorList?.find((x) => String(x.id) === String(vid)) ||
                   vendorList?.find((x) => String(x.id) === `VND-00${vid}`);
-                return v?.name ?? '—';
+                return v?.name || v?.vendor_name || v?.business_name || row.vendorName || row.vendor || '—';
               },
             },
-            { header: 'Item', accessor: 'items', render: (row) => row.items?.[0]?.name || row.item || '—' },
+            { 
+              header: 'Item', 
+              accessor: 'items', 
+              render: (row) => {
+                const quoteItems = Array.isArray(row.items) ? row.items : (Array.isArray(row.metadata?.items) ? row.metadata.items : []);
+                return quoteItems?.[0]?.name || row.item || '—';
+              }
+            },
             {
               header: 'Amount',
               accessor: 'total',

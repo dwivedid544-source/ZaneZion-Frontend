@@ -1981,36 +1981,43 @@ export const GlobalDataProvider = ({ children }) => {
   const fetchProcurement = React.useCallback(async () => {
     try {
       const [reqs, quotes, pos] = await Promise.all([
-        api.get("/procurement/requests").catch((e) => ({ data: [] })),
-        api.get("/procurement/quotes").catch((e) => ({ data: [] })),
-        api.get("/procurement/po").catch((e) => ({ data: [] })),
+        api.get("/purchase-requests").catch((e) => ({ data: [] })),
+        api.get("/quotations").catch((e) => ({ data: [] })),
+        api.get("/purchase-orders").catch((e) => ({ data: [] })),
       ]);
-      if (reqs.data?.success) {
-        setPurchaseRequests(reqs.data.data.map(mapPurchaseRequest));
+      if (reqs.data?.success || Array.isArray(reqs.data?.data) || Array.isArray(reqs.data?.data?.purchaseRequests)) {
+        const reqData = Array.isArray(reqs.data?.data) ? reqs.data.data : (reqs.data?.data?.purchaseRequests || []);
+        setPurchaseRequests(reqData.map(mapPurchaseRequest));
       }
-      if (quotes.data?.success) {
+      if (quotes.data?.success || Array.isArray(quotes.data?.data) || Array.isArray(quotes.data?.data?.quotations)) {
+        const quoteData = Array.isArray(quotes.data?.data) ? quotes.data.data : (quotes.data?.data?.quotations || []);
         setQuotes(
-          quotes.data.data.map((q) => ({
+          quoteData.map((q) => ({
             ...q,
             vendorId: q.vendor_id ?? q.vendorId ?? null,
             vendor: q.vendor_name || q.vendor,
             vendorName: q.vendor_name || q.vendor,
             date: q.created_at || q.date,
-            total: parseFloat(q.total_amount || q.total || 0),
+            total: parseFloat(q.amount || q.totalAmount || q.total_amount || q.total || 0),
             validity: q.validity_date || q.validity,
-          })),
+          }))
         );
       }
-      if (pos.data?.success)
+      if (pos.data?.success || Array.isArray(pos.data?.data) || Array.isArray(pos.data?.data?.purchaseOrders)) {
+        const poData = Array.isArray(pos.data?.data) ? pos.data.data : (pos.data?.data?.purchaseOrders || []);
         setPurchaseOrders(
-          pos.data.data.map((po) => ({
+          poData.map((po) => ({
             ...po,
-            paymentTerms: po.payment_terms || po.paymentTerms,
-            items: parsePOItems(po.items),
-          })),
+            vendorId: po.vendor_id ?? po.vendorId ?? null,
+            vendor: po.vendor_name || po.vendor,
+            vendorName: po.vendor_name || po.vendor,
+            date: po.created_at || po.date,
+            total: parseFloat(po.amount || po.totalAmount || po.total_amount || po.total || 0),
+          }))
         );
+      }
     } catch (e) {
-      console.error("Fetch procurement failed", e);
+      console.error("fetchProcurement error", e);
     }
   }, [mapPurchaseRequest]);
 
@@ -2586,10 +2593,14 @@ export const GlobalDataProvider = ({ children }) => {
         // No additional client-side filtering needed — this prevents false notifications for new accounts.
         let notifs = res.data.data || [];
 
-        // TEMPORARY FIX: Ignore default mock notifications that leak from outdated mockApi fallback
-        if (notifs.length === 2 && notifs[0]?.id === 1 && notifs[1]?.id === 2 && notifs[0]?.title === "New Purchase Order") {
-          notifs = [];
-        }
+        // Ignore default mock notifications that leak from outdated mockApi fallback
+        notifs = notifs.filter(n => {
+          const title = n.title || '';
+          const msg = n.message || '';
+          const isDefaultMock1 = title === "New Purchase Order" && msg.includes("PO-001");
+          const isDefaultMock2 = title === "Critical Stock Alert" && msg.includes("Dom Perignon");
+          return !isDefaultMock1 && !isDefaultMock2;
+        });
 
         setNotifications(notifs);
         // Compute unread count directly from the scoped list to prevent phantom badges

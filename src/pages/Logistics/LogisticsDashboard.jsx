@@ -23,7 +23,9 @@ const LogisticsDashboard = () => {
     fleet = [], routes = [], urgentTasks = [], logs = [], dispatchVehicle, 
     deliveries = [], missions = [], dashboardStats, fetchDashboardStats, fetchFleet, fetchRoutes, fetchDeliveries, fetchMissions,
     updateDelivery,
-    hasMenuPermission
+    hasMenuPermission,
+    users = [],
+    fetchStaff
   } = useData();
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
 
@@ -33,7 +35,8 @@ const LogisticsDashboard = () => {
     fetchRoutes();
     fetchDeliveries();
     fetchMissions();
-  }, [fetchDashboardStats, fetchFleet, fetchRoutes, fetchDeliveries, fetchMissions]);
+    fetchStaff();
+  }, [fetchDashboardStats, fetchFleet, fetchRoutes, fetchDeliveries, fetchMissions, fetchStaff]);
 
   // Merge deliveries + project-missions into a single unified dispatch list
   const allDispatchItems = useMemo(() => {
@@ -150,9 +153,9 @@ const LogisticsDashboard = () => {
       {/* Institutional Command Stats - Optimized Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
         {[
-          { label: 'In Progress', value: dashboardStats.activeMissionsCount ?? deliveries.filter(d => d.status === 'In Transit' || d.status === 'Processing' || d.status === 'Dispatched').length, icon: Truck, color: 'text-accent', trend: 'Active' },
-          { label: 'Completed', value: deliveries.filter(d => d.status === 'Delivered' || d.status === 'Completed').length, icon: CheckCircle2, color: 'text-success', trend: 'Success' },
-          { label: 'Halted', value: deliveries.filter(d => d.status === 'Canceled' || d.status === 'Halted').length, icon: AlertTriangle, color: 'text-danger', trend: 'Audit' },
+          { label: 'In Progress', value: dashboardStats.activeMissionsCount ?? deliveries.filter(d => ['in transit', 'processing', 'dispatched', 'in_progress', 'en_route'].includes(String(d.status).toLowerCase())).length, icon: Truck, color: 'text-accent', trend: 'Active' },
+          { label: 'Completed', value: deliveries.filter(d => ['delivered', 'completed', 'success'].includes(String(d.status).toLowerCase())).length, icon: CheckCircle2, color: 'text-success', trend: 'Success' },
+          { label: 'Halted', value: deliveries.filter(d => ['canceled', 'cancelled', 'halted', 'failed', 'on_hold'].includes(String(d.status).toLowerCase())).length, icon: AlertTriangle, color: 'text-danger', trend: 'Audit' },
           { label: 'Availability', value: dashboardStats.availableVehicles !== undefined ? `${((dashboardStats.availableVehicles / (dashboardStats.availableVehicles + (dashboardStats.vehiclesOnMission || 0))) * 100).toFixed(0)}%` : `${fleet.length > 0 ? ((fleet.filter(f => f.status === 'Active').length / fleet.length) * 100).toFixed(0) : 0}%`, icon: Zap, color: 'text-primary', trend: 'Stable' }
         ].map((stat, idx) => (
           <div key={idx} className="glass-card p-4 sm:p-6 border-white/5 relative overflow-hidden group">
@@ -203,7 +206,9 @@ const LogisticsDashboard = () => {
                     </div>
                     <div>
                       <p className="text-[8px] font-black text-muted uppercase tracking-widest">Marine</p>
-                      <p className="text-[10px] sm:text-xs font-bold text-white">4 Vessels</p>
+                      <p className="text-[10px] sm:text-xs font-bold text-white">
+                        {fleet.filter(f => ['vessel', 'boat', 'marine', 'yacht', 'ship'].some(t => (f.type || '').toLowerCase().includes(t))).length} Vessels
+                      </p>
                     </div>
                   </div>
                   <div className="glass-card bg-black/60 border-white/10 p-3 sm:p-4 rounded-xl flex items-center gap-3 backdrop-blur-md shrink-0">
@@ -212,13 +217,13 @@ const LogisticsDashboard = () => {
                     </div>
                     <div>
                       <p className="text-[8px] font-black text-muted uppercase tracking-widest">Staff</p>
-                      <p className="text-[10px] sm:text-xs font-bold text-white">8 Ops</p>
+                      <p className="text-[10px] sm:text-xs font-bold text-white">{users.length} Ops</p>
                     </div>
                   </div>
                 </div>
                 <div className="sm:text-right w-full sm:w-auto">
                   <p className="text-[8px] sm:text-[10px] font-bold text-accent uppercase tracking-widest mb-1">Current Sector</p>
-                  <p className="text-xs sm:text-2xl font-bold text-white tracking-tight truncate">NASSAU HARBOUR MARINA</p>
+                  <p className="text-xs sm:text-2xl font-bold text-white tracking-tight truncate">{routes.length > 0 ? (routes[0].destination || routes[0].name || "NASSAU HARBOUR MARINA").toUpperCase() : "NASSAU HARBOUR MARINA"}</p>
                 </div>
               </div>
             </div>
@@ -230,7 +235,7 @@ const LogisticsDashboard = () => {
               <User className="text-accent" size={22} /> Deployment Monitor
             </h3>
             <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
-              {deliveries.filter(d => d.status === 'In Transit' || d.status === 'Dispatched').map((del, i) => (
+              {deliveries.filter(d => ['in transit', 'dispatched', 'in_progress', 'en_route'].includes(String(d.status).toLowerCase())).map((del, i) => (
                 <div key={i} className="p-4 bg-white/[0.01] border border-white/5 rounded-2xl flex flex-col sm:flex-row gap-5 items-start sm:items-center justify-between group hover:border-accent/40 transition-all">
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 bg-accent/5 border border-accent/20 rounded-xl flex items-center justify-center text-accent group-hover:scale-105 transition-transform shrink-0">
@@ -468,13 +473,16 @@ const LogisticsDashboard = () => {
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="text-[9px] font-black text-muted uppercase tracking-[0.2em] ml-1">Specialist On-Board</label>
-              <input
-                type="text"
+              <select
                 value={dispatchForm.driver}
                 onChange={(e) => setDispatchForm({ ...dispatchForm, driver: e.target.value })}
-                className="w-full bg-white/[0.02] border border-white/10 rounded-2xl px-4 py-4 text-xs sm:text-sm focus:border-accent outline-none font-black text-white placeholder:text-muted/30"
-                placeholder="Ex: Unit 7 Operator"
-              />
+                className="w-full bg-white/[0.02] border border-white/10 rounded-2xl px-4 py-4 text-xs sm:text-sm focus:border-accent outline-none font-black text-white transition-all hover:bg-white/[0.05]"
+              >
+                <option value="">Select Specialist...</option>
+                {users.map(u => (
+                  <option key={u.id} value={u.id} className="bg-sidebar">{u.firstName} {u.lastName} ({u.role?.name || 'Staff'})</option>
+                ))}
+              </select>
             </div>
 
             <div className="space-y-2 md:col-span-1">

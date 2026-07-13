@@ -222,7 +222,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             const isChauffeur = String(effectiveOrder.orderType || effectiveOrder.type || '').toLowerCase() === 'chauffeur';
             const firstCustom = (meta?.customItems && meta.customItems[0]) || {};
 
-            let rawItems = effectiveOrder.items || effectiveOrder.customItems || meta?.customItems;
+            let rawItems = (effectiveOrder.items && effectiveOrder.items.length > 0) ? effectiveOrder.items : (effectiveOrder.customItems || meta?.customItems || []);
             if (typeof rawItems === 'string') {
                 try {
                     rawItems = JSON.parse(rawItems);
@@ -304,7 +304,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 amenities: effectiveOrder.amenities || (firstCustom.amenities ? (Array.isArray(firstCustom.amenities) ? firstCustom.amenities.join(', ') : firstCustom.amenities) : '')
             });
         }
-    }, [isOpen, effectiveOrder, modalType]);
+    }, [isOpen, effectiveOrder, modalType, customerOnlyForDropdown]);
 
     useEffect(() => {
         if (currentModalType === 'view') return;

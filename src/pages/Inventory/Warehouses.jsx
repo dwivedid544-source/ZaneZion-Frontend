@@ -10,7 +10,8 @@ const EMPTY_FORM = { name: '', location: '', capacity: '', manager_id: '', statu
 const Warehouses = () => {
   const { hasMenuPermission, users, fetchStaff, currentUser } = useData();
   const userRole = (currentUser?.role?.name || currentUser?.role || '').toUpperCase();
-  const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'STAFF'].includes(userRole);
+  const isInventoryStaff = userRole === 'INVENTORY' || userRole === 'INVENTORY_STAFF';
+  const canEditManager = !isInventoryStaff;
 
   const { data: whData, isLoading, error } = useWarehouses();
   // API returns: { success, data: { warehouses: [], total, page, totalPages } }
@@ -322,9 +323,9 @@ const Warehouses = () => {
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Manager (User)</label>
-                          <select value={formData.manager_id} onChange={(e) => isAdmin && setFormData({ ...formData, manager_id: e.target.value })}
-                            disabled={!isAdmin}
-                            className={`w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+                          <select value={formData.manager_id} onChange={(e) => canEditManager && setFormData({ ...formData, manager_id: e.target.value })}
+                            disabled={!canEditManager}
+                            className={`w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none ${canEditManager ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                             <option value="">Select facility manager…</option>
                             {(users || []).filter(u => u?.name && (u.role?.name === 'INVENTORY' || u.role === 'INVENTORY')).map(u => (
                               <option key={u.id} value={String(u.id)}>{u.name}{u.role ? ` (${u.role?.name || u.role})` : ''}</option>

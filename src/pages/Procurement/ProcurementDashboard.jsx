@@ -205,20 +205,10 @@ const ProcurementDashboard = () => {
                 const v =
                   vendorList?.find((x) => String(x.id) === String(vid)) ||
                   vendorList?.find((x) => String(x.id) === `VND-00${vid}`);
-                return v?.name || v?.business_name || row.vendorName || row.vendor || '—';
+                return v?.name ?? '—';
               },
             },
-            { 
-              header: 'Item', 
-              accessor: 'items', 
-              render: (row) => {
-                let parsed = row.items;
-                if (typeof parsed === 'string') {
-                    try { parsed = JSON.parse(parsed); } catch(e) { parsed = []; }
-                }
-                return parsed?.[0]?.name || parsed?.[0]?.item_name || row.item || '—';
-              } 
-            },
+            { header: 'Item', accessor: 'items', render: (row) => row.items?.[0]?.name || row.item || '—' },
             {
               header: 'Amount',
               accessor: 'total',

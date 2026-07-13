@@ -184,3 +184,14 @@ export const useUpdatePurchaseOrder = () => {
     onSuccess: () => queryClient.invalidateQueries(['purchaseOrders'])
   });
 };
+
+export const useDeletePurchaseOrder = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => {
+      const res = await api.delete(`/purchase-orders/${id}`);
+      return res.data;
+    },
+    onSuccess: () => queryClient.invalidateQueries(['purchaseOrders'])
+  });
+};

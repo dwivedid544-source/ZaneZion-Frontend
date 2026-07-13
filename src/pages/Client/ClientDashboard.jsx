@@ -21,7 +21,7 @@ const ClientDashboard = () => {
     orders, invoices, settleInvoice, currentUser, clients, inventory = [], deliveries = [],
     chauffeurRequests = [], fetchChauffeurRequests,
     fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats,
-    events = [], fetchTickets, updateClient
+    events = [], fetchTickets, updateClient, guestRequests = [], luxuryItems = [], fetchLuxuryItems
   } = useData();
   const navigate = useNavigate();
 
@@ -34,7 +34,8 @@ const ClientDashboard = () => {
     fetchDashboardStats();
     if (fetchTickets) fetchTickets();
     if (fetchChauffeurRequests) fetchChauffeurRequests();
-  }, [fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats, fetchTickets, fetchChauffeurRequests]);
+    if (fetchLuxuryItems) fetchLuxuryItems();
+  }, [fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats, fetchTickets, fetchChauffeurRequests, fetchLuxuryItems]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('add');
@@ -70,12 +71,18 @@ const ClientDashboard = () => {
   );
   const activeOrders = (clientOrders || []).filter(o => !['Delivered', 'Cancelled', 'Completed'].includes(o.status));
 
-  // Personal Assets (Inventory items issued to this client)
-  const personalAssets = (inventory || []).filter(item =>
-    item.inventoryType === 'Client' && (
-      String(item.clientId) === String(clientData.id) ||
-      item.issuedTo === clientData.name
-    )
+  const clientGuestRequests = (guestRequests || []).filter(req =>
+    String(req.clientId) === String(clientData.id) ||
+    String(req.company_id) === String(clientData.id) ||
+    req.clientName === clientData.name ||
+    req.guest === clientData.name
+  );
+
+  // Personal Assets (Luxury items stored for this client)
+  const personalAssets = (luxuryItems || []).filter(item =>
+    String(item.client_id) === String(clientData.id) ||
+    String(item.clientId) === String(clientData.id) ||
+    item.owner === clientData.name || item.owner === clientData.business_name
   );
 
   // Marketplace Highlights
@@ -416,13 +423,13 @@ const ClientDashboard = () => {
             <div className="glass-card p-6 sm:p-8">
               <h3 className="text-lg font-black text-white italic uppercase tracking-tighter mb-6">Concierge Active Requests</h3>
               <div className="space-y-3">
-                {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).slice(0, 2).map((event, i) => (
+                {clientGuestRequests.slice(0, 2).map((req, i) => (
                   <div key={i} className="p-4 bg-white/5 border border-border rounded-xl">
-                    <p className="text-sm font-black text-white italic">{event.title || event.name}</p>
-                    <p className="text-[10px] text-accent font-black uppercase tracking-widest mt-1">{event.date} - {event.status || 'Scheduled'}</p>
+                    <p className="text-sm font-black text-white italic">{req.request || req.title || req.name}</p>
+                    <p className="text-[10px] text-accent font-black uppercase tracking-widest mt-1">{req.date} - {req.status || 'Pending'}</p>
                   </div>
                 ))}
-                {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).length === 0 && (
+                {clientGuestRequests.length === 0 && (
                   <div className="p-4 bg-white/[0.02] border border-border rounded-xl opacity-40 text-xs text-center italic py-10">
                     <p className="text-muted text-[10px] font-black uppercase">No active concierge logs found.</p>
                   </div>

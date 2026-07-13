@@ -5,7 +5,7 @@ import { useWarehouses, useCreateWarehouse, useUpdateWarehouse, useDeleteWarehou
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 
-const EMPTY_FORM = { name: '', location: '', capacity: 0, manager_id: '', status: 'active' };
+const EMPTY_FORM = { name: '', location: '', capacity: '', manager_id: '', status: 'active' };
 
 const Warehouses = () => {
   const { hasMenuPermission, users, fetchStaff } = useData();
@@ -32,7 +32,7 @@ const Warehouses = () => {
         id: wh.id,
         name: wh.name || '',
         location: wh.location || '',
-        capacity: wh.capacity ?? 0,
+        capacity: wh.capacity != null ? String(wh.capacity) : '',
         status: wh.status || 'active',
         manager_id: wh.manager?.userId != null ? String(wh.manager.userId) : ''
       });
@@ -49,7 +49,7 @@ const Warehouses = () => {
       const payload = {
         name: formData.name,
         location: formData.location || null,
-        capacity: formData.capacity !== undefined ? Number(formData.capacity) : 0,
+        capacity: formData.capacity !== '' && formData.capacity !== undefined ? Number(formData.capacity) : 0,
         status: formData.status || 'active',
         managerId: formData.manager_id ? Number(formData.manager_id) : null
       };
@@ -326,8 +326,14 @@ const Warehouses = () => {
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Capacity (%)</label>
-                          <input type="number" value={formData.capacity}
-                            onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 0 })}
+                          <input type="text" value={formData.capacity}
+                            onChange={(e) => {
+                              let val = e.target.value.replace(/\D/g, '');
+                              if (val.length > 1 && val.startsWith('0')) {
+                                val = val.replace(/^0+/, '');
+                              }
+                              setFormData({ ...formData, capacity: val });
+                            }}
                             className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent" />
                         </div>
                       </div>

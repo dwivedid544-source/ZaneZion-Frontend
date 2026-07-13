@@ -1,12 +1,31 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/GlobalDataContext';
-import { Calendar, Check, X as CloseIcon, Search, Clock, User } from 'lucide-react';
+import { Calendar, Check, X as CloseIcon, Search, Clock, User, Plus, Edit2, Trash2 } from 'lucide-react';
 import StatusBadge from '../../components/StatusBadge';
+import { normalizeRole } from '../../utils/authUtils';
+import Modal from '../../components/Modal';
+import CustomDatePicker from '../../components/CustomDatePicker';
+import { swalSuccess, swalError, swalConfirm } from '../../utils/swal';
 
 const LeaveManagement = () => {
-  const { leaveRequests, updateLeaveRequest, fetchStaff, fetchLeaveRequests } = useData();
+  const {
+    leaveRequests,
+    fetchLeaveRequests,
+    addLeaveRequest,
+    updateLeaveRequest,
+    deleteLeaveRequest,
+    fetchStaff,
+    currentUser
+  } = useData();
+
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [isLeaveModalOpen, setIsLeaveModalOpen] = useState(false);
+  const [leaveFormData, setLeaveFormData] = useState({ type: 'Vacation', duration: 'Full Day', hours: 8, start: '', end: '', reason: '' });
+  const [editingLeaveRequest, setEditingLeaveRequest] = useState(null);
+
+  const userRole = normalizeRole(currentUser?.role);
+  const isClientAdmin = ['client', 'saas_client'].includes(userRole);
 
   useEffect(() => {
     fetchStaff();
@@ -21,7 +40,9 @@ const LeaveManagement = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const filtered = leaveRequests.filter(r => {
+  const myRequests = leaveRequests.filter(r => !isClientAdmin || r.userId === currentUser?.id);
+
+  const filtered = myRequests.filter(r => {
     const matchesFilter = filter === 'all' || r.status?.toLowerCase() === filter;
     const matchesSearch = !searchTerm ||
       r.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -30,10 +51,10 @@ const LeaveManagement = () => {
   });
 
   const stats = {
-    total: leaveRequests.length,
-    pending: leaveRequests.filter(r => r.status?.toLowerCase() === 'pending').length,
-    approved: leaveRequests.filter(r => r.status?.toLowerCase() === 'approved').length,
-    rejected: leaveRequests.filter(r => r.status?.toLowerCase() === 'rejected').length,
+    total: myRequests.length,
+    pending: myRequests.filter(r => r.status?.toLowerCase() === 'pending').length,
+    approved: myRequests.filter(r => r.status?.toLowerCase() === 'approved').length,
+    rejected: myRequests.filter(r => r.status?.toLowerCase() === 'rejected').length,
   };
 
   return (
@@ -41,8 +62,22 @@ const LeaveManagement = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Leave & Absence</h1>
-          <p className="text-secondary mt-1">Review and manage staff leave requests.</p>
+          <p className="text-secondary mt-1">
+            {isClientAdmin ? 'Submit and track your absence requests.' : 'Review and manage staff leave requests.'}
+          </p>
         </div>
+        {isClientAdmin && (
+          <button
+            onClick={() => {
+              setEditingLeaveRequest(null);
+              setLeaveFormData({ type: 'Vacation', duration: 'Full Day', hours: 8, start: '', end: '', reason: '' });
+              setIsLeaveModalOpen(true);
+            }}
+            className="btn-primary flex items-center gap-2"
+          >
+            <Plus size={16} /> Request Absence
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -113,7 +148,7 @@ const LeaveManagement = () => {
                 </div>
                 <div className="flex items-center justify-between w-full md:w-auto gap-3">
                   <StatusBadge status={req.status} />
-                  {(req.status === 'Pending' || req.status === 'pending') && (
+                  {!isClientAdmin && (req.status === 'Pending' || req.status === 'pending') && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => updateLeaveRequest({ ...req, status: 'approved' })}
@@ -131,12 +166,144 @@ const LeaveManagement = () => {
                       </button>
                     </div>
                   )}
+                  {isClientAdmin && (req.status === 'Pending' || req.status === 'pending') && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          setEditingLeaveRequest(req);
+                          setLeaveFormData({
+                            type: req.type || 'Vacation',
+                            duration: req.hours === 4 ? 'Half Day' : 'Full Day',
+                            hours: req.hours || 8,
+                            start: req.start || '',
+                            end: req.end || '',
+                            reason: req.reason || ''
+                          });
+                          setIsLeaveModalOpen(true);
+                        }}
+                        className="p-2.5 bg-white/5 border border-border rounded-lg text-accent hover:bg-accent/10 transition-all"
+                        title="Edit Leave Request"
+                      >
+                        <Edit2 size={16} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          swalConfirm(
+                            'Delete Request',
+                            'Are you sure you want to delete this leave request?'
+                          ).then(async (result) => {
+                            if (result.isConfirmed) {
+                              try {
+                                await deleteLeaveRequest(req.id);
+                                swalSuccess('Deleted', 'Leave request has been successfully deleted.');
+                              } catch (err) {
+                                swalError('Error', err.message || 'Could not delete request.');
+                              }
+                            }
+                          });
+                        }}
+                        className="p-2.5 bg-white/5 border border-danger/40 text-danger hover:bg-danger/10 rounded-lg transition-all"
+                        title="Delete Leave Request"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
             ))
           )}
         </div>
       </div>
+      {isClientAdmin && (
+        <Modal
+          isOpen={isLeaveModalOpen}
+          onClose={() => setIsLeaveModalOpen(false)}
+          title={editingLeaveRequest ? "Edit Absence Request" : "Bespoke Absence Request"}
+        >
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted uppercase">Absence Category</label>
+                <select
+                  className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
+                  value={leaveFormData.type}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, type: e.target.value })}
+                >
+                  <option>Sick Leave</option>
+                  <option>Personal Leave</option>
+                  <option>Vacation</option>
+                  <option>Bereavement</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted uppercase">Duration Protocol</label>
+                <select
+                  className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
+                  value={leaveFormData.duration || 'Full Day'}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, duration: e.target.value, hours: e.target.value === 'Half Day' ? 4 : 8 })}
+                >
+                  <option>Full Day</option>
+                  <option>Half Day</option>
+                </select>
+              </div>
+              <div className="space-y-1">
+                <CustomDatePicker
+                  label="Commencement Date"
+                  selectedDate={leaveFormData.start}
+                  onChange={(date) => setLeaveFormData({ ...leaveFormData, start: date })}
+                />
+              </div>
+              <div className="space-y-1">
+                <CustomDatePicker
+                  label="Conclusion Date"
+                  selectedDate={leaveFormData.end}
+                  onChange={(date) => setLeaveFormData({ ...leaveFormData, end: date })}
+                />
+              </div>
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-[10px] font-bold text-muted uppercase">Reason</label>
+                <textarea
+                  className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none resize-none"
+                  rows={2}
+                  value={leaveFormData.reason || ''}
+                  onChange={(e) => setLeaveFormData({ ...leaveFormData, reason: e.target.value })}
+                  placeholder="State reason for absence..."
+                />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end pt-4">
+              <button onClick={() => setIsLeaveModalOpen(false)} className="btn-secondary">Cancel</button>
+              <button
+                onClick={async () => {
+                  try {
+                    if (editingLeaveRequest) {
+                      await updateLeaveRequest({
+                        id: editingLeaveRequest.id,
+                        ...leaveFormData
+                      });
+                      swalSuccess('Updated', 'Absence request has been successfully updated.');
+                    } else {
+                      await addLeaveRequest({
+                        ...leaveFormData,
+                        name: currentUser?.name,
+                        userId: currentUser?.id
+                      });
+                      swalSuccess('Submitted', 'Absence request has been successfully submitted.');
+                    }
+                  } catch (err) {
+                    swalError('Error', err.message || 'Submission failed.');
+                  }
+                  setIsLeaveModalOpen(false);
+                }}
+                className="btn-primary"
+              >
+                {editingLeaveRequest ? "Save Changes" : "Submit Requisition"}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 };

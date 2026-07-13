@@ -196,7 +196,12 @@ const Events = () => {
         </div>
         <div className="glass-card p-6 border-accent/10">
           <p className="text-xs text-secondary uppercase font-bold mb-1">Active Events</p>
-          <p className="text-3xl font-bold">{events.filter(e => e.status === 'Active' || e.status === 'Planning').length} Active</p>
+          <p className="text-3xl font-bold">
+            {events.filter(e => {
+              const s = String(e.status || '').toLowerCase();
+              return s === 'active' || s === 'confirmed' || s === 'in_progress' || s === 'setup';
+            }).length} Active
+          </p>
         </div>
       </div>
 

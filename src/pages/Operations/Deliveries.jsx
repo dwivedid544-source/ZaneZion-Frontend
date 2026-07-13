@@ -380,10 +380,29 @@ const Deliveries = () => {
           quantity: item.qty || item.quantity || 1
         };
       });
+      // Resolve clientId: SaaS Clients may not pick one from the form dropdown,
+      // so fall back to the logged-in user's own client association.
+      const resolvedClientId =
+        (finalData.clientId && Number(String(finalData.clientId).replace(/\D/g, ''))) ||
+        (currentUser?.clientId ? Number(currentUser.clientId) : null) ||
+        (currentUser?.company_id ? Number(currentUser.company_id) : null) ||
+        null;
+
+      // Resolve orderId: the auto-generated "ORD-YYYY-XXXX" string should be
+      // sent as-is (not stripped to digits) so the backend can look it up by orderNumber.
+      const rawOrderId = finalData.orderId ? String(finalData.orderId).trim() : null;
+      const numericOrderId = rawOrderId ? Number(rawOrderId.replace(/\D/g, '')) : null;
+      // Use numeric id only when it is a pure integer reference (≤ 8 digits typical DB id).
+      // When the string is an auto-generated ref like "ORD-2025-1234", send null so the
+      // backend falls through to the ad-hoc order creation path.
+      const resolvedOrderId = (rawOrderId && /^\d+$/.test(rawOrderId) && numericOrderId > 0)
+        ? numericOrderId
+        : null;
+
       // Create Delivery via backend
       createDeliveryMutation.mutateAsync({
-        orderId: finalData.orderId ? Number(String(finalData.orderId).replace(/\D/g, '')) : null,
-        clientId: finalData.clientId ? Number(String(finalData.clientId).replace(/\D/g, '')) : null,
+        orderId: resolvedOrderId,
+        clientId: resolvedClientId,
         items: itemsWithRealIds,
         warehouseId: matchedWarehouse ? matchedWarehouse.id : undefined,
         remarks: JSON.stringify(manifestMeta),
@@ -548,7 +567,7 @@ const Deliveries = () => {
           <h1 className="text-3xl font-bold tracking-tight">Institutional Logistics</h1>
           <p className="text-secondary mt-1">Multi-modal dispatch coordination with verified proof of delivery.</p>
         </div>
-        {hasMenuPermission('Deliveries', 'can_add') && (
+        {(hasMenuPermission('Deliveries', 'can_add') || ['saas_client', 'client', 'business_client'].includes(portalRole)) && (
           <button className="btn-primary flex items-center gap-2" onClick={() => handleAction('add', {})}>
             <Plus size={16} /> Deploy New Mission
           </button>

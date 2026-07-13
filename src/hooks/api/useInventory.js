@@ -6,7 +6,9 @@ export const useItems = (page = 1, limit = 10, search = '') => {
     queryKey: ['items', page, limit, search],
     queryFn: async () => {
       const res = await api.get('/items', { params: { page, limit, search } });
-      return res.data?.data || [];
+      const raw = res.data?.data;
+      // API returns { items: [...], total: N } — extract items array
+      return Array.isArray(raw) ? raw : (Array.isArray(raw?.items) ? raw.items : []);
     }
   });
 };

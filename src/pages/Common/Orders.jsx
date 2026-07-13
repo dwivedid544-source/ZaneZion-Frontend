@@ -121,10 +121,13 @@ const Orders = () => {
         await updateOrderMutation.mutateAsync({ id: selectedOrder.id, orderData: formData });
       }
       setIsModalOpen(false);
+      swalSuccess('Order saved successfully.');
     } catch (err) {
-      alert('Failed to save order.');
+      const errMsg = err?.response?.data?.message || err?.message || 'Failed to save order.';
+      swalError(errMsg);
     }
   };
+
 
 
   const handleDelete = async (id) => {
@@ -355,7 +358,7 @@ const Orders = () => {
                         state: {
                           prefillOrderId: oid,
                           orderId: orderRef,
-                          items: item.items,
+                          items: (item.items && item.items.length > 0) ? item.items : (item.customItems || item.metadata?.customItems || []),
                           client: item.client,
                           clientId: item.clientId || item.client_id || item.customer_id || '',
                           customerId: item.customer_id || item.clientId || item.client_id || '',
@@ -364,7 +367,7 @@ const Orders = () => {
                           dropLocation: item.location || item.delivery_address || item.deliveryAddress || '',
                           mode: item.deliveryType || item.delivery_mode || item.deliveryMode || item.mode || 'Road',
                           deliveryInstructions: item.delivery_instructions || item.deliveryInstructions || '',
-                          deliveryFee: item.total ?? item.total_amount ?? item.amount,
+                          deliveryFee: 0,
                         }
                       });
                     }}

@@ -10,6 +10,7 @@ import {
 import { Link } from 'react-router-dom';
 import Pagination from '../../components/Common/Pagination';
 import { useDeliveries, useCreateDelivery, useUpdateDelivery, useCancelDelivery, useDeleteDelivery, useCreateMission, useStartMission, useSubmitPOD } from '../../hooks/api/useLogistics';
+import { useItems } from '../../hooks/api/useInventory';
 
 import { useData } from '../../context/GlobalDataContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
@@ -32,7 +33,9 @@ function displayDeliveryStatus(raw) {
 }
 
 const Deliveries = () => {
-  const { users, fleet, fetchFleet, fetchStaff, hasMenuPermission, warehouses, fetchWarehouses, currentUser, clients = [], fetchClients, customerUsers = [], fetchCustomerUsers } = useData();
+  const { users, fleet, fetchFleet, fetchStaff, hasMenuPermission, warehouses, fetchWarehouses, currentUser, clients = [], fetchClients, customerUsers = [], fetchCustomerUsers, inventory } = useData();
+  const { data: dbItemsData } = useItems(1, 100);
+  const dbItems = Array.isArray(dbItemsData) ? dbItemsData : (Array.isArray(dbItemsData?.items) ? dbItemsData.items : []);
 
   const [searchTerm, setSearchTerm] = useState('');
   const [debounceSearch, setDebounceSearch] = useState('');
@@ -366,15 +369,23 @@ const Deliveries = () => {
         assigned_driver: finalData.assigned_driver || null,
         clientId: finalData.clientId || ''
       };
+      const matchedWarehouse = (warehouses || []).find(w => w.name === finalData.pickupLocation);
+      const itemsWithRealIds = finalData.items.map(item => {
+        const matchedItem = (dbItems || []).find(i => 
+          String(i.name || '').trim().toLowerCase() === String(item.name || '').trim().toLowerCase()
+        );
+        return {
+          orderItemId: item.orderItemId || item.id || null,
+          itemId: matchedItem ? matchedItem.id : (item.itemId || item.id || 1),
+          quantity: item.qty || item.quantity || 1
+        };
+      });
       // Create Delivery via backend
       createDeliveryMutation.mutateAsync({
         orderId: finalData.orderId ? Number(String(finalData.orderId).replace(/\D/g, '')) : null,
         clientId: finalData.clientId ? Number(String(finalData.clientId).replace(/\D/g, '')) : null,
-        items: finalData.items.map(item => ({
-          orderItemId: item.orderItemId || item.id || null,
-          itemId: item.itemId || item.id || 1,
-          quantity: item.qty || item.quantity || 1
-        })),
+        items: itemsWithRealIds,
+        warehouseId: matchedWarehouse ? matchedWarehouse.id : undefined,
         remarks: JSON.stringify(manifestMeta),
         missionType: finalData.missionType,
         transportMode: finalData.mode,

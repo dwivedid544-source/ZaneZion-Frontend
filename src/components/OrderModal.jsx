@@ -24,6 +24,7 @@ const clampDueDateToRequest = (requestDate, dueDate) => {
 const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelete, initialData, role }) => {
     const { currentUser, marketplaceVendors = [], clients, fetchVendors, fetchClients, customerUsers, fetchCustomerUsers } = useData();
     const [currentModalType, setCurrentModalType] = useState(modalType);
+    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
     const { data: fetchedOrderData, isLoading: isFetchingDetails } = useOrder(
         isOpen && selectedOrder?.id && modalType !== 'add' ? selectedOrder.id : null
@@ -33,6 +34,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
     useEffect(() => {
         setCurrentModalType(modalType);
+        setIsDropdownOpen(false);
     }, [modalType, isOpen]);
 
     const handleCancel = () => {
@@ -57,10 +59,20 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         }
     }, [isOpen, fetchVendors, fetchClients, fetchCustomerUsers]);
 
-    // Create-order picker should list only actual customers/personal accounts (no business or SaaS client accounts).
+    // Staff/concierge/admin roles see ALL clients (business + personal).
+    // Customer/client roles see only personal accounts.
+    const isStaffRole = ['superadmin', 'admin', 'operations', 'procurement', 'logistics', 'inventory', 'concierge', 'staff'].includes(portalRole);
+
     const customerOnlyForDropdown = React.useMemo(() => {
         const fromClients = (clients || [])
             .filter((c) => {
+                // Filter out non-active clients
+                const status = String(c.status || '').trim().toLowerCase();
+                if (status !== 'active') return false;
+
+                // Staff roles: show all clients regardless of type
+                if (isStaffRole) return true;
+                // Customer/non-staff: show only personal/individual accounts
                 const ct = String(c.client_type || c.clientType || '').trim().toLowerCase();
                 const tt = String(c.tenant_type || c.tenantType || '').trim().toLowerCase();
                 const role = String(c.role || c.user_role || '').trim().toLowerCase();
@@ -71,18 +83,26 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 rawId: c.id,
                 name: c.name || c.companyName || c.contactPerson || c.business_name || c.company_name || '',
                 email: c.email,
-                type: 'Personal Account',
+                type: isStaffRole
+                    ? (String(c.client_type || c.clientType || 'Business').trim() || 'Business')
+                    : 'Personal Account',
                 source: 'client',
             }));
 
-        const fromUsers = (customerUsers || []).map((u) => ({
-            id: `user_${u.id}`,
-            rawId: u.id,
-            name: u.name,
-            email: u.email,
-            type: 'Personal Account',
-            source: 'user',
-        }));
+        const fromUsers = (customerUsers || [])
+            .filter((u) => {
+                // Filter out non-active users
+                const status = String(u.status || '').trim().toLowerCase();
+                return status === 'active';
+            })
+            .map((u) => ({
+                id: `user_${u.id}`,
+                rawId: u.id,
+                name: u.name,
+                email: u.email,
+                type: 'Personal Account',
+                source: 'user',
+            }));
 
         // Deduplicate by email first, then by name fallback.
         const seen = new Set();
@@ -94,7 +114,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         });
 
         return merged;
-    }, [clients, customerUsers]);
+    }, [clients, customerUsers, isStaffRole]);
     const [formData, setFormData] = useState({
         client: '',
         clientId: '',
@@ -191,7 +211,18 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 amenities: initialData?.amenities || ''
             });
         } else if (effectiveOrder) {
-            let rawItems = effectiveOrder.items || effectiveOrder.customItems || effectiveOrder.metadata?.customItems;
+            let meta = effectiveOrder.metadata;
+            if (typeof meta === 'string') {
+                try {
+                    meta = JSON.parse(meta);
+                } catch (e) {
+                    meta = {};
+                }
+            }
+            const isChauffeur = String(effectiveOrder.orderType || effectiveOrder.type || '').toLowerCase() === 'chauffeur';
+            const firstCustom = (meta?.customItems && meta.customItems[0]) || {};
+
+            let rawItems = effectiveOrder.items || effectiveOrder.customItems || meta?.customItems;
             if (typeof rawItems === 'string') {
                 try {
                     rawItems = JSON.parse(rawItems);
@@ -202,16 +233,27 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             if (!Array.isArray(rawItems)) {
                 rawItems = [];
             }
-            let parsedItems = rawItems.map(itm => {
-                const name = itm.name || itm.item?.name || '';
-                const qty = itm.qty || itm.quantity || 1;
-                const price = itm.price !== undefined ? itm.price : (itm.unitPrice !== undefined ? itm.unitPrice : '');
-                return {
-                    name,
-                    qty: Number(qty),
-                    price: price !== '' ? Number(price) : ''
-                };
-            });
+
+            let parsedItems = [];
+            if (isChauffeur) {
+                parsedItems = [{
+                    name: `Chauffeur Service (${firstCustom.serviceType || 'Ride'})`,
+                    qty: 1,
+                    price: firstCustom.chauffeurFee || firstCustom.chauffeur_fee || 0
+                }];
+            } else {
+                parsedItems = rawItems.map(itm => {
+                    const name = itm.name || itm.item?.name || '';
+                    const qty = itm.qty || itm.quantity || 1;
+                    const price = itm.price !== undefined ? itm.price : (itm.unitPrice !== undefined ? itm.unitPrice : '');
+                    return {
+                        name,
+                        qty: Number(qty),
+                        price: price !== '' ? Number(price) : ''
+                    };
+                });
+            }
+
             if (parsedItems.length === 0 && (effectiveOrder.product || effectiveOrder.qty)) {
                 parsedItems = [{
                     name: effectiveOrder.product || '',
@@ -230,12 +272,16 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             const matchedDropdown = customerOnlyForDropdown.find(c =>
                 String(c.rawId) === String(existingClientId)
             );
+            
+            const dropLoc = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || firstCustom.dropLocation || firstCustom.location || '';
+            const pickLoc = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || '';
+
             setFormData({
                 client: (typeof effectiveOrder.client === 'object' && effectiveOrder.client !== null ? (effectiveOrder.client.companyName || effectiveOrder.client.name || '') : effectiveOrder.client) || effectiveOrder.customer_name || effectiveOrder.created_by_name || '',
                 clientId: existingClientId,
                 clientDropdownId: matchedDropdown?.id || '',
                 items: parsedItems,
-                location: effectiveOrder.location || '',
+                location: dropLoc,
                 status: coerceOrderStatusToApi(effectiveOrder.status, 'created'),
                 requestDate,
                 dueDate,
@@ -245,17 +291,17 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 isPreferredVendor: !!(effectiveOrder.vendorId || effectiveOrder.vendor_id),
                 type: effectiveOrder.orderType || effectiveOrder.type || 'Custom Order',
                 deliveryType: effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road',
-                pickupLocation: effectiveOrder.pickupLocation || effectiveOrder.pickup_location || '',
-                pickupTime: effectiveOrder.pickupTime || '',
+                pickupLocation: pickLoc,
+                pickupTime: effectiveOrder.pickupTime || firstCustom.pickupTime || '',
                 totalDistance: effectiveOrder.totalDistance || effectiveOrder.total_distance || '',
-                serviceType: effectiveOrder.serviceType || 'One Way',
-                returnDate: effectiveOrder.returnDate || '',
-                returnTime: effectiveOrder.returnTime || '',
+                serviceType: effectiveOrder.serviceType || firstCustom.serviceType || 'One Way',
+                returnDate: effectiveOrder.returnDate || firstCustom.returnDate || '',
+                returnTime: effectiveOrder.returnTime || firstCustom.returnTime || '',
                 returnLocation: effectiveOrder.returnLocation || '',
-                dailyDays: effectiveOrder.dailyDays || 1,
-                luggage: effectiveOrder.luggage || '',
-                stops: effectiveOrder.stops || '',
-                amenities: effectiveOrder.amenities || ''
+                dailyDays: effectiveOrder.dailyDays || firstCustom.numberOfDays || 1,
+                luggage: effectiveOrder.luggage || firstCustom.luggage || '',
+                stops: effectiveOrder.stops || firstCustom.stops || '',
+                amenities: effectiveOrder.amenities || (firstCustom.amenities ? (Array.isArray(firstCustom.amenities) ? firstCustom.amenities.join(', ') : firstCustom.amenities) : '')
             });
         }
     }, [isOpen, effectiveOrder, modalType]);
@@ -327,6 +373,13 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             swalWarning('Only staff can create orders. Customers can use Marketplace and view their orders.');
             return;
         }
+
+        // Staff roles (including concierge) must select a client explicitly
+        const parsedClientId = formData.clientId ? Number(formData.clientId) : null;
+        if (modalType === 'add' && isStaffRole && (!parsedClientId || isNaN(parsedClientId) || parsedClientId <= 0)) {
+            swalWarning('Please select a client / customer to proceed.');
+            return;
+        }
         if (!formData.clientId && portalRole === 'customer') {
             swalWarning('Please select a client');
             return;
@@ -339,7 +392,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             requestDate, 
             dueDate, 
             totalAmount: parseFloat(calculateTotal()), 
-            clientId: Number(formData.clientId),
+            clientId: parsedClientId || Number(formData.clientId) || undefined,
             orderType: formData.type || 'Custom Order'
         };
         if (!canEditOrderStatus) {
@@ -399,7 +452,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                 </div>
                             )}
                             {portalRole !== 'client' && portalRole !== 'customer' && (
-                                <div className={`space-y-1 ${modalType === 'add' ? 'col-span-1 md:col-span-2' : ''}`}>
+                                <div className={`space-y-1 relative ${modalType === 'add' ? 'col-span-1 md:col-span-2' : ''}`}>
                                     <label className="text-[10px] font-bold text-muted uppercase">
                                         Client / Customer
                                         {formData.client && modalType !== 'add' && (
@@ -408,32 +461,71 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                             </span>
                                         )}
                                     </label>
-                                    <select
-                                        value={formData.clientDropdownId || ''}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            const selected = customerOnlyForDropdown.find(c => c.id === val);
-                                            setFormData({
-                                                ...formData,
-                                                clientDropdownId: val,
-                                                clientId: selected ? selected.rawId : '',
-                                                client: selected ? selected.name : ''
-                                            });
-                                        }}
-                                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                        disabled={currentModalType === 'view'}
-                                    >
-                                        <option value="">
-                                            {formData.client
-                                                ? `Current: ${formData.client}`
-                                                : 'Select Customer...'}
-                                        </option>
-                                        {customerOnlyForDropdown.map(c => (
-                                            <option key={c.id} value={c.id}>
-                                                {c.name} ({c.type})
-                                            </option>
-                                        ))}
-                                    </select>
+                                    {currentModalType === 'view' ? (
+                                        <input
+                                            type="text"
+                                            value={formData.client || 'No Customer Assigned'}
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-muted cursor-not-allowed"
+                                            disabled
+                                        />
+                                    ) : (
+                                        <div className="relative">
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-left flex justify-between items-center text-white min-h-[38px]"
+                                            >
+                                                <span>
+                                                    {formData.client
+                                                        ? `${formData.client} (${customerOnlyForDropdown.find(c => c.id === formData.clientDropdownId)?.type || 'Account'})`
+                                                        : 'Select Customer...'}
+                                                </span>
+                                                <span className="text-muted text-[10px]">▼</span>
+                                            </button>
+                                            
+                                            {isDropdownOpen && (
+                                                <>
+                                                    <div 
+                                                        className="fixed inset-0 z-[998]" 
+                                                        onClick={() => setIsDropdownOpen(false)}
+                                                    />
+                                                    <div className="absolute z-[999] w-full mt-1 bg-[#1a1a1a] border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto font-bold text-sm">
+                                                        <div 
+                                                            onClick={() => {
+                                                                setFormData({
+                                                                    ...formData,
+                                                                    clientDropdownId: '',
+                                                                    clientId: '',
+                                                                    client: ''
+                                                                });
+                                                                setIsDropdownOpen(false);
+                                                            }}
+                                                            className="px-4 py-2 hover:bg-accent hover:text-black cursor-pointer text-muted"
+                                                        >
+                                                            Select Customer...
+                                                        </div>
+                                                        {customerOnlyForDropdown.map(c => (
+                                                            <div
+                                                                key={c.id}
+                                                                onClick={() => {
+                                                                    setFormData({
+                                                                        ...formData,
+                                                                        clientDropdownId: c.id,
+                                                                        clientId: c.rawId,
+                                                                        client: c.name
+                                                                    });
+                                                                    setIsDropdownOpen(false);
+                                                                }}
+                                                                className={`px-4 py-2 hover:bg-accent hover:text-black cursor-pointer text-white ${formData.clientDropdownId === c.id ? 'bg-accent/20 text-accent' : ''}`}
+                                                            >
+                                                                {c.name} ({c.type})
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
                             )}
 

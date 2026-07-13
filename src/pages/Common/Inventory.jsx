@@ -241,7 +241,8 @@ const Inventory = () => {
   const inboundAssets = purchaseRequests.filter(pr => pr.status === 'Approved' || pr.status === 'Ordered');
 
   const handleAction = (type, item, projectContext = null, prContext = null) => {
-    if (!isAdmin && type !== 'view') return;
+    const isB2BClient = userRoleNorm === 'client';
+    if (!isAdmin && !(['issue', 'loss', 'view'].includes(type) && isB2BClient) && type !== 'view') return;
     setSelectedItem(item);
     setModalType(type);
     setImageFile(null);

@@ -319,7 +319,7 @@ const Warehouses = () => {
                           <select value={formData.manager_id} onChange={(e) => setFormData({ ...formData, manager_id: e.target.value })}
                             className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none cursor-pointer">
                             <option value="">Select facility manager…</option>
-                            {(users || []).filter(u => u?.name).map(u => (
+                            {(users || []).filter(u => u?.name && (u.role?.name === 'INVENTORY' || u.role === 'INVENTORY')).map(u => (
                               <option key={u.id} value={String(u.id)}>{u.name}{u.role ? ` (${u.role?.name || u.role})` : ''}</option>
                             ))}
                           </select>

@@ -157,7 +157,7 @@ const Chauffeur = () => {
     const isAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'client', 'saas_client'].includes(userRole);
     const isCustomer = ['customer'].includes(userRole);
     const isClientAdmin = ['client', 'saas_client'].includes(userRole);
-    const isFeeLocked = isCustomer || isClientAdmin;
+    const isFeeLocked = isCustomer || (isClientAdmin && (!editingRequest || editingRequest?.userId === currentUser?.id));
 
     /** Admin-configured base price (Settings → system), fallback to env default */
     const defaultChauffeurFee = useMemo(() => {
@@ -202,7 +202,7 @@ const Chauffeur = () => {
         return ['pending', 'pending_review', 'approved'].includes(k) && !req?.driverName;
     };
     const needsAdminApprove = (req) =>
-        isAdmin && !isClientAdmin && req && !req.driverName && !req.adminApproved && ['pending', 'pending_review'].includes(chauffeurStatusKey(req.status));
+        isAdmin && (!isClientAdmin || req?.userId !== currentUser?.id) && req && !req.driverName && !req.adminApproved && ['pending', 'pending_review'].includes(chauffeurStatusKey(req.status));
 
     const filteredRequests = chauffeurRequests;
 
@@ -264,7 +264,9 @@ const Chauffeur = () => {
                     adminApproved: true
                 };
             })() : (editingRequest?.passenger_info || editingRequest?._passengerInfo || null),
-            status: isAdmin ? (formData.get('driverName') ? 'assigned' : 'pending') : (editingRequest?.status || 'pending'),
+            status: isClientAdmin
+                ? (editingRequest?.status || 'pending')
+                : (isAdmin ? (formData.get('driverName') ? 'assigned' : 'pending') : (editingRequest?.status || 'pending')),
             orderType: 'CHAUFFEUR',
             missionType: 'CHAUFFEUR'
         };
@@ -649,6 +651,21 @@ const Chauffeur = () => {
                                                 </div>
                                             )}
 
+                                            {isClientAdmin && editingRequest?.userId === currentUser?.id && ['pending', 'pending_review'].includes(chauffeurStatusKey(editingRequest?.status)) && (
+                                                <div className="flex flex-wrap gap-3">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            handleCancel(editingRequest.id);
+                                                            setShowModal(false);
+                                                        }}
+                                                        className="px-6 py-3 rounded-2xl bg-danger/20 border border-danger/40 text-danger text-[10px] font-black uppercase tracking-widest hover:bg-danger/30 transition-all"
+                                                    >
+                                                        Cancel Booking
+                                                    </button>
+                                                </div>
+                                            )}
+
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 <div className="p-4 bg-white/5 rounded-xl border border-border">
                                                     <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Entity / Client</p>
@@ -714,134 +731,137 @@ const Chauffeur = () => {
                                                         </div>
                                                     )}
 
-                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                        {/* Assign from Staff dropdown */}
-                                                        <div className="space-y-2">
-                                                            <label className="text-[9px] font-black text-muted uppercase tracking-widest">Assign Chauffeur (Staff)</label>
-                                                            <select
-                                                                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent appearance-none cursor-pointer"
-                                                                value={(users || []).find(u => u.name === editingRequest?.driverName)?.id || ""}
-                                                                onChange={(e) => {
-                                                                    const selected = users.find(u => String(u.id) === e.target.value);
-                                                                    if (selected) {
-                                                                        const photo = selected.profile_pic_url || selected.profilePicUrl || selected.photo || selected.avatar || selected.profile_image || selected.image || null;
-                                                                        updateMutation.mutate({
-                                                                            id: editingRequest.id,
-                                                                            data: {
-                                                                                ...editingRequest,
-                                                                                driverName: selected.fullName || selected.name,
-                                                                                driverPhotoUrl: photo,
-                                                                                status: 'assigned',
-                                                                                passenger_info: mergePassengerPayload(editingRequest, {
-                                                                                    driver_user_id: selected.id,
-                                                                                    driverPhotoUrl: photo,
-                                                                                    adminApproved: true
-                                                                                })
+                                                    {true && (
+                                                        <>
+                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                                {/* Assign from Staff dropdown */}
+                                                                <div className="space-y-2">
+                                                                    <label className="text-[9px] font-black text-muted uppercase tracking-widest">Assign Chauffeur (Staff)</label>
+                                                                    <select
+                                                                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent appearance-none cursor-pointer"
+                                                                        value={(users || []).find(u => u.name === editingRequest?.driverName)?.id || ""}
+                                                                        onChange={(e) => {
+                                                                            const selected = users.find(u => String(u.id) === e.target.value);
+                                                                            if (selected) {
+                                                                                const photo = selected.profile_pic_url || selected.profilePicUrl || selected.photo || selected.avatar || selected.profile_image || selected.image || null;
+                                                                                updateMutation.mutate({
+                                                                                    id: editingRequest.id,
+                                                                                    data: {
+                                                                                        ...editingRequest,
+                                                                                        driverName: selected.fullName || selected.name,
+                                                                                        driverPhotoUrl: photo,
+                                                                                        status: 'assigned',
+                                                                                        passenger_info: mergePassengerPayload(editingRequest, {
+                                                                                            driver_user_id: selected.id,
+                                                                                            driverPhotoUrl: photo,
+                                                                                            adminApproved: true
+                                                                                        })
+                                                                                    }
+                                                                                });
                                                                             }
-                                                                        });
-                                                                    }
-                                                                }}
-                                                            >
-                                                                <option value="">Select from staff...</option>
-                                                                {(users || []).filter((u) => {
-                                                                    const r = String(u.role?.name || u.role || '').toLowerCase().replace(/\s+/g, '_');
-                                                                    const isActive = String(u.status || u.account_status || '').toLowerCase() === 'active';
-                                                                    return isActive && ['staff', 'logistics', 'concierge', 'operation', 'operations', 'driver', 'field_staff'].includes(r);
-                                                                }).map(u => (
-                                                                    <option key={u.id} value={u.id}>{u.fullName || u.name} {u.employee_id || u.employeeId ? `- ${u.employee_id || u.employeeId}` : ''} ({String(u.role?.name || u.role || '')})</option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
-
-                                                        {/* Or type manually */}
-                                                        <div className="space-y-2">
-                                                            <label className="text-[9px] font-black text-muted uppercase tracking-widest">Or Enter Manually</label>
-                                                            <div className="flex gap-2">
-                                                                <input
-                                                                    type="text"
-                                                                    placeholder="Driver name"
-                                                                    className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent"
-                                                                    id="manualDriverName"
-                                                                    value={editingRequest?.driverName || ''}
-                                                                    onChange={(e) => {
-                                                                        updateChauffeurRequest({
-                                                                            ...editingRequest,
-                                                                            driverName: e.target.value
-                                                                        });
-                                                                    }}
-                                                                />
-                                                                <button
-                                                                    type="button"
-                                                                    onClick={() => {
-                                                                        const name = document.getElementById('manualDriverName').value.trim();
-                                                                        if (name) {
-                                                                            updateChauffeurRequest({
-                                                                                ...editingRequest,
-                                                                                driverName: name,
-                                                                                status: 'assigned',
-                                                                                passenger_info: mergePassengerPayload(editingRequest, { adminApproved: true }),
-                                                                            });
-                                                                        }
-                                                                    }}
-                                                                    className="px-4 py-3 bg-accent/10 border border-accent/20 rounded-xl text-accent text-[10px] font-black uppercase hover:bg-accent hover:text-black transition-all"
-                                                                >
-                                                                    Assign
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Vehicle / Plate Number */}
-                                                    <div className="space-y-2">
-                                                        <label className="text-[9px] font-black text-muted uppercase tracking-widest">Vehicle / Plate Number</label>
-                                                        <div className="flex gap-2">
-                                                            <input
-                                                                type="text"
-                                                                placeholder="e.g. ABC-1234"
-                                                                defaultValue={editingRequest?.plateNumber || ''}
-                                                                className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent"
-                                                                id="vehiclePlate"
-                                                            />
-                                                            <button
-                                                                type="button"
-                                                                onClick={() => {
-                                                                    const plate = document.getElementById('vehiclePlate').value.trim();
-                                                                    if (plate) {
-                                                                        updateChauffeurRequest({
-                                                                            ...editingRequest,
-                                                                            plateNumber: plate,
-                                                                            passenger_info: mergePassengerPayload(editingRequest, { adminApproved: true }),
-                                                                        });
-                                                                    }
-                                                                }}
-                                                                className="px-4 py-3 bg-white/5 border border-border rounded-xl text-secondary text-[10px] font-black uppercase hover:bg-white/10 hover:text-white transition-all"
-                                                            >
-                                                                Save
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Update Status */}
-                                                    <div className="space-y-2">
-                                                        <label className="text-[9px] font-black text-muted uppercase tracking-widest">Update Status</label>
-                                                        <div className="flex flex-wrap gap-2">
-                                                            {['pending', 'pending_review', 'approved', 'assigned', 'en_route', 'completed', 'cancelled']
-                                                                .filter(s => !isClientAdmin || ['pending', 'cancelled'].includes(s))
-                                                                .map(s => (
-                                                                    <button
-                                                                        key={s}
-                                                                        type="button"
-                                                                        onClick={() => updateChauffeurRequest({ ...editingRequest, status: s })}
-                                                                        className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${(editingRequest?.status || '').toLowerCase().replace(/\s+/g, '_') === s
-                                                                            ? 'bg-accent text-black border-accent'
-                                                                            : 'bg-white/5 text-muted border-border hover:text-white hover:border-white/20'
-                                                                            }`}
+                                                                        }}
                                                                     >
-                                                                        {s.replace(/_/g, ' ')}
+                                                                        <option value="">Select from staff...</option>
+                                                                        {(users || []).filter((u) => {
+                                                                            const r = String(u.role?.name || u.role || '').toLowerCase().replace(/\s+/g, '_');
+                                                                            const isActive = String(u.status || u.account_status || '').toLowerCase() === 'active';
+                                                                            return isActive && ['staff', 'logistics', 'concierge', 'operation', 'operations', 'driver', 'field_staff'].includes(r);
+                                                                        }).map(u => (
+                                                                            <option key={u.id} value={u.id}>{u.fullName || u.name} {u.employee_id || u.employeeId ? `- ${u.employee_id || u.employeeId}` : ''} ({String(u.role?.name || u.role || '')})</option>
+                                                                        ))}
+                                                                    </select>
+                                                                </div>
+
+                                                                {/* Or type manually */}
+                                                                <div className="space-y-2">
+                                                                    <label className="text-[9px] font-black text-muted uppercase tracking-widest">Or Enter Manually</label>
+                                                                    <div className="flex gap-2">
+                                                                        <input
+                                                                            type="text"
+                                                                            placeholder="Driver name"
+                                                                            className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent"
+                                                                            id="manualDriverName"
+                                                                            value={editingRequest?.driverName || ''}
+                                                                            onChange={(e) => {
+                                                                                updateChauffeurRequest({
+                                                                                    ...editingRequest,
+                                                                                    driverName: e.target.value
+                                                                                });
+                                                                            }}
+                                                                        />
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => {
+                                                                                const name = document.getElementById('manualDriverName').value.trim();
+                                                                                if (name) {
+                                                                                    updateChauffeurRequest({
+                                                                                        ...editingRequest,
+                                                                                        driverName: name,
+                                                                                        status: 'assigned',
+                                                                                        passenger_info: mergePassengerPayload(editingRequest, { adminApproved: true }),
+                                                                                    });
+                                                                                }
+                                                                            }}
+                                                                            className="px-4 py-3 bg-accent/10 border border-accent/20 rounded-xl text-accent text-[10px] font-black uppercase hover:bg-accent hover:text-black transition-all"
+                                                                        >
+                                                                            Assign
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Vehicle / Plate Number */}
+                                                            <div className="space-y-2">
+                                                                <label className="text-[9px] font-black text-muted uppercase tracking-widest">Vehicle / Plate Number</label>
+                                                                <div className="flex gap-2">
+                                                                    <input
+                                                                        type="text"
+                                                                        placeholder="e.g. ABC-1234"
+                                                                        defaultValue={editingRequest?.plateNumber || ''}
+                                                                        className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent"
+                                                                        id="vehiclePlate"
+                                                                    />
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const plate = document.getElementById('vehiclePlate').value.trim();
+                                                                            if (plate) {
+                                                                                updateChauffeurRequest({
+                                                                                    ...editingRequest,
+                                                                                    plateNumber: plate,
+                                                                                    passenger_info: mergePassengerPayload(editingRequest, { adminApproved: true }),
+                                                                                });
+                                                                            }
+                                                                        }}
+                                                                        className="px-4 py-3 bg-white/5 border border-border rounded-xl text-secondary text-[10px] font-black uppercase hover:bg-white/10 hover:text-white transition-all"
+                                                                    >
+                                                                        Save
                                                                     </button>
-                                                                ))}
-                                                        </div>
-                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Update Status */}
+                                                            <div className="space-y-2">
+                                                                <label className="text-[9px] font-black text-muted uppercase tracking-widest">Update Status</label>
+                                                                <div className="flex flex-wrap gap-2">
+                                                                    {['pending', 'pending_review', 'approved', 'assigned', 'en_route', 'completed', 'cancelled', 'rejected']
+                                                                        .map(s => (
+                                                                            <button
+                                                                                key={s}
+                                                                                type="button"
+                                                                                onClick={() => updateChauffeurRequest({ ...editingRequest, status: s })}
+                                                                                className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${(editingRequest?.status || '').toLowerCase().replace(/\s+/g, '_') === s
+                                                                                    ? 'bg-accent text-black border-accent'
+                                                                                    : 'bg-white/5 text-muted border-border hover:text-white hover:border-white/20'
+                                                                                    }`}
+                                                                            >
+                                                                                {s.replace(/_/g, ' ')}
+                                                                            </button>
+                                                                        ))}
+                                                                </div>
+                                                            </div>
+                                                        </>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

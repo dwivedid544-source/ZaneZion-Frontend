@@ -2586,10 +2586,14 @@ export const GlobalDataProvider = ({ children }) => {
         // No additional client-side filtering needed — this prevents false notifications for new accounts.
         let notifs = res.data.data || [];
 
-        // TEMPORARY FIX: Ignore default mock notifications that leak from outdated mockApi fallback
-        if (notifs.length === 2 && notifs[0]?.id === 1 && notifs[1]?.id === 2 && notifs[0]?.title === "New Purchase Order") {
-          notifs = [];
-        }
+        // Ignore default mock notifications that leak from outdated mockApi fallback
+        notifs = notifs.filter(n => {
+          const title = n.title || '';
+          const msg = n.message || '';
+          const isDefaultMock1 = title === "New Purchase Order" && msg.includes("PO-001");
+          const isDefaultMock2 = title === "Critical Stock Alert" && msg.includes("Dom Perignon");
+          return !isDefaultMock1 && !isDefaultMock2;
+        });
 
         setNotifications(notifs);
         // Compute unread count directly from the scoped list to prevent phantom badges

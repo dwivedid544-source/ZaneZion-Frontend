@@ -193,7 +193,6 @@ const menuItems = {
 /** Business-account (`client`) sidebar: matches portal + invoices + procurement + inventory + concierge — not full HQ/staff ops menu */
 const businessClientMenu = [
   { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-  { icon: ShoppingBag, label: 'Marketplace', path: '/dashboard/store' },
   { icon: Users, label: 'Customers', path: '/dashboard/clients' },
   { icon: UserCog, label: 'Staff & Users', path: '/dashboard/users' },
   { icon: ShoppingCart, label: 'Orders', path: '/dashboard/orders' },
@@ -202,6 +201,7 @@ const businessClientMenu = [
   { icon: ClipboardList, label: 'Purchase Requests', path: '/dashboard/purchase-requests' },
   { icon: Box, label: 'Quotes', path: '/dashboard/quotes' },
   { icon: FileText, label: 'Purchase Orders', path: '/dashboard/purchase-orders' },
+  { icon: Truck, label: 'Fleet', path: '/dashboard/fleet' },
   { icon: Package, label: 'Inventory', path: '/dashboard/inventory' },
   { icon: BarChart3, label: 'Audit Protocol', path: '/dashboard/audits' },
   { icon: Store, label: 'Warehouses', path: '/dashboard/warehouses' },
@@ -213,6 +213,7 @@ const businessClientMenu = [
   { icon: Headphones, label: 'Support', path: '/dashboard/support' },
   { icon: ShieldAlert, label: 'Security Incidents', path: '/dashboard/security-events' },
   { icon: Settings, label: 'Settings', path: '/dashboard/settings' },
+  { icon: Calendar, label: 'Leave & Absence', path: '/dashboard/leave' },
 ];
 
 import { useData } from '../context/GlobalDataContext';

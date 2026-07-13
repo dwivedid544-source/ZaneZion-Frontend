@@ -28,6 +28,8 @@ const Dashboard = () => {
     hasMenuPermission
   } = useData();
   const isSuperAdmin = ['super_admin', 'superadmin', 'super admin'].includes(normalizeRole(currentUser?.role));
+  const isB2BClient = normalizeRole(currentUser?.role) === 'client';
+  const hasAccess = isSuperAdmin || isB2BClient;
 
   React.useEffect(() => {
     // Only fetch what is needed for the dashboard indicators
@@ -240,7 +242,7 @@ const Dashboard = () => {
           { label: 'Chauffeur Requests', value: stats.activeChauffeurs, icon: Truck, color: 'text-accent', trend: `Active`, detail: 'Pending Rides', show: hasMenuPermission('Chauffeur', 'can_view') || hasMenuPermission('Chauffeur Protocol', 'can_view') },
           { label: 'Active Events', value: stats.activeEvents, icon: Calendar, color: 'text-info', trend: 'Scheduled', detail: 'Concierge Events', show: hasMenuPermission('Events', 'can_view') },
           { label: 'Open Support Cases', value: stats.openTickets, icon: AlertTriangle, color: 'text-warning', trend: 'Need Attention', detail: 'Support Tickets', show: hasMenuPermission('Support', 'can_view') }
-        ].filter(s => s.show || isSuperAdmin).map((stat, idx) => (
+        ].filter(s => s.show || hasAccess).map((stat, idx) => (
           <div key={idx} className="glass-card p-5 sm:p-6 relative overflow-hidden group hover:border-accent/30 transition-all border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent">
             <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 group-hover:opacity-[0.05] transition-all duration-700 pointer-events-none">
               <stat.icon size={100} />
@@ -259,7 +261,7 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 space-y-8">
           {/* Revenue Intelligence */}
-          {(hasMenuPermission('Invoices', 'can_view') || hasMenuPermission('Payments', 'can_view') || isSuperAdmin) && (
+          {(hasMenuPermission('Invoices', 'can_view') || hasMenuPermission('Payments', 'can_view') || hasAccess) && (
             <div className="glass-card p-8 border-white/5 relative overflow-hidden">
               <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8 md:mb-10">
                 <div className="flex items-center gap-3">
@@ -309,7 +311,7 @@ const Dashboard = () => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
             {/* INVENTORY LOGISTICS */}
-            {(hasMenuPermission('Inventory', 'can_view') || hasMenuPermission('StockHub', 'can_view') || isSuperAdmin) && (
+            {(hasMenuPermission('Inventory', 'can_view') || hasMenuPermission('StockHub', 'can_view') || hasAccess) && (
               <div className="glass-card p-6 md:p-8 border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent flex flex-col h-full">
                 <div className="flex items-center justify-between mb-6 md:mb-8">
                   <h3 className="text-xl font-bold tracking-tight">Inventory Pulse</h3>
@@ -345,7 +347,7 @@ const Dashboard = () => {
             )}
 
             {/* OPERATIONS PROTOCOL */}
-            {(hasMenuPermission('Orders', 'can_view') || hasMenuPermission('Projects', 'can_view') || hasMenuPermission('Missions', 'can_view') || isSuperAdmin) && (
+            {(hasMenuPermission('Orders', 'can_view') || hasMenuPermission('Projects', 'can_view') || hasMenuPermission('Missions', 'can_view') || hasAccess) && (
               <div className="glass-card p-6 md:p-8 border-white/5 bg-gradient-to-tr from-white/[0.02] to-transparent flex flex-col h-full">
                 <div className="flex items-center justify-between mb-6 md:mb-8">
                   <h3 className="text-xl font-black italic font-heading tracking-tight">Active Operations</h3>

@@ -2491,6 +2491,22 @@ export const GlobalDataProvider = ({ children }) => {
     }
   }, []);
 
+  const fetchDashboardLogs = React.useCallback(async () => {
+    try {
+      const res = await api.get("/dashboard/logs");
+      if (res.data?.success) {
+        setLogs(res.data.data.map(audit => ({
+          action: audit.action || "System Action",
+          detail: audit.description || `Module: ${audit.module}`,
+          type: "system",
+          time: new Date(audit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        })));
+      }
+    } catch (e) {
+      console.error("Fetch dashboard logs failed", e);
+    }
+  }, []);
+
   const fetchSystemSettings = React.useCallback(async () => {
     try {
       const res = await api.get("/settings/system");
@@ -2639,6 +2655,7 @@ export const GlobalDataProvider = ({ children }) => {
 
       const fetches = [
         fetchDashboardStats(),
+        fetchDashboardLogs(),
         fetchSystemSettings(),
         fetchInventoryAlerts(),
         fetchTracking(),
@@ -3171,7 +3188,7 @@ export const GlobalDataProvider = ({ children }) => {
     const now = new Date();
     const dataMap = {};
 
-    const paidInvoices = invoices.filter((inv) => inv.status === "Paid");
+    const paidInvoices = invoices.filter((inv) => inv.status?.toLowerCase() === "paid");
 
     if (revenueFilter === "Daily") {
       // Last 24 hours in 2-hour blocks

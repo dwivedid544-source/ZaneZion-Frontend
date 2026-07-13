@@ -8,9 +8,9 @@ import { useDepartments } from '../hooks/api/useAdminCore';
 
 const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'add' }) => {
   const { currentUser, users = [], customerUsers = [], clients = [], hasMenuPermission } = useData();
-  const canAccessDepartments = hasMenuPermission('Personnel', 'can_view');
-  const { data: deptData } = useDepartments(1, 100, '', { enabled: canAccessDepartments });
+  const { data: deptData } = useDepartments(1, 100, '');
   const departmentsList = deptData?.data?.departments || [];
+  const defaultDeptId = departmentsList.length > 0 ? departmentsList[0].id : '';
   
   const rawRole = currentUser?.role;
   const roleStr = typeof rawRole === 'object' ? (rawRole?.name || '') : String(rawRole || '');
@@ -27,7 +27,7 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
     timestamp: new Date().toLocaleTimeString(),
     status: 'Pending',
     department: ['customer', 'client', 'saas_client'].includes(userRole) ? 'Customer' : 'Operations',
-    departmentId: 1, // Defaulting to 1 (Operations)
+    departmentId: defaultDeptId,
     connectedEntity: '',
     requestType: 'Individual' // 'Individual' or 'Company'
   });
@@ -92,14 +92,14 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
           timestamp: new Date().toLocaleTimeString(),
           status: 'Pending',
           department: ['customer', 'client', 'saas_client'].includes(userRole) ? 'Customer' : 'Operations',
-          departmentId: 1,
+          departmentId: defaultDeptId,
           connectedEntity: '',
           requestType: 'Individual'
         });
         setUserSearch(initialRequester);
       }
     }
-  }, [isOpen, selectedRequest?.id, modalType]);
+  }, [isOpen, selectedRequest?.id, modalType, defaultDeptId]);
 
   const allUsers = [...users, ...customerUsers];
   const filteredUsers = allUsers.filter(u => {
@@ -152,7 +152,7 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
       total: parseFloat(calculateTotal()),
       // Backend mapping properties
       title: formData.title || formData.items[0]?.name || 'Purchase Request',
-      departmentId: parseInt(formData.departmentId || 1, 10),
+      departmentId: parseInt(formData.departmentId || defaultDeptId || 1, 10),
       priority: 'medium',
       items: formData.items.map(item => ({
         ...item,

@@ -8,7 +8,9 @@ import { createPortal } from 'react-dom';
 const EMPTY_FORM = { name: '', location: '', capacity: '', manager_id: '', status: 'active' };
 
 const Warehouses = () => {
-  const { hasMenuPermission, users, fetchStaff } = useData();
+  const { hasMenuPermission, users, fetchStaff, currentUser } = useData();
+  const userRole = (currentUser?.role?.name || currentUser?.role || '').toUpperCase();
+  const isAdmin = ['SUPER_ADMIN', 'ADMIN', 'STAFF'].includes(userRole);
 
   const { data: whData, isLoading, error } = useWarehouses();
   // API returns: { success, data: { warehouses: [], total, page, totalPages } }
@@ -82,7 +84,11 @@ const Warehouses = () => {
   };
 
   const getManagerName = (wh) => {
-    if (wh.manager) return `${wh.manager.firstName || ''} ${wh.manager.lastName || ''}`.trim();
+    if (wh.manager) {
+      const empName = `${wh.manager.firstName || ''} ${wh.manager.lastName || ''}`.trim();
+      if (empName) return empName;
+      if (wh.manager.user?.name) return wh.manager.user.name;
+    }
     const mid = wh.managerId ?? wh.manager_id;
     if (!mid) return null;
     const u = (users || []).find(x => String(x.id) === String(mid));
@@ -316,8 +322,9 @@ const Warehouses = () => {
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Manager (User)</label>
-                          <select value={formData.manager_id} onChange={(e) => setFormData({ ...formData, manager_id: e.target.value })}
-                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none cursor-pointer">
+                          <select value={formData.manager_id} onChange={(e) => isAdmin && setFormData({ ...formData, manager_id: e.target.value })}
+                            disabled={!isAdmin}
+                            className={`w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none ${isAdmin ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                             <option value="">Select facility manager…</option>
                             {(users || []).filter(u => u?.name && (u.role?.name === 'INVENTORY' || u.role === 'INVENTORY')).map(u => (
                               <option key={u.id} value={String(u.id)}>{u.name}{u.role ? ` (${u.role?.name || u.role})` : ''}</option>

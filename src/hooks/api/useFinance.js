@@ -5,12 +5,12 @@ import api from '../../services/api/setupAxios';
 // Invoices Hooks
 // -----------------------------
 
-export const useInvoices = (page = 1, limit = 10, search = '') => {
+export const useInvoices = (page = 1, limit = 10, search = '', status = '') => {
   return useQuery({
-    queryKey: ['invoices', page, limit, search],
+    queryKey: ['invoices', page, limit, search, status],
     queryFn: async () => {
       const response = await api.get('/invoices', {
-        params: { page, limit, search }
+        params: { page, limit, search, ...(status && { status }) }
       });
       return response.data;
     },

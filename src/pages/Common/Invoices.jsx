@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import StatusBadge from '../../components/StatusBadge';
-import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment, useUpdateInvoice } from '../../hooks/api/useFinance';
+import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment, useUpdateInvoice, useDeleteInvoice } from '../../hooks/api/useFinance';
 import { swalSuccess, swalError, swalConfirm } from '../../utils/swal';
 import { RefreshCcw } from 'lucide-react';
 import Pagination from '../../components/Common/Pagination';
@@ -31,6 +31,7 @@ const Invoices = () => {
     const updateInvoiceStatusMutation = useUpdateInvoiceStatus();
     const createPaymentMutation = useCreatePayment();
     const updateInvoiceMutation = useUpdateInvoice();
+    const deleteInvoiceMutation = useDeleteInvoice();
     React.useEffect(() => {
         fetchOrders();
         fetchDeliveries();
@@ -264,6 +265,16 @@ const Invoices = () => {
         }, 300);
     };
 
+    const deleteInvoice = async (id) => {
+        try {
+            await deleteInvoiceMutation.mutateAsync(id);
+            swalSuccess(`Invoice successfully purged from official ledger.`);
+        } catch (err) {
+            const apiErrorMsg = err.response?.data?.message || err.message || '';
+            swalError(`purging failed: ${apiErrorMsg}`);
+        }
+    };
+
     return (
         <div className="space-y-8">
 
@@ -382,7 +393,12 @@ const Invoices = () => {
                                 )}
                                 onView={(inv) => handleAction('view', inv)}
                                 onEdit={(inv) => handleAction('edit', inv)}
+                                onDelete={(inv) => {
+                                    setInvoiceToDelete(inv);
+                                    setShowDeleteConfirm(true);
+                                }}
                                 canEdit={!procurementInvoiceReadOnly && hasMenuPermission('Invoices', 'can_edit')}
+                                canDelete={!procurementInvoiceReadOnly && hasMenuPermission('Invoices', 'can_delete')}
                             />
                             <div className="mt-6 border-t border-white/5 pt-6">
                                 <Pagination

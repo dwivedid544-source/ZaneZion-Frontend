@@ -1,7 +1,8 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/v1` : 'http://localhost:8000/api/v1',
+  // baseURL: 'http://localhost:8000/api/v1',
+  baseURL: 'https://zanezion-backend-production.up.railway.app/api/v1',
 });
 
 // Request Interceptor: Add Token

@@ -409,7 +409,7 @@ function App() {
               {/* Concierge Role Specific */}
               <Route path="events" element={
                 <RoleProtectedRoute role={auth.role} allowedRoles={['superadmin', 'concierge', 'client', 'admin', 'saas_client', 'customer']}>
-                  {['customer', 'client', 'saas_client'].includes(auth.role) ? <ClientEvents /> : <Events />}
+                  {['customer', 'client'].includes(auth.role) ? <ClientEvents /> : <Events />}
                 </RoleProtectedRoute>
               } />
               <Route path="guest-requests" element={

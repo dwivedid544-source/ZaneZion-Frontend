@@ -65,7 +65,8 @@ const Inventory = () => {
   }, [clients]);
   
   const { data: itemsData, isLoading, error } = useItems(page, 10, searchTerm);
-  const realInventory = (itemsData?.items || itemsData?.data || []).map(i => {
+  const realInventoryItems = Array.isArray(itemsData) ? itemsData : (itemsData?.items || itemsData?.data || []);
+  const realInventory = realInventoryItems.map(i => {
     let totalQty = 0;
     let mainLoc = '';
     if (i.inventoryStock && Array.isArray(i.inventoryStock) && i.inventoryStock.length > 0) {
@@ -155,7 +156,7 @@ const Inventory = () => {
     clientId: ''
   });
   const userRoleNorm = normalizeRole(currentUser?.role);
-  const [activeTab, setActiveTab] = useState(['superadmin', 'admin', 'inventory', 'inventorymanager', 'procurement', 'operations'].includes(userRoleNorm) ? 'Marketplace' : 'Business');
+  const [activeTab, setActiveTab] = useState(['superadmin', 'admin', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations'].includes(userRoleNorm) ? 'Marketplace' : 'Business');
 
   /** When stock entry name matches an existing SKU, keep category dropdown aligned with that row */
   const entryCategorySyncKeyRef = React.useRef('');
@@ -193,7 +194,7 @@ const Inventory = () => {
     [clientListForSelect],
   );
 
-  const isAdmin = ['superadmin', 'admin', 'client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge', 'conciergemanager'].includes(userRoleNorm);
+  const isAdmin = ['superadmin', 'admin', 'client', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge', 'conciergemanager'].includes(userRoleNorm);
 
   const isCustomer = ['customer'].includes(userRoleNorm);
 

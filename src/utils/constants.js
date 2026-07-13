@@ -10,6 +10,7 @@ export const MARKETPLACE_CATEGORIES = [
   'Electronics',
   'Home',
   'General',
+  'Stationary',
 ];
 
 /** Map retired inventory UI labels onto marketplace taxonomy */

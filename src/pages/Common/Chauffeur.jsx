@@ -98,13 +98,16 @@ const Chauffeur = () => {
         hasMenuPermission,
         systemSettings,
         fetchSystemSettings,
+        fleet,
+        fetchFleet,
     } = useData();
     const [editingRequest, setEditingRequest] = useState(null);
     useEffect(() => {
         fetchStaff();
         fetchClients();
         fetchSystemSettings();
-    }, [fetchStaff, fetchClients, fetchSystemSettings]);
+        fetchFleet();
+    }, [fetchStaff, fetchClients, fetchSystemSettings, fetchFleet]);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
@@ -772,55 +775,25 @@ const Chauffeur = () => {
                                                                     </select>
                                                                 </div>
 
-                                                                {/* Or type manually */}
-                                                                <div className="space-y-2">
-                                                                    <label className="text-[9px] font-black text-muted uppercase tracking-widest">Or Enter Manually</label>
-                                                                    <div className="flex gap-2">
-                                                                        <input
-                                                                            type="text"
-                                                                            placeholder="Driver name"
-                                                                            className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent"
-                                                                            id="manualDriverName"
-                                                                            value={editingRequest?.driverName || ''}
-                                                                            onChange={(e) => {
-                                                                                updateChauffeurRequest({
-                                                                                    ...editingRequest,
-                                                                                    driverName: e.target.value
-                                                                                });
-                                                                            }}
-                                                                        />
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={() => {
-                                                                                const name = document.getElementById('manualDriverName').value.trim();
-                                                                                if (name) {
-                                                                                    updateChauffeurRequest({
-                                                                                        ...editingRequest,
-                                                                                        driverName: name,
-                                                                                        status: 'assigned',
-                                                                                        passenger_info: mergePassengerPayload(editingRequest, { adminApproved: true }),
-                                                                                    });
-                                                                                }
-                                                                            }}
-                                                                            className="px-4 py-3 bg-accent/10 border border-accent/20 rounded-xl text-accent text-[10px] font-black uppercase hover:bg-accent hover:text-black transition-all"
-                                                                        >
-                                                                            Assign
-                                                                        </button>
-                                                                    </div>
-                                                                </div>
+                                                                {/* Manual driver name entry removed to enforce real API connectivity */}
                                                             </div>
 
                                                             {/* Vehicle / Plate Number */}
                                                             <div className="space-y-2">
                                                                 <label className="text-[9px] font-black text-muted uppercase tracking-widest">Vehicle / Plate Number</label>
                                                                 <div className="flex gap-2">
-                                                                    <input
-                                                                        type="text"
-                                                                        placeholder="e.g. ABC-1234"
-                                                                        defaultValue={editingRequest?.plateNumber || ''}
-                                                                        className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent"
+                                                                    <select
+                                                                        className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent appearance-none cursor-pointer"
                                                                         id="vehiclePlate"
-                                                                    />
+                                                                        defaultValue={editingRequest?.plateNumber || ''}
+                                                                    >
+                                                                        <option value="">Select vehicle...</option>
+                                                                        {(fleet || []).map(v => (
+                                                                            <option key={v.id} value={`${v.model} (${v.id})`}>
+                                                                                {v.model} - {v.id}
+                                                                            </option>
+                                                                        ))}
+                                                                    </select>
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => {
@@ -1077,7 +1050,7 @@ const Chauffeur = () => {
                                                         </select>
                                                     </div>
 
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div className="grid grid-cols-1 gap-4">
                                                         {/* Assign Driver */}
                                                         <div className="space-y-2">
                                                             <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Assign Chauffeur</label>
@@ -1104,29 +1077,24 @@ const Chauffeur = () => {
                                                             </select>
                                                         </div>
 
-                                                        {/* Manual driver name */}
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Or Type Driver Name</label>
-                                                            <input
-                                                                type="text"
-                                                                name="driverName"
-                                                                defaultValue={editingRequest?.driverName || ''}
-                                                                placeholder="Driver name..."
-                                                                className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
-                                                            />
-                                                        </div>
+                                                        {/* Manual driver name entry removed */}
                                                     </div>
 
                                                     {/* Vehicle */}
                                                     <div className="space-y-2">
                                                         <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Vehicle / Plate Number</label>
-                                                        <input
-                                                            type="text"
+                                                        <select
                                                             name="plateNumber"
                                                             defaultValue={editingRequest?.plateNumber || ''}
-                                                            placeholder="e.g. ABC-1234 or Mercedes S-Class"
-                                                            className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
-                                                        />
+                                                            className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
+                                                        >
+                                                            <option value="">Select vehicle...</option>
+                                                            {(fleet || []).map(v => (
+                                                                <option key={v.id} value={`${v.model} (${v.id})`}>
+                                                                    {v.model} - {v.id}
+                                                                </option>
+                                                            ))}
+                                                        </select>
                                                     </div>
                                                 </div>
                                             )}

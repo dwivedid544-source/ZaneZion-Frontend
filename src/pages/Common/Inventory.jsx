@@ -156,7 +156,7 @@ const Inventory = () => {
     clientId: ''
   });
   const userRoleNorm = normalizeRole(currentUser?.role);
-  const [activeTab, setActiveTab] = useState(['superadmin', 'admin', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations'].includes(userRoleNorm) ? 'Marketplace' : 'Business');
+  const [activeTab, setActiveTab] = useState(['superadmin', 'admin', 'client', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations'].includes(userRoleNorm) ? 'Marketplace' : 'Business');
 
   /** When stock entry name matches an existing SKU, keep category dropdown aligned with that row */
   const entryCategorySyncKeyRef = React.useRef('');
@@ -194,7 +194,7 @@ const Inventory = () => {
     [clientListForSelect],
   );
 
-  const isAdmin = ['superadmin', 'admin', 'client', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge', 'conciergemanager'].includes(userRoleNorm);
+  const isAdmin = ['superadmin', 'admin', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge', 'conciergemanager'].includes(userRoleNorm);
 
   const isCustomer = ['customer'].includes(userRoleNorm);
 

@@ -15,7 +15,7 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
   const rawRole = currentUser?.role;
   const roleStr = typeof rawRole === 'object' ? (rawRole?.name || '') : String(rawRole || '');
   const userRole = roleStr.toLowerCase().replace(/\s+/g, '_');
-  const isAdmin = ['admin', 'super_admin', 'procurement', 'procurement_staff', 'operations'].includes(userRole);
+  const isAdmin = ['admin', 'super_admin', 'procurement', 'procurement_staff', 'operations', 'saas_client'].includes(userRole);
 
   const [formData, setFormData] = useState({
     requestId: 'REQ-' + Math.floor(100 + Math.random() * 900),

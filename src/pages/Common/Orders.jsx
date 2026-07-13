@@ -63,7 +63,7 @@ const Orders = () => {
   const normalizedRole = normalizeRole(currentUser?.role);
   const portalRole = normalizeRole(currentUser?.role);
   const canStaffCreateOrder = roleCanCreateInstitutionalOrder(portalRole);
-  const canManageOrders = ['superadmin', 'admin', 'operations', 'procurement', 'inventory', 'logistics', 'concierge'].includes(normalizedRole);
+  const canManageOrders = ['superadmin', 'admin', 'operations', 'procurement', 'inventory', 'logistics', 'concierge', 'saas_client'].includes(normalizedRole);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('view');
@@ -347,7 +347,7 @@ const Orders = () => {
             canDelete={hasMenuPermission('Orders', 'can_delete')}
             customAction={(item) => canManageOrders ? (
               <div className="flex items-center gap-1 flex-wrap">
-                {['superadmin', 'operations', 'admin'].includes(normalizedRole) && (
+                {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) && (
                   <button
                     type="button"
                     onClick={(e) => {
@@ -378,7 +378,7 @@ const Orders = () => {
                   </button>
                 )}
                 {/* Admin approval: marketplace → logistics queue (whole team sees it; assign driver in Deliveries); bespoke → concierge */}
-                {['superadmin', 'admin'].includes(normalizedRole) &&
+                {['superadmin', 'admin', 'saas_client'].includes(normalizedRole) &&
                  ['created', 'admin_review', 'pending_review'].includes(String(item.status).toLowerCase()) && (
                   <button
                     type="button"
@@ -395,7 +395,7 @@ const Orders = () => {
                 )}
 
                 {/* Concierge triage: forward into supply chain */}
-                {['superadmin', 'concierge', 'admin'].includes(normalizedRole) &&
+                {['superadmin', 'concierge', 'admin', 'saas_client'].includes(normalizedRole) &&
                  String(item.status).toLowerCase() === 'concierge' && (
                   <>
                     <button

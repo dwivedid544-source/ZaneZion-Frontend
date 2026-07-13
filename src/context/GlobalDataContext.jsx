@@ -876,7 +876,8 @@ export const GlobalDataProvider = ({ children }) => {
 
   useEffect(() => {
     // Determine the base URL for the socket connection from the API URL
-    const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    // const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const baseURL = 'https://zanezion-backend-production.up.railway.app/api/v1';
     const socketURL = baseURL.replace('/api/v1', '');
 
     const socket = io(socketURL, {

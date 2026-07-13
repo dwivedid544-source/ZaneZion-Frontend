@@ -1,7 +1,7 @@
 // export const API_BASE_URL = 'http://localhost:8000/api/v1';
-export const API_BASE_URL = 'https://zainzone-new-production.up.railway.app/api/v1';
+export const API_BASE_URL = 'https://zanezion-backend-production.up.railway.app/api/v1';
 // export const BACKEND_ORIGIN = 'http://localhost:8000';
-export const BACKEND_ORIGIN = 'https://zainzone-new-production.up.railway.app';
+export const BACKEND_ORIGIN = 'https://zanezion-backend-production.up.railway.app';
 
 export const toAbsoluteImageUrl = (rawPath) => {
   if (!rawPath) return null;

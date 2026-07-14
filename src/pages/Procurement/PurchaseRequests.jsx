@@ -26,6 +26,7 @@ const PurchaseRequests = () => {
     customerUsers = [],
   } = useData();
 
+
   React.useEffect(() => {
     window._allGlobalUsers = [...users, ...customerUsers];
   }, [users, customerUsers]);

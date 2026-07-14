@@ -531,7 +531,7 @@ const PurchaseOrders = () => {
                         </td>
                         <td className="p-6">
                           <div className="flex items-center gap-2">
-                             {canEdit && (
+                            {canEdit && (
                               <>
                                 {/* Receive Goods - only for non-customer roles */}
                                 {!isCustomer && (
@@ -1292,27 +1292,27 @@ const PurchaseOrders = () => {
                   {(selectedPO.packing_slip ||
                     selectedPO.packingSlip ||
                     selectedPO.admin_approved) && (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6 bg-white/[0.02] border border-white/5 rounded-2xl">
-                      <div>
-                        <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">
-                          Packing Slip
-                        </p>
-                        <p className="text-sm font-black text-white">
-                          {selectedPO.packing_slip ||
-                            selectedPO.packingSlip ||
-                            "N/A"}
-                        </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6 bg-white/[0.02] border border-white/5 rounded-2xl">
+                        <div>
+                          <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">
+                            Packing Slip
+                          </p>
+                          <p className="text-sm font-black text-white">
+                            {selectedPO.packing_slip ||
+                              selectedPO.packingSlip ||
+                              "N/A"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">
+                            Admin Approved
+                          </p>
+                          <p className="text-sm font-black text-success">
+                            {selectedPO.admin_approved ? "Yes" : "No"}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">
-                          Admin Approved
-                        </p>
-                        <p className="text-sm font-black text-success">
-                          {selectedPO.admin_approved ? "Yes" : "No"}
-                        </p>
-                      </div>
-                    </div>
-                  )}
+                    )}
 
                   <div>
                     <h4 className="text-xs font-black text-white uppercase tracking-widest mb-4">
@@ -1400,14 +1400,14 @@ const PurchaseOrders = () => {
                   {(selectedPO.items || []).some(
                     (i) => (Number(i.receivedQty) || 0) > 0,
                   ) && (
-                    <button
-                      type="button"
-                      onClick={() => setShowReverseModal(true)}
-                      className="px-6 py-3 bg-warning/15 border border-warning/40 text-warning text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-warning hover:text-black transition-all"
-                    >
-                      Reverse / correct receipt
-                    </button>
-                  )}
+                      <button
+                        type="button"
+                        onClick={() => setShowReverseModal(true)}
+                        className="px-6 py-3 bg-warning/15 border border-warning/40 text-warning text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-warning hover:text-black transition-all"
+                      >
+                        Reverse / correct receipt
+                      </button>
+                    )}
                   <button
                     type="button"
                     onClick={() => setShowViewModal(false)}

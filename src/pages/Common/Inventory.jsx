@@ -244,7 +244,7 @@ const Inventory = () => {
 
   const handleAction = (type, item, projectContext = null, prContext = null) => {
     const isB2BClient = userRoleNorm === 'client';
-    if (!isAdmin && !(['issue', 'loss', 'entry', 'view'].includes(type) && isB2BClient) && type !== 'view') return;
+    if (!isAdmin && !(['issue', 'loss', 'view'].includes(type) && isB2BClient) && type !== 'view') return;
     setSelectedItem(item);
     setModalType(type);
     setImageFile(null);
@@ -727,9 +727,11 @@ const Inventory = () => {
               <button className="btn-secondary flex items-center gap-2 border-accent/20 text-accent" onClick={() => handleAction('issue', {})}>
                 <Box size={16} /> Stock Issue
               </button>
-              <button className="btn-primary flex items-center gap-2 shadow-xl shadow-accent/10" onClick={() => handleAction('entry', {})}>
-                <Plus size={16} /> Stock Entry
-              </button>
+              {isAdmin && (
+                <button className="btn-primary flex items-center gap-2 shadow-xl shadow-accent/10" onClick={() => handleAction('entry', {})}>
+                  <Plus size={16} /> Stock Entry
+                </button>
+              )}
             </>
           )}
         </div>

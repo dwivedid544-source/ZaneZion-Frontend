@@ -3,17 +3,35 @@ import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import { Coffee, Plus, Search, Clock, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useData } from '../../context/GlobalDataContext';
+import { normalizeRole } from '../../utils/authUtils';
 
 const GuestRequests = () => {
-    const { guestRequests = [], addGuestRequest, updateGuestRequest, deleteGuestRequest, hasMenuPermission, currentUser } = useData();
+    const { guestRequests = [], addGuestRequest, updateGuestRequest, deleteGuestRequest, hasMenuPermission, currentUser, clients, fetchClients } = useData();
+    React.useEffect(() => {
+        if (fetchClients) fetchClients();
+    }, [fetchClients]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalType, setModalType] = useState('view');
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [formData, setFormData] = useState({ guest: '', request: '', time: '', date: new Date().toISOString().split('T')[0], priority: 'Medium', status: 'Pending' });
 
+    const portalRole = normalizeRole(currentUser?.role);
+    const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
+    const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
+    const currentClient = (clients || []).find(c => {
+        const cId = normalizeId(c.id);
+        const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
+        return cId && uId && cId === uId;
+    });
+    const isBusinessClient = portalRole === 'client' && (
+        rawRoleStr.toLowerCase().includes('business') ||
+        currentClient?.clientType === 'Business' ||
+        currentClient?.client_type === 'Business'
+    );
+
     const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
-    const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole);
+    const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole) && !isBusinessClient;
     const isConciergeOrAdmin = ['concierge', 'admin', 'super_admin', 'superadmin'].includes(userRole);
 
     // Customer: backend already filters by company_id, show all. Admin/concierge: show all too.
@@ -118,7 +136,7 @@ const GuestRequests = () => {
                         />
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={16} />
                     </div>
-                    {(isCustomer || hasMenuPermission('Guest Requests', 'can_add')) && (
+                    {(isCustomer || isBusinessClient || hasMenuPermission('Guest Requests', 'can_add')) && (
                         <button className="btn-primary flex items-center gap-2" onClick={() => handleAction('add', {})}>
                             <Plus size={16} /> Log Request
                         </button>
@@ -165,8 +183,8 @@ const GuestRequests = () => {
                     onView={(item) => handleAction('view', item)}
                     onEdit={(item) => handleAction('edit', item)}
                     onDelete={(item) => handleAction('delete', item)}
-                    canEdit={!isCustomer && hasMenuPermission('Guest Requests', 'can_edit')}
-                    canDelete={!isCustomer && hasMenuPermission('Guest Requests', 'can_delete')}
+                    canEdit={(!isCustomer && hasMenuPermission('Guest Requests', 'can_edit')) || isBusinessClient}
+                    canDelete={(!isCustomer && hasMenuPermission('Guest Requests', 'can_delete')) || isBusinessClient}
                 />
             </div>
 

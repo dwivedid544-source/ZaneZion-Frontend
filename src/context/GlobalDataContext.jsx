@@ -2505,9 +2505,9 @@ export const GlobalDataProvider = ({ children }) => {
       if (res.data?.success) {
         setLogs(res.data.data.map(audit => ({
           action: audit.action || "System Action",
-          detail: audit.description || `Module: ${audit.module}`,
+          detail: audit.detail || "System event recorded",
           type: "system",
-          time: new Date(audit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          time: audit.timestamp ? new Date(audit.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Unknown Time"
         })));
       }
     } catch (e) {

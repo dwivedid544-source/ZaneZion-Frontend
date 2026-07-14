@@ -71,8 +71,12 @@ const ClientDashboard = () => {
     orders, invoices, settleInvoice, currentUser, clients, inventory = [], deliveries = [],
     chauffeurRequests = [], fetchChauffeurRequests,
     fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats,
+<<<<<<< HEAD
     events = [], fetchTickets, updateClient,
     guestRequests = [], luxuryItems = [], fetchLuxuryItems,
+=======
+    events = [], fetchTickets, updateClient, guestRequests = [], luxuryItems = [], fetchLuxuryItems,
+>>>>>>> 99178945b15e46d9ed305449ec01dd5ca4ea08b0
     purchaseOrders = [], fetchPurchaseOrders,
     purchaseRequests = [], fetchPurchaseRequests,
     quotes = [], fetchQuotes,
@@ -97,6 +101,7 @@ const ClientDashboard = () => {
     if (fetchWarehouses) fetchWarehouses();
     if (fetchFleet) fetchFleet();
   }, [
+<<<<<<< HEAD
     fetchOrders,
     fetchFinance,
     fetchInventory,
@@ -111,6 +116,11 @@ const ClientDashboard = () => {
     fetchQuotes,
     fetchWarehouses,
     fetchFleet
+=======
+    fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats,
+    fetchTickets, fetchChauffeurRequests, fetchLuxuryItems, fetchPurchaseOrders,
+    fetchPurchaseRequests, fetchQuotes, fetchWarehouses, fetchFleet
+>>>>>>> 99178945b15e46d9ed305449ec01dd5ca4ea08b0
   ]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -546,7 +556,13 @@ const ClientDashboard = () => {
                   </div>
                 ))}
                 {clientGuestRequests.length === 0 && (
+<<<<<<< HEAD
                   <EmptyState text="No active concierge logs found." />
+=======
+                  <div className="p-4 bg-white/[0.02] border border-border rounded-xl opacity-40 text-xs text-center italic py-10">
+                    <p className="text-muted text-[10px] font-black uppercase">No active concierge logs found.</p>
+                  </div>
+>>>>>>> 99178945b15e46d9ed305449ec01dd5ca4ea08b0
                 )}
               </div>
   <button onClick={() => navigate('/dashboard/client-events')}

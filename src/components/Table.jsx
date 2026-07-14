@@ -69,15 +69,21 @@ const Table = ({ columns, data, actions, onView, onEdit, onDelete, canEdit = tru
                   {((currentPage - 1) * perPage + rowIdx + 1).toString().padStart(2, '0')}
                 </td>
 
-                {columns.map((col, colIdx) => (
-                  <td key={colIdx} className="py-4 px-4 text-sm whitespace-nowrap">
-                    {col.render ? col.render(row) : (
-                      col.accessor === 'status'
-                        ? <StatusBadge status={row[col.accessor]} />
-                        : <span className="font-semibold text-primary/90">{row[col.accessor]}</span>
-                    )}
-                  </td>
-                ))}
+                {columns.map((col, colIdx) => {
+                  let rawVal = row[col.accessor];
+                  if (typeof rawVal === 'object' && rawVal !== null && !React.isValidElement(rawVal)) {
+                    rawVal = rawVal.name || rawVal.title || JSON.stringify(rawVal);
+                  }
+                  return (
+                    <td key={colIdx} className="py-4 px-4 text-sm whitespace-nowrap">
+                      {col.render ? col.render(row) : (
+                        col.accessor === 'status'
+                          ? <StatusBadge status={row[col.accessor]} />
+                          : <span className="font-semibold text-primary/90">{rawVal}</span>
+                      )}
+                    </td>
+                  );
+                })}
 
                 {actions && (
                   <td className="py-4 px-4 text-right">
@@ -148,25 +154,35 @@ const Table = ({ columns, data, actions, onView, onEdit, onDelete, canEdit = tru
                   {columns[0].header}
                 </p>
                 <div className="text-base font-black text-white italic tracking-tight truncate leading-tight">
-                  {columns[0].render ? columns[0].render(row) : row[columns[0].accessor]}
+                  {columns[0].render ? columns[0].render(row) : (
+                    typeof row[columns[0].accessor] === 'object' && row[columns[0].accessor] !== null && !React.isValidElement(row[columns[0].accessor])
+                      ? (row[columns[0].accessor].name || JSON.stringify(row[columns[0].accessor]))
+                      : row[columns[0].accessor]
+                  )}
                 </div>
               </div>
               <StatusBadge status={row.status} />
             </div>
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-5 relative z-10">
-              {columns.slice(1).map((col, colIdx) => (
-                col.accessor !== 'status' && (
-                  <div key={colIdx} className="space-y-1">
-                    <p className="text-[8px] sm:text-[9px] text-muted font-black uppercase tracking-widest opacity-50">
+              {columns.slice(1, -1).map((col, colIdx) => {
+                let rawVal = row[col.accessor];
+                if (typeof rawVal === 'object' && rawVal !== null && !React.isValidElement(rawVal)) {
+                  rawVal = rawVal.name || rawVal.title || JSON.stringify(rawVal);
+                }
+                return (
+                  <div key={colIdx} className="bg-white/[0.02] border border-white/[0.05] p-3 rounded-[1.25rem] flex flex-col justify-center">
+                    <p className="text-[8px] text-muted font-black uppercase tracking-[0.2em] mb-1 opacity-70">
                       {col.header}
                     </p>
-                    <div className="text-[11px] sm:text-xs font-bold text-secondary break-words leading-relaxed">
-                      {col.render ? col.render(row) : (row[col.accessor] === undefined ? 'N/A' : row[col.accessor])}
+                    <div className="text-xs font-black text-white truncate">
+                      {col.render ? col.render(row) : (
+                        col.accessor === 'status' ? <StatusBadge status={row[col.accessor]} /> : rawVal
+                      )}
                     </div>
                   </div>
-                )
-              ))}
+                );
+              })}
             </div>
 
             {actions && (

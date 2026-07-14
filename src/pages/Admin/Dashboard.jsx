@@ -20,10 +20,10 @@ const Dashboard = () => {
 
   const {
     orders, addOrder, updateOrder, deleteOrder, logs,
-    revenueFilter, setRevenueFilter, getRevenueChartData, clients,
+    revenueFilter, setRevenueFilter, getRevenueChartData,
     invoices, users, fleet, inventory, stockMovements,
     fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet,
-    fetchDeliveries, fetchProjects, fetchDashboardStats,
+    fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs,
     deliveries, projects, dashboardStats, currentUser,
     hasMenuPermission
   } = useData();
@@ -42,11 +42,12 @@ const Dashboard = () => {
         fetchFleet(),
         fetchDeliveries(),
         fetchProjects(),
-        fetchDashboardStats()
+        fetchDashboardStats(revenueFilter),
+        fetchDashboardLogs()
       ]);
     };
     loadDashboard();
-  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats]);
+  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs]);
 
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -74,6 +75,13 @@ const Dashboard = () => {
     setIsModalOpen(false);
   };
 
+  // Handle revenue filter change — re-fetch stats with new filter
+  const handleFilterChange = async (option) => {
+    setRevenueFilter(option);
+    setIsFilterOpen(false);
+    await fetchDashboardStats(option);
+  };
+
   // --- Dashboard Intelligence Calibration ---
   const stats = useMemo(() => {
     return {
@@ -83,18 +91,22 @@ const Dashboard = () => {
       relevantRevenue: dashboardStats.relevantRevenue || 0,
       prevRevenue: dashboardStats.prevRevenue || 0,
       revenueTrend: dashboardStats.revenueTrend || '0%',
-      ordersTrend: '+0%', // Can be added to backend later if needed
+      ordersTrend: dashboardStats.ordersTrend || '+0%',
       inventoryValue: dashboardStats.inventoryValue || 0,
+      inventoryValueOnHand: dashboardStats.inventoryValueOnHand || 0,
       lowStockItems: dashboardStats.stockWarnings || 0,
-      onlineStaff: dashboardStats.activeStaff || 0,
-      totalUsers: dashboardStats.activeStaff || 0,
+      totalSkus: dashboardStats.totalSkus || 0,
+      assetLoss: dashboardStats.assetLoss || 0,
+      onlineStaff: dashboardStats.onlineStaff || 0,
+      totalUsers: dashboardStats.totalPersonnel || dashboardStats.activeStaff || 0,
       birthdayStaff: [],
-      activeChauffeurs: dashboardStats.fleetAvailable || 0,
+      activeChauffeurs: dashboardStats.chauffeurRequests || 0,
       activeEvents: dashboardStats.activeEvents || 0,
       openTickets: dashboardStats.openTickets || 0,
       activeClients: dashboardStats.activeClients || 0,
       pendingDeliveries: dashboardStats.pendingDeliveries || 0,
-      activeProjects: dashboardStats.activeProjects || 0
+      activeProjects: dashboardStats.activeProjects || 0,
+      revenueChartData: dashboardStats.revenueChartData || [],
     };
   }, [dashboardStats]);
 
@@ -137,10 +149,13 @@ const Dashboard = () => {
     return [...(orders || [])].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, 5);
   }, [orders]);
 
-  // Mock data for Chauffeur Service based on fleet or orders
-  const activeChauffeurs = useMemo(() => {
-    return (fleet || []).filter(v => v.type === 'Luxury Sedan' && v.status === 'On Mission');
-  }, [fleet]);
+  // Use backend chart data if available, otherwise fall back to client-side
+  const chartData = useMemo(() => {
+    if (stats.revenueChartData && stats.revenueChartData.length > 0) {
+      return stats.revenueChartData;
+    }
+    return getRevenueChartData();
+  }, [stats.revenueChartData, getRevenueChartData]);
 
   return (
     <div className="space-y-6 md:space-y-8 pb-10">
@@ -216,10 +231,7 @@ const Dashboard = () => {
                   {['Daily', 'Weekly', 'Monthly', 'Quarterly', 'Annual'].map((option) => (
                     <button
                       key={option}
-                      onClick={() => {
-                        setRevenueFilter(option);
-                        setIsFilterOpen(false);
-                      }}
+                      onClick={() => handleFilterChange(option)}
                       className={`w-full text-left px-8 py-4 text-[10px] font-black uppercase tracking-[0.2em] transition-all hover:bg-accent/10 border-b border-white/5 last:border-none ${revenueFilter === option ? 'text-accent bg-accent/5' : 'text-muted'}`}
                     >
                       {option} Revenue Audit
@@ -236,12 +248,12 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           { label: 'Total Warehouse Assets', value: `$${(stats.inventoryValue / 1000).toFixed(1)}K`, icon: Package, color: 'text-accent', trend: stats.lowStockItems > 0 ? `${stats.lowStockItems} Low Stock` : 'Optimal', detail: 'Asset Valuation', show: hasMenuPermission('Inventory', 'can_view') || hasMenuPermission('StockHub', 'can_view') },
-          { label: 'Global Revenue flow', value: `$${(stats.relevantRevenue / 1000).toFixed(1)}K`, icon: DollarSign, color: 'text-success', trend: stats.revenueTrend, detail: 'Total Settlements', show: hasMenuPermission('Invoices', 'can_view') || hasMenuPermission('Payments', 'can_view') },
+          { label: 'Global Revenue flow', value: `$${(stats.relevantRevenue / 1000).toFixed(1)}K`, icon: DollarSign, color: 'text-success', trend: stats.revenueTrend, detail: `${revenueFilter} Settlements`, show: hasMenuPermission('Invoices', 'can_view') || hasMenuPermission('Payments', 'can_view') },
           { label: 'Active Operations', value: stats.openOrders, icon: ShoppingCart, color: 'text-info', trend: stats.ordersTrend, detail: 'Mission Pipeline', show: hasMenuPermission('Orders', 'can_view') },
           { label: 'Global Personnel', value: stats.totalUsers, icon: Users, color: 'text-primary', trend: stats.onlineStaff > 0 ? `${stats.onlineStaff} Online` : 'Active', detail: 'Total HQ Staff', show: hasMenuPermission('Staff Management', 'can_view') || hasMenuPermission('HQ Personnel', 'can_view') },
-          { label: 'Chauffeur Requests', value: stats.activeChauffeurs, icon: Truck, color: 'text-accent', trend: `Active`, detail: 'Pending Rides', show: hasMenuPermission('Chauffeur', 'can_view') || hasMenuPermission('Chauffeur Protocol', 'can_view') },
-          { label: 'Active Events', value: stats.activeEvents, icon: Calendar, color: 'text-info', trend: 'Scheduled', detail: 'Concierge Events', show: hasMenuPermission('Events', 'can_view') },
-          { label: 'Open Support Cases', value: stats.openTickets, icon: AlertTriangle, color: 'text-warning', trend: 'Need Attention', detail: 'Support Tickets', show: hasMenuPermission('Support', 'can_view') }
+          { label: 'Chauffeur Requests', value: stats.activeChauffeurs, icon: Truck, color: 'text-accent', trend: stats.activeChauffeurs > 0 ? 'Active' : 'None', detail: 'Pending Rides', show: hasMenuPermission('Chauffeur', 'can_view') || hasMenuPermission('Chauffeur Protocol', 'can_view') },
+          { label: 'Active Events', value: stats.activeEvents, icon: Calendar, color: 'text-info', trend: stats.activeEvents > 0 ? 'Scheduled' : 'None', detail: 'Concierge Events', show: hasMenuPermission('Events', 'can_view') },
+          { label: 'Open Support Cases', value: stats.openTickets, icon: AlertTriangle, color: 'text-warning', trend: stats.openTickets > 0 ? 'Need Attention' : 'All Clear', detail: 'Support Tickets', show: hasMenuPermission('Support', 'can_view') }
         ].filter(s => s.show || hasAccess).map((stat, idx) => (
           <div key={idx} className="glass-card p-5 sm:p-6 relative overflow-hidden group hover:border-accent/30 transition-all border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent">
             <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 group-hover:opacity-[0.05] transition-all duration-700 pointer-events-none">
@@ -278,7 +290,7 @@ const Dashboard = () => {
                   <div className="text-right">
                     <p className="text-[8px] font-black text-danger uppercase tracking-widest">Asset Loss</p>
                     <p className="text-sm font-bold text-white">
-                      ${stockMovements.filter(m => m.type === 'Loss').reduce((a, b) => a + (b.value || 0), 0).toLocaleString()}
+                      ${stats.assetLoss.toLocaleString()}
                     </p>
                   </div>
                   <Link to="/dashboard/reports" className="text-[9px] md:text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-2 hover:translate-x-1 transition-all group">
@@ -288,7 +300,7 @@ const Dashboard = () => {
               </div>
               <div className="h-[250px] md:h-[340px] w-full min-w-0">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={getRevenueChartData()} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                  <AreaChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
                     <defs>
                       <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#C8A96A" stopOpacity={0.4} />
@@ -301,6 +313,7 @@ const Dashboard = () => {
                     <Tooltip
                       contentStyle={{ backgroundColor: '#131316', border: '1px solid #ffffff10', borderRadius: '24px', boxShadow: '0 20px 40px rgba(0,0,0,0.8)' }}
                       itemStyle={{ color: '#C8A96A', fontWeight: 'bold' }}
+                      formatter={(value) => [`$${Number(value).toLocaleString()}`, 'Revenue']}
                     />
                     <Area type="monotone" dataKey="revenue" stroke="#C8A96A" fillOpacity={1} fill="url(#colorRevenue)" strokeWidth={5} />
                   </AreaChart>
@@ -323,10 +336,10 @@ const Dashboard = () => {
                   <div className="bg-white/5 p-4 rounded-xl border border-white/5">
                     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest mb-2">
                       <span className="text-secondary">System-Wide Stock</span>
-                      <span className="text-white">{inventory.length} SKUs</span>
+                      <span className="text-white">{stats.totalSkus} SKUs</span>
                     </div>
                     <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
-                      <div className="h-full bg-accent" style={{ width: `${Math.min(100, (inventory.length / 50) * 100)}%` }} />
+                      <div className="h-full bg-accent" style={{ width: `${Math.min(100, (stats.totalSkus / 50) * 100)}%` }} />
                     </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
@@ -336,7 +349,7 @@ const Dashboard = () => {
                     </div>
                     <div className="bg-white/5 p-3 rounded-xl border border-white/5">
                       <p className="text-[8px] font-bold text-muted uppercase tracking-widest mb-1">Value on Hand</p>
-                      <p className="text-lg font-bold text-success">${(inventory.reduce((a, b) => a + (b.price * b.qty), 0) / 1000).toFixed(1)}K</p>
+                      <p className="text-lg font-bold text-success">${(stats.inventoryValueOnHand / 1000).toFixed(1)}K</p>
                     </div>
                   </div>
                 </div>
@@ -398,7 +411,13 @@ const Dashboard = () => {
           <div className="absolute top-0 right-0 w-32 h-32 bg-accent opacity-[0.02] blur-[80px]" />
           <h3 className="text-xl md:text-2xl font-bold tracking-tight mb-6 md:mb-8 text-white">System Activity Log</h3>
           <div className="flex-1 space-y-6 md:space-y-8 overflow-y-auto custom-scrollbar pr-2 md:pr-4 max-h-[400px] lg:max-h-none">
-            {(logs || []).slice(0, 12).map((log, i) => (
+            {(logs || []).length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <Activity size={32} className="text-muted/30 mb-3" />
+                <p className="text-xs text-muted/50 font-bold uppercase tracking-widest">No activity yet</p>
+                <p className="text-[10px] text-muted/30 mt-1">System actions will appear here in real-time</p>
+              </div>
+            ) : (logs || []).slice(0, 12).map((log, i) => (
               <div key={i} className="flex gap-6 items-start relative pb-8 last:pb-2 group">
                 {i < (logs.slice(0, 12).length - 1) && (
                   <div className="absolute left-[7.5px] top-6 bottom-0 w-[1px] bg-gradient-to-b from-white/10 to-transparent" />
@@ -420,7 +439,7 @@ const Dashboard = () => {
             ))}
           </div>
           <div className="pt-6 mt-auto border-t border-white/5">
-            <button className="w-full py-4 text-[10px] font-black text-muted uppercase tracking-widest hover:text-white transition-all flex items-center justify-center gap-2">
+            <button onClick={() => navigate('/dashboard/audits')} className="w-full py-4 text-[10px] font-black text-muted uppercase tracking-widest hover:text-white transition-all flex items-center justify-center gap-2">
               View Full Activity Archive <ArrowRight size={14} />
             </button>
           </div>

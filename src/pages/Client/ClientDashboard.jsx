@@ -202,10 +202,6 @@ const ClientDashboard = () => {
               className="px-6 py-2.5 bg-white/5 border border-white/10 text-white rounded-xl text-[10px] font-black uppercase tracking-[0.25em] hover:bg-accent hover:text-black hover:border-accent transition-all font-body active:scale-[0.98] flex items-center gap-2 group shadow-xl">
               <FileText size={14} className="group-hover:rotate-12 transition-transform" />Custom Requisition
             </button>
-            <button onClick={() => navigate('/dashboard/store')}
-              className="btn-primary text-[10px] px-8 py-2.5 md:px-12 flex items-center gap-3 shadow-[0_0_30px_rgba(200,169,106,0.3)]">
-              <ShoppingBag size={14} /> Open Marketplace
-            </button>
           </div>
         </div>
 

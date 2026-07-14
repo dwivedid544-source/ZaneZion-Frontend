@@ -114,63 +114,8 @@ const Topbar = ({ toggleSidebar, role }) => {
         </div>
       </div>
 
-      {/* Centre: Search */}
-      <div className="relative flex-1 max-w-lg hidden md:block">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" size={16} />
-        <input
-          type="text"
-          placeholder="Search orders, clients, inventory…"
-          value={searchTerm}
-          onChange={handleSearch}
-          onFocus={() => setShowResults(searchTerm.length > 0)}
-          className="w-full bg-card border border-border rounded-xl py-2 pl-9 pr-4 text-sm text-secondary placeholder:text-muted focus:outline-none focus:border-accent focus:text-white transition-all"
-        />
-
-        <AnimatePresence>
-          {showResults && (
-            <>
-              <div className="fixed inset-0 z-40" onClick={() => setShowResults(false)} />
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 10 }}
-                className="absolute left-0 right-0 top-full mt-2 bg-sidebar border border-border rounded-2xl shadow-2xl z-50 overflow-hidden"
-              >
-                <div className="p-2">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-muted px-4 py-2 border-b border-border/50">Global Intelligence Search</p>
-                  {results.length > 0 ? (
-                    <div className="max-h-[60vh] overflow-y-auto custom-scrollbar p-1">
-                      {results.map((res, i) => (
-                        <button
-                          key={`${res.category}-${res.id}-${i}`}
-                          onClick={() => {
-                            navigate(res.link);
-                            setShowResults(false);
-                            setSearchTerm('');
-                          }}
-                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 rounded-xl transition-all group text-left"
-                        >
-                          <div className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center text-accent group-hover:scale-110 transition-transform">
-                            <res.icon size={16} />
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-white leading-none mb-1">{res.title}</p>
-                            <p className="text-[10px] text-muted font-bold uppercase tracking-wider">{res.category}</p>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="py-8 text-center">
-                      <p className="text-secondary text-sm">No operational data matches "{searchTerm}"</p>
-                    </div>
-                  )}
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
-      </div>
+      {/* Centre: Space filler since search is removed */}
+      <div className="flex-1 hidden md:block"></div>
 
       {/* Right: Clock (operational roles) + Notifications + Profile */}
       <div className="flex items-center gap-1 flex-shrink-0">

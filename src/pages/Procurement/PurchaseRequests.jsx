@@ -21,16 +21,17 @@ const PurchaseRequests = () => {
     fetchCustomerUsers,
     fetchStaff,
     fetchClients,
+    clients,
   } = useData();
 
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   const { data: prData, isLoading, error } = usePurchaseRequests(page, 10, searchTerm);
-  
+
   const purchaseRequests = prData?.purchaseRequests || (mockRequests || []);
   const meta = prData ? { totalPages: prData.totalPages, totalItems: prData.total } : { totalPages: 1, totalItems: purchaseRequests.length };
-  
+
   const createPRMutation = useCreatePR();
   const updatePRMutation = useUpdatePR();
   const deletePRMutation = useDeletePR();
@@ -39,8 +40,22 @@ const PurchaseRequests = () => {
   const [modalType, setModalType] = useState('view');
   const [selectedRequest, setSelectedRequest] = useState(null);
 
+  const portalRole = normalizeRole(currentUser?.role);
+  const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
+  const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
+  const currentClient = (clients || []).find(c => {
+    const cId = normalizeId(c.id);
+    const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
+    return cId && uId && cId === uId;
+  });
+  const isBusinessClient = portalRole === 'client' && (
+    rawRoleStr.toLowerCase().includes('business') ||
+    currentClient?.clientType === 'Business' ||
+    currentClient?.client_type === 'Business'
+  );
+
   const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
-  const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole);
+  const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole) && !isBusinessClient;
 
   React.useEffect(() => {
     fetchProcurement();
@@ -49,7 +64,7 @@ const PurchaseRequests = () => {
       fetchStaff();
       fetchCustomerUsers({ include_all: 1 });
     }
-    if (hasMenuPermission('Clients', 'can_view')) {
+    if (hasMenuPermission('Clients', 'can_view') || portalRole === 'client') {
       fetchClients();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -178,7 +193,7 @@ const PurchaseRequests = () => {
           <h1 className="text-3xl font-bold tracking-tight text-white italic uppercase tracking-tighter">Purchase Requests</h1>
           <p className="text-secondary mt-1 text-sm font-medium opacity-80 italic uppercase tracking-widest">Review and approve procurement requests from departments.</p>
         </div>
-        {(hasMenuPermission('Purchase Requests', 'can_add') || isCustomer) && (
+        {(hasMenuPermission('Purchase Requests', 'can_add') || isCustomer || isBusinessClient) && (
           <button className="btn-primary flex items-center gap-2 px-6 py-3 rounded-xl shadow-lg shadow-accent/20" onClick={handleNewRequest}>
             <Plus size={16} /> New Request
           </button>
@@ -215,8 +230,8 @@ const PurchaseRequests = () => {
               onView={(item) => handleAction('view', item)}
               onEdit={(item) => handleAction('edit', item)}
               onDelete={(item) => handleAction('delete', item)}
-              canEdit={hasMenuPermission('Purchase Requests', 'can_edit') || userRole === 'saas_client'}
-              canDelete={hasMenuPermission('Purchase Requests', 'can_delete') || userRole === 'saas_client'}
+              canEdit={hasMenuPermission('Purchase Requests', 'can_edit') || userRole === 'saas_client' || isBusinessClient}
+              canDelete={hasMenuPermission('Purchase Requests', 'can_delete') || userRole === 'saas_client' || isBusinessClient}
             />
             <div className="mt-6 border-t border-white/5 pt-6">
               <Pagination currentPage={page} totalPages={meta.totalPages} onPageChange={setPage} totalItems={meta.totalItems} />

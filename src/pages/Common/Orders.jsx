@@ -16,7 +16,7 @@ import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/auth
 function isCustomRequestFlowOrder(order) {
   const typeStr = String(order?.type || '').toLowerCase();
   const kindStr = String(order?.order_kind || order?.orderKind || '').toLowerCase();
-  
+
   if (
     typeStr.includes('custom') || typeStr.includes('bespoke') || typeStr.includes('custom_request') ||
     kindStr.includes('custom') || kindStr.includes('bespoke') || kindStr.includes('custom_request')
@@ -44,11 +44,11 @@ const Orders = () => {
   const orders = ordersData?.data?.orders || [];
   const pagination = ordersData?.data
     ? {
-        page: ordersData.data.page || 1,
-        total: ordersData.data.total || 0,
-        limit: 10,
-        totalPages: ordersData.data.totalPages || 1,
-      }
+      page: ordersData.data.page || 1,
+      total: ordersData.data.total || 0,
+      limit: 10,
+      totalPages: ordersData.data.totalPages || 1,
+    }
     : null;
   const updateOrderStatusMutation = useUpdateOrderStatus();
   const createOrderMutation = useCreateOrder();
@@ -64,6 +64,7 @@ const Orders = () => {
   const portalRole = normalizeRole(currentUser?.role);
   const canStaffCreateOrder = roleCanCreateInstitutionalOrder(portalRole);
 
+  const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
   const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
   const currentClient = (clients || []).find(c => {
     const cId = normalizeId(c.id);
@@ -71,7 +72,7 @@ const Orders = () => {
     return cId && uId && cId === uId;
   });
   const isBusinessClient = portalRole === 'client' && (
-    String(currentUser?.role).toLowerCase().includes('business') ||
+    rawRoleStr.toLowerCase().includes('business') ||
     currentClient?.clientType === 'Business' ||
     currentClient?.client_type === 'Business'
   );
@@ -99,13 +100,13 @@ const Orders = () => {
     };
     const newProject = await convertOrderToProject(order.id, projectData);
     if (newProject) {
-        swalSuccess(`System converted Order ${order.id} into a Logistics Project. Redirecting...`);
-        navigate('/dashboard/projects');
+      swalSuccess(`System converted Order ${order.id} into a Logistics Project. Redirecting...`);
+      navigate('/dashboard/projects');
     } else {
-        swalError('Failed to route order. Please see console for details.');
+      swalError('Failed to route order. Please see console for details.');
     }
   };
-  
+
   const handleApprove = async (order, stage) => {
     const result = await swalConfirm('Confirm Approval', `Are you sure you want to move Order #${order.id} to ${stage.toUpperCase()} stage?`);
     if (result.isConfirmed) {
@@ -171,8 +172,8 @@ const Orders = () => {
 
   const columns = [
     { header: "Order ID", accessor: "id" },
-    { 
-      header: "Client", 
+    {
+      header: "Client",
       accessor: "client",
       render: (row) => row.client?.companyName || row.client?.name || (typeof row.client === 'string' ? row.client : null) || row.customer_name || row.created_by_name || "—"
     },
@@ -207,7 +208,7 @@ const Orders = () => {
         const itms = row.items && row.items.length > 0 ? row.items : (row.customItems || []);
         let total = row.totalAmount || row.total_amount || row.estimated_total || row.amount || row.total || 0;
         if (total === 0 && itms && itms.length > 0) {
-            total = itms.reduce((acc, i) => acc + (parseFloat(i.price || i.unitPrice || 0) * parseInt(i.qty || i.quantity || 0)), 0);
+          total = itms.reduce((acc, i) => acc + (parseFloat(i.price || i.unitPrice || 0) * parseInt(i.qty || i.quantity || 0)), 0);
         }
         return <span className="font-black text-accent">${parseFloat(total).toLocaleString()}</span>;
       }
@@ -295,25 +296,25 @@ const Orders = () => {
     <div className="space-y-8">
       <div className="no-print space-y-8">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Order Management</h1>
-          <p className="text-secondary mt-1">Track and manage multi-line supply chain requests and deliveries.</p>
-          {!canStaffCreateOrder && !isBusinessClient && (
-            <p className="text-[10px] font-bold text-muted mt-2 uppercase tracking-wide">
-              Manual order creation is limited to staff only — customers use Marketplace / staff-assisted fulfilment.
-            </p>
-          )}
-        </div>
-        <div className="flex items-center gap-3">
-          <button className="btn-secondary flex items-center gap-2" onClick={() => navigate('/dashboard/invoices')}>
-            <FileText size={16} /> Ledger / Invoices
-          </button>
-          {(canStaffCreateOrder || isBusinessClient) && (hasMenuPermission('Orders', 'can_add') || isBusinessClient) && (
-            <button className="btn-primary flex items-center gap-2" onClick={() => handleAction('add', {})}>
-              <Plus size={16} /> Create Order
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Order Management</h1>
+            <p className="text-secondary mt-1">Track and manage multi-line supply chain requests and deliveries.</p>
+            {!canStaffCreateOrder && !isBusinessClient && (
+              <p className="text-[10px] font-bold text-muted mt-2 uppercase tracking-wide">
+                Manual order creation is limited to staff only — customers use Marketplace / staff-assisted fulfilment.
+              </p>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            <button className="btn-secondary flex items-center gap-2" onClick={() => navigate('/dashboard/invoices')}>
+              <FileText size={16} /> Ledger / Invoices
             </button>
-          )}
-          {/* <button
+            {(canStaffCreateOrder || isBusinessClient) && (hasMenuPermission('Orders', 'can_add') || isBusinessClient) && (
+              <button className="btn-primary flex items-center gap-2" onClick={() => handleAction('add', {})}>
+                <Plus size={16} /> Create Order
+              </button>
+            )}
+            {/* <button
             className="px-6 py-2.5 bg-info border border-info/50 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-info/80 shadow-lg shadow-info/20 flex items-center gap-2"
             onClick={() => {
               setSelectedOrderForInvoice(null);
@@ -322,190 +323,190 @@ const Orders = () => {
           >
             <FileText size={16} /> Create Invoice
           </button> */}
-        </div>
-      </div>
-
-      <div className="glass-card p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div className="relative max-w-sm w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
-            <input
-              type="text"
-              placeholder="Search by ID, Client or Items..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setPage(1);
-              }}
-              className="w-full bg-background border border-border rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent"
-            />
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="flex justify-center p-12"><RefreshCcw className="animate-spin text-accent" /></div>
-        ) : error ? (
-          <div className="text-danger p-4">Failed to load orders.</div>
-        ) : (
-          <Table
-            columns={columns}
-            data={currentOrders}
-            pagination={pagination}
-            onPageChange={setPage}
-            actions={true}
-            onView={(item) => handleAction('view', item)}
-            onEdit={(item) => handleAction('edit', item)}
-            onDelete={(item) => handleDelete(item.id)}
-            canEdit={hasMenuPermission('Orders', 'can_edit') || isBusinessClient}
-            canDelete={hasMenuPermission('Orders', 'can_delete') || isBusinessClient}
-            customAction={(item) => canManageOrders ? (
-              <div className="flex items-center gap-1 flex-wrap">
-                {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      const oid = item.id;
-                      const orderRef = oid != null ? `ORD-${String(oid).padStart(3, '0')}` : '';
-                      navigate('/dashboard/deliveries', {
-                        state: {
-                          prefillOrderId: oid,
-                          orderId: orderRef,
-                          items: (item.items && item.items.length > 0) ? item.items : (item.customItems || item.metadata?.customItems || []),
-                          client: item.client,
-                          clientId: item.clientId || item.client_id || item.customer_id || '',
-                          customerId: item.customer_id || item.clientId || item.client_id || '',
-                          location: item.location || item.delivery_address || '',
-                          pickupLocation: item.pickupLocation || item.pickup_location || '',
-                          dropLocation: item.location || item.delivery_address || item.deliveryAddress || '',
-                          mode: item.deliveryType || item.delivery_mode || item.deliveryMode || item.mode || 'Road',
-                          deliveryInstructions: item.delivery_instructions || item.deliveryInstructions || '',
-                          deliveryFee: 0,
-                        }
-                      });
-                    }}
-                    className="p-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1 border border-white/5"
-                    title="Delivery action — assign marketplace fulfilment for field staff"
-                  >
-                    <Truck size={14} /> Delivery
-                  </button>
-                )}
-                {/* Admin approval: marketplace → logistics queue (whole team sees it; assign driver in Deliveries); bespoke → concierge */}
-                {['superadmin', 'admin', 'saas_client'].includes(normalizedRole) &&
-                 ['created', 'admin_review', 'pending_review'].includes(String(item.status).toLowerCase()) && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleApprove(item, isCustomRequestFlowOrder(item) ? 'concierge' : 'logistics');
-                    }}
-                    className="p-2 rounded-lg text-secondary hover:text-success hover:bg-success/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
-                    title={isCustomRequestFlowOrder(item) ? 'Approve & send to Concierge' : 'Approve & send to Logistics (dispatch queue)'}
-                  >
-                    <CheckCircle size={14} />{' '}
-                    <span>{isCustomRequestFlowOrder(item) ? 'Approve → Concierge' : 'Approve → Logistics'}</span>
-                  </button>
-                )}
+        <div className="glass-card p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div className="relative max-w-sm w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
+              <input
+                type="text"
+                placeholder="Search by ID, Client or Items..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full bg-background border border-border rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent"
+              />
+            </div>
+          </div>
 
-                {/* Concierge triage: forward into supply chain */}
-                {['superadmin', 'concierge', 'admin', 'saas_client'].includes(normalizedRole) &&
-                 String(item.status).toLowerCase() === 'concierge' && (
-                  <>
+          {isLoading ? (
+            <div className="flex justify-center p-12"><RefreshCcw className="animate-spin text-accent" /></div>
+          ) : error ? (
+            <div className="text-danger p-4">Failed to load orders.</div>
+          ) : (
+            <Table
+              columns={columns}
+              data={currentOrders}
+              pagination={pagination}
+              onPageChange={setPage}
+              actions={true}
+              onView={(item) => handleAction('view', item)}
+              onEdit={(item) => handleAction('edit', item)}
+              onDelete={(item) => handleDelete(item.id)}
+              canEdit={hasMenuPermission('Orders', 'can_edit') || isBusinessClient}
+              canDelete={hasMenuPermission('Orders', 'can_delete') || isBusinessClient}
+              customAction={(item) => canManageOrders ? (
+                <div className="flex items-center gap-1 flex-wrap">
+                  {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) && (
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); handleApprove(item, 'operation'); }}
-                      className="p-1 px-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                      title="Hand off to Operations"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const oid = item.id;
+                        const orderRef = oid != null ? `ORD-${String(oid).padStart(3, '0')}` : '';
+                        navigate('/dashboard/deliveries', {
+                          state: {
+                            prefillOrderId: oid,
+                            orderId: orderRef,
+                            items: (item.items && item.items.length > 0) ? item.items : (item.customItems || item.metadata?.customItems || []),
+                            client: item.client,
+                            clientId: item.clientId || item.client_id || item.customer_id || '',
+                            customerId: item.customer_id || item.clientId || item.client_id || '',
+                            location: item.location || item.delivery_address || '',
+                            pickupLocation: item.pickupLocation || item.pickup_location || '',
+                            dropLocation: item.location || item.delivery_address || item.deliveryAddress || '',
+                            mode: item.deliveryType || item.delivery_mode || item.deliveryMode || item.mode || 'Road',
+                            deliveryInstructions: item.delivery_instructions || item.deliveryInstructions || '',
+                            deliveryFee: 0,
+                          }
+                        });
+                      }}
+                      className="p-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1 border border-white/5"
+                      title="Delivery action — assign marketplace fulfilment for field staff"
                     >
-                      <ArrowRightCircle size={13} /> <span>To Operations</span>
+                      <Truck size={14} /> Delivery
                     </button>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleApprove(item, 'procurement'); }}
-                      className="p-1 px-2 rounded-lg text-secondary hover:text-warning hover:bg-warning/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                      title="Needs procurement / sourcing"
-                    >
-                      <ShoppingCart size={13} /> <span>To Procurement</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
-                      className="p-1 px-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20"
-                      title="Straight to dispatch when fulfilment is logistics-only"
-                    >
-                      <Truck size={13} /> <span>To Dispatch</span>
-                    </button>
-                  </>
-                )}
+                  )}
+                  {/* Admin approval: marketplace → logistics queue (whole team sees it; assign driver in Deliveries); bespoke → concierge */}
+                  {['superadmin', 'admin', 'saas_client'].includes(normalizedRole) &&
+                    ['created', 'admin_review', 'pending_review'].includes(String(item.status).toLowerCase()) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleApprove(item, isCustomRequestFlowOrder(item) ? 'concierge' : 'logistics');
+                        }}
+                        className="p-2 rounded-lg text-secondary hover:text-success hover:bg-success/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
+                        title={isCustomRequestFlowOrder(item) ? 'Approve & send to Concierge' : 'Approve & send to Logistics (dispatch queue)'}
+                      >
+                        <CheckCircle size={14} />{' '}
+                        <span>{isCustomRequestFlowOrder(item) ? 'Approve → Concierge' : 'Approve → Logistics'}</span>
+                      </button>
+                    )}
 
-                {/* Operations Actions: operation -> procurement OR inventory OR logistics */}
-                {['superadmin', 'operations'].includes(normalizedRole) && 
-                 ['operation'].includes(String(item.status).toLowerCase()) && (
-                  <>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleApprove(item, 'procurement'); }}
-                      className="p-1 px-2 rounded-lg text-secondary hover:text-warning hover:bg-warning/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                      title="Needs Procurement"
-                    >
-                      <ShoppingCart size={13} /> <span>Procure</span>
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleApprove(item, 'inventory'); }}
-                      className="p-1 px-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                      title="Move to Inventory"
-                    >
-                      <Warehouse size={13} /> <span>Stock</span>
-                    </button>
-                    <button 
-                      onClick={(e) => { e.stopPropagation(); handleConvertToProject(item); }}
-                      className="p-1 px-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20 bg-accent/5 shadow-lg shadow-accent/5"
-                      title="Route to Project"
-                    >
-                      <ArrowRightCircle size={13} /> <span>Route to Project</span>
-                    </button>
-                  </>
-                )}
+                  {/* Concierge triage: forward into supply chain */}
+                  {['superadmin', 'concierge', 'admin', 'saas_client'].includes(normalizedRole) &&
+                    String(item.status).toLowerCase() === 'concierge' && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'operation'); }}
+                          className="p-1 px-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
+                          title="Hand off to Operations"
+                        >
+                          <ArrowRightCircle size={13} /> <span>To Operations</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'procurement'); }}
+                          className="p-1 px-2 rounded-lg text-secondary hover:text-warning hover:bg-warning/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
+                          title="Needs procurement / sourcing"
+                        >
+                          <ShoppingCart size={13} /> <span>To Procurement</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
+                          className="p-1 px-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20"
+                          title="Straight to dispatch when fulfilment is logistics-only"
+                        >
+                          <Truck size={13} /> <span>To Dispatch</span>
+                        </button>
+                      </>
+                    )}
 
-                {/* Procurement to Inventory: procurement -> inventory */}
-                {['superadmin', 'procurement'].includes(normalizedRole) && 
-                 ['procurement'].includes(String(item.status).toLowerCase()) && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleApprove(item, 'inventory'); }}
-                    className="p-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
-                    title="Move to Inventory"
-                  >
-                    <Warehouse size={14} /> <span>Store</span>
-                  </button>
-                )}
+                  {/* Operations Actions: operation -> procurement OR inventory OR logistics */}
+                  {['superadmin', 'operations'].includes(normalizedRole) &&
+                    ['operation'].includes(String(item.status).toLowerCase()) && (
+                      <>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'procurement'); }}
+                          className="p-1 px-2 rounded-lg text-secondary hover:text-warning hover:bg-warning/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
+                          title="Needs Procurement"
+                        >
+                          <ShoppingCart size={13} /> <span>Procure</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'inventory'); }}
+                          className="p-1 px-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
+                          title="Move to Inventory"
+                        >
+                          <Warehouse size={13} /> <span>Stock</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleConvertToProject(item); }}
+                          className="p-1 px-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20 bg-accent/5 shadow-lg shadow-accent/5"
+                          title="Route to Project"
+                        >
+                          <ArrowRightCircle size={13} /> <span>Route to Project</span>
+                        </button>
+                      </>
+                    )}
 
-                {/* Inventory to Logistics: inventory -> logistics */}
-                {['superadmin', 'inventory'].includes(normalizedRole) && 
-                 ['inventory'].includes(String(item.status).toLowerCase()) && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
-                    className="p-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
-                    title="Send for Dispatch"
-                  >
-                    <Truck size={14} /> <span>Dispatch</span>
-                  </button>
-                )}
+                  {/* Procurement to Inventory: procurement -> inventory */}
+                  {['superadmin', 'procurement'].includes(normalizedRole) &&
+                    ['procurement'].includes(String(item.status).toLowerCase()) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleApprove(item, 'inventory'); }}
+                        className="p-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
+                        title="Move to Inventory"
+                      >
+                        <Warehouse size={14} /> <span>Store</span>
+                      </button>
+                    )}
 
-                {/* Logistics to Completed: logistics -> completed */}
-                {['superadmin', 'logistics'].includes(normalizedRole) && 
-                 ['logistics'].includes(String(item.status).toLowerCase()) && (
-                  <button 
-                    onClick={(e) => { e.stopPropagation(); handleApprove(item, 'completed'); }}
-                    className="p-2 rounded-lg text-secondary hover:text-success hover:bg-success/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
-                    title="Mark as Delivered"
-                  >
-                    <PackageCheck size={14} /> <span>Deliver</span>
-                  </button>
-                )}
-              </div>
-            ) : null}
-          />
-        )}
-      </div>
+                  {/* Inventory to Logistics: inventory -> logistics */}
+                  {['superadmin', 'inventory'].includes(normalizedRole) &&
+                    ['inventory'].includes(String(item.status).toLowerCase()) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
+                        className="p-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
+                        title="Send for Dispatch"
+                      >
+                        <Truck size={14} /> <span>Dispatch</span>
+                      </button>
+                    )}
+
+                  {/* Logistics to Completed: logistics -> completed */}
+                  {['superadmin', 'logistics'].includes(normalizedRole) &&
+                    ['logistics'].includes(String(item.status).toLowerCase()) && (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); handleApprove(item, 'completed'); }}
+                        className="p-2 rounded-lg text-secondary hover:text-success hover:bg-success/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
+                        title="Mark as Delivered"
+                      >
+                        <PackageCheck size={14} /> <span>Deliver</span>
+                      </button>
+                    )}
+                </div>
+              ) : null}
+            />
+          )}
+        </div>
       </div>
 
       <OrderModal

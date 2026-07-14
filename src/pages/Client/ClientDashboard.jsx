@@ -71,16 +71,12 @@ const ClientDashboard = () => {
     orders, invoices, settleInvoice, currentUser, clients, inventory = [], deliveries = [],
     chauffeurRequests = [], fetchChauffeurRequests,
     fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats,
-<<<<<<< HEAD
-    events = [], fetchTickets, updateClient, guestRequests = [], luxuryItems = [], fetchLuxuryItems
-=======
-    events = [], fetchTickets, updateClient,
+    events = [], fetchTickets, updateClient, guestRequests = [], luxuryItems = [], fetchLuxuryItems,
     purchaseOrders = [], fetchPurchaseOrders,
     purchaseRequests = [], fetchPurchaseRequests,
     quotes = [], fetchQuotes,
     warehouses = [], fetchWarehouses,
     fleet = [], fetchFleet,
->>>>>>> 0ca7ad062066e415fbfb186095204b52719385fa
   } = useData();
   const navigate = useNavigate();
 
@@ -93,17 +89,17 @@ const ClientDashboard = () => {
     fetchDashboardStats();
     if (fetchTickets) fetchTickets();
     if (fetchChauffeurRequests) fetchChauffeurRequests();
-<<<<<<< HEAD
     if (fetchLuxuryItems) fetchLuxuryItems();
-  }, [fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats, fetchTickets, fetchChauffeurRequests, fetchLuxuryItems]);
-=======
     if (fetchPurchaseOrders) fetchPurchaseOrders();
     if (fetchPurchaseRequests) fetchPurchaseRequests();
     if (fetchQuotes) fetchQuotes();
     if (fetchWarehouses) fetchWarehouses();
     if (fetchFleet) fetchFleet();
-  }, []);
->>>>>>> 0ca7ad062066e415fbfb186095204b52719385fa
+  }, [
+    fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats,
+    fetchTickets, fetchChauffeurRequests, fetchLuxuryItems, fetchPurchaseOrders,
+    fetchPurchaseRequests, fetchQuotes, fetchWarehouses, fetchFleet
+  ]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('add');
@@ -531,25 +527,16 @@ const ClientDashboard = () => {
             {/* Concierge Active Requests */}
             <SectionCard title="Concierge Active Requests" viewAllPath="/dashboard/client-events" navigate={navigate}>
               <div className="space-y-3">
-<<<<<<< HEAD
                 {clientGuestRequests.slice(0, 2).map((req, i) => (
-=======
-                {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).slice(0, 3).map((event, i) => (
->>>>>>> 0ca7ad062066e415fbfb186095204b52719385fa
                   <div key={i} className="p-4 bg-white/5 border border-border rounded-xl">
                     <p className="text-sm font-black text-white italic">{req.request || req.title || req.name}</p>
                     <p className="text-[10px] text-accent font-black uppercase tracking-widest mt-1">{req.date} - {req.status || 'Pending'}</p>
                   </div>
                 ))}
-<<<<<<< HEAD
                 {clientGuestRequests.length === 0 && (
                   <div className="p-4 bg-white/[0.02] border border-border rounded-xl opacity-40 text-xs text-center italic py-10">
                     <p className="text-muted text-[10px] font-black uppercase">No active concierge logs found.</p>
                   </div>
-=======
-                {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).length === 0 && (
-                  <EmptyState text="No active concierge logs found." />
->>>>>>> 0ca7ad062066e415fbfb186095204b52719385fa
                 )}
               </div>
               <button onClick={() => navigate('/dashboard/client-events')}

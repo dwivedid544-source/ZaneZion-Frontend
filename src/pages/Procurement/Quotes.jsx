@@ -54,7 +54,7 @@ const Quotes = () => {
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
-  
+
   const { data: quotesData, isLoading: isLoadingQuotes, error: errorQuotes } = useQuotes(page, 10, searchTerm);
   const { data: rfqsData, isLoading: isLoadingRfqs } = useRFQs(page, 10);
   const { data: prData } = usePurchaseRequests(1, 100);
@@ -99,7 +99,7 @@ const Quotes = () => {
       paymentTerms: parsedRemarks.paymentTerms || 'Net 30'
     };
   }) : [];
-  
+
   const mergedRfqs = resolvedRfqs;
   const mergedQuotations = resolvedQuotations;
 
@@ -112,6 +112,7 @@ const Quotes = () => {
   const meta = quotesData?.meta || { totalPages: 1, totalItems: combinedQuotes.length };
 
   const portalRole = normalizeRole(currentUser?.role);
+  const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
   const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
   const currentClient = (clients || []).find(c => {
     const cId = normalizeId(c.id);
@@ -119,7 +120,7 @@ const Quotes = () => {
     return cId && uId && cId === uId;
   });
   const isBusinessClient = portalRole === 'client' && (
-    String(currentUser?.role).toLowerCase().includes('business') ||
+    rawRoleStr.toLowerCase().includes('business') ||
     currentClient?.clientType === 'Business' ||
     currentClient?.client_type === 'Business'
   );
@@ -246,7 +247,7 @@ const Quotes = () => {
     ).trim();
 
     const isRfq = formData.quoteType === 'vendor';
-    
+
     if (isRfq && !formData.purchaseRequestId) {
       window.alert('Purchase Request is required to generate an RFQ.');
       return;
@@ -285,7 +286,7 @@ const Quotes = () => {
         if (isRfq) {
           await updateRfqMutation.mutateAsync({
             id: parseInt(rawId, 10),
-            data: { 
+            data: {
               status: formData.status.toLowerCase(),
               metadata: {
                 items: items,
@@ -308,7 +309,7 @@ const Quotes = () => {
     } catch (err) {
       swalError('Failed to process Quotation');
     }
-    
+
     setIsModalOpen(false);
   };
 
@@ -388,10 +389,10 @@ const Quotes = () => {
       render: (row) => {
         const vid = row.vendorId ?? row.vendor_id;
         const linkedVendor = (vendors || []).find((v) => String(v.id) === String(vid));
-        const fallbackVendor = typeof row.vendor === 'object' && row.vendor !== null 
+        const fallbackVendor = typeof row.vendor === 'object' && row.vendor !== null
           ? (row.vendor.companyName || row.vendor.name || row.vendor.vendor_name || 'Unknown Provider')
           : (row.vendor_name || row.vendor || 'Unknown Provider');
-          
+
         return (
           linkedVendor?.name ||
           linkedVendor?.vendor_name ||
@@ -402,16 +403,18 @@ const Quotes = () => {
       }
     },
     { header: "Request Date", accessor: "date", render: (row) => (row.createdAt || row.created_at || row.date)?.split('T')[0] || 'N/A' },
-    { header: "Protocol Validity", accessor: "validity_date", render: (row) => {
+    {
+      header: "Protocol Validity", accessor: "validity_date", render: (row) => {
         let v = row.validity_date || row.validity || row.metadata?.validity;
         if (!v && typeof row.remarks === 'string') {
           try {
             const parsed = JSON.parse(row.remarks);
             if (parsed.validity) v = parsed.validity;
-          } catch(e){}
+          } catch (e) { }
         }
         return v?.split?.('T')?.[0] || 'N/A';
-    } },
+      }
+    },
     {
       header: "Settlement Value",
       accessor: "total_amount",
@@ -421,7 +424,7 @@ const Quotes = () => {
         if (isVendorQuote && row.metadata) {
           let metadata = row.metadata;
           if (typeof metadata === 'string') {
-            try { metadata = JSON.parse(metadata); } catch(e){}
+            try { metadata = JSON.parse(metadata); } catch (e) { }
           }
           parsedItems = metadata.items || [];
         } else {
@@ -462,294 +465,294 @@ const Quotes = () => {
   return (
     <div className="space-y-8">
       <div className="no-print space-y-8">
-      {/* Header */}
-      <div className="no-print-logic flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Institutional Quoting</h1>
-          <p className="text-secondary mt-1 text-sm">Manage luxury asset acquisition and vendor competitive analysis.</p>
-        </div>
-        {(hasMenuPermission('Quotes', 'can_add') || isBusinessClient) && (
-          <button className="btn-primary flex items-center gap-2 self-start" onClick={() => handleAction('add', {})}>
-            <Plus size={16} /> New Quote Request
-          </button>
-        )}
-      </div>
-
-      {/* Stat Cards */}
-      <div className="no-print-logic grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Quotes', value: quotes.length, icon: FileText, color: 'text-accent' },
-          { label: 'Total Value', value: compactCurrency(totalValue), icon: DollarSign, color: 'text-success' },
-          { label: 'Active', value: activeQuotes, icon: Clock, color: 'text-info' },
-          { label: 'Accepted', value: acceptedQuotes, icon: CheckCircle, color: 'text-success' },
-        ].map((stat, i) => (
-          <div key={i} className="glass-card p-5 flex items-center gap-4 hover:border-accent/20 transition-all group">
-            <div className={`w-10 h-10 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-center ${stat.color} group-hover:scale-110 transition-transform flex-shrink-0`}>
-              <stat.icon size={20} />
-            </div>
-            <div className="min-w-0">
-              <p className="text-[10px] font-black text-muted uppercase tracking-widest truncate">{stat.label}</p>
-              <p className="text-lg sm:text-xl font-black text-white leading-tight truncate">{stat.value}</p>
-            </div>
+        {/* Header */}
+        <div className="no-print-logic flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Institutional Quoting</h1>
+            <p className="text-secondary mt-1 text-sm">Manage luxury asset acquisition and vendor competitive analysis.</p>
           </div>
-        ))}
-      </div>
-
-      <div className="no-print-logic glass-card p-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-          <div className="relative max-w-sm w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
-            <input
-              type="text"
-              placeholder="Search by ID or Manifest..."
-              value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value);
-                setPage(1);
-              }}
-              className="w-full bg-background border border-border rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent"
-            />
-          </div>
+          {(hasMenuPermission('Quotes', 'can_add') || isBusinessClient) && (
+            <button className="btn-primary flex items-center gap-2 self-start" onClick={() => handleAction('add', {})}>
+              <Plus size={16} /> New Quote Request
+            </button>
+          )}
         </div>
 
-        {isLoading ? (
-          <div className="flex justify-center p-12"><RefreshCcw className="animate-spin text-accent" /></div>
-        ) : error ? (
-          <div className="text-danger p-4">Failed to load quotes.</div>
-        ) : (
-          <>
-            <Table
-              columns={columns}
-              data={currentQuotes}
-              actions={true}
-              customAction={(quote) => (
-                <div className="flex items-center gap-1">
-                <button
-                  onClick={(e) => { e.stopPropagation(); handlePrint(quote); }}
-                  className="p-2 rounded-lg text-secondary hover:text-white hover:bg-white/10 transition-all flex items-center justify-center"
-                  title="Print / download quote"
-                >
-                  <Printer size={16} />
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDownloadPdf(quote); }}
-                  className="p-2 rounded-lg text-secondary hover:text-white hover:bg-white/10 transition-all flex items-center justify-center"
-                  title="Download quote PDF"
-                >
-                  <HardDrive size={16} />
-                </button>
-                </div>
-              )}
-              onView={(item) => handleAction('view', item)}
-              onEdit={(item) => handleAction('edit', item)}
-              onDelete={(item) => handleAction('delete', item)}
-              canEdit={(!isCustomer && hasMenuPermission('Quotes', 'can_edit')) || isBusinessClient}
-              canDelete={(!isCustomer && hasMenuPermission('Quotes', 'can_delete')) || isBusinessClient}
-            />
-            <div className="mt-6 border-t border-white/5 pt-6">
-              <Pagination
-                currentPage={page}
-                totalPages={totalPages}
-                onPageChange={setPage}
-                totalItems={meta.totalItems}
+        {/* Stat Cards */}
+        <div className="no-print-logic grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Total Quotes', value: quotes.length, icon: FileText, color: 'text-accent' },
+            { label: 'Total Value', value: compactCurrency(totalValue), icon: DollarSign, color: 'text-success' },
+            { label: 'Active', value: activeQuotes, icon: Clock, color: 'text-info' },
+            { label: 'Accepted', value: acceptedQuotes, icon: CheckCircle, color: 'text-success' },
+          ].map((stat, i) => (
+            <div key={i} className="glass-card p-5 flex items-center gap-4 hover:border-accent/20 transition-all group">
+              <div className={`w-10 h-10 rounded-xl bg-white/[0.03] border border-white/5 flex items-center justify-center ${stat.color} group-hover:scale-110 transition-transform flex-shrink-0`}>
+                <stat.icon size={20} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-black text-muted uppercase tracking-widest truncate">{stat.label}</p>
+                <p className="text-lg sm:text-xl font-black text-white leading-tight truncate">{stat.value}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="no-print-logic glass-card p-6">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div className="relative max-w-sm w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
+              <input
+                type="text"
+                placeholder="Search by ID or Manifest..."
+                value={searchTerm}
+                onChange={(e) => {
+                  setSearchTerm(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full bg-background border border-border rounded-lg py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent"
               />
             </div>
-          </>
-        )}
-      </div>
+          </div>
 
-      <Modal
-        isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title={
-          modalType === 'view' ? 'Institutional Quote Manifest' :
-            modalType === 'edit' ? 'Update Procurement Terms' :
-              modalType === 'delete' ? 'Discard Quote' : 'Initiate Quote Submission'
-        }
-      >
-        <div className="space-y-6">
-          {modalType === 'delete' ? (
-            <div className="space-y-4">
-              <p className="text-secondary">Are you sure you want to permanently discard the quote request <span className="text-accent font-bold">{selectedQuote?.id}</span>?</p>
-              <div className="flex gap-3 justify-end pt-6 border-t border-border/50">
-                <button onClick={() => setIsModalOpen(false)} className="btn-secondary h-11 px-8 rounded-xl font-bold uppercase text-xs">
-                  Cancel
-                </button>
-                <button onClick={handleSave} className="btn-primary bg-danger hover:bg-danger/80 border-danger h-11 px-8 rounded-xl font-bold uppercase text-xs">
-                  Confirm Delete
-                </button>
-              </div>
-            </div>
+          {isLoading ? (
+            <div className="flex justify-center p-12"><RefreshCcw className="animate-spin text-accent" /></div>
+          ) : error ? (
+            <div className="text-danger p-4">Failed to load quotes.</div>
           ) : (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1 col-span-2">
-                  <label className="text-[10px] font-bold text-muted uppercase">Supply Partner</label>
-                  <select
-                    value={String(formData.vendorId || '')}
-                    onChange={(e) => {
-                      const nextId = e.target.value;
-                      const selected = (vendors || []).find((v) => String(v.id) === String(nextId));
-                      const selectedName = selected?.name || selected?.vendor_name || selected?.business_name || selected?.company_name || '';
-                      setFormData({ ...formData, vendorId: nextId, vendor: selectedName });
-                    }}
-                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                    disabled={modalType === 'view'}
-                  >
-                    <option value="">Select supply partner...</option>
-                    {(vendors || []).filter(v => String(v.status || '').toLowerCase() === 'active').map((v) => {
-                      const label = v.name || v.vendor_name || v.business_name || v.company_name || `Vendor #${v.id}`;
-                      return (
-                        <option key={String(v.id)} value={v.id}>
-                          {label}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Protocol ID</label>
-                  <input type="text" value={formData.id || 'AUTO'} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono text-accent" disabled={true} />
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <label className="text-[10px] font-bold text-muted uppercase">Quote purpose</label>
-                  <select
-                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                    value={formData.quoteType || 'client'}
-                    onChange={(e) => {
-                      setFormData({ ...formData, quoteType: e.target.value, purchaseRequestId: '', rfqId: '' });
-                    }}
-                    disabled={modalType === 'view' || modalType === 'edit'}
-                  >
-                    <option value="client">Client quote (with unit pricing)</option>
-                    <option value="vendor">Vendor Quote Request (RFQ)</option>
-                  </select>
-                </div>
-
-                {formData.quoteType === 'vendor' && (
-                  <div className="space-y-1 col-span-2 border-l-2 border-accent pl-4 py-2">
-                    <label className="text-[10px] font-bold text-accent uppercase">Link Purchase Request (Required for RFQ)</label>
-                    <select
-                      value={formData.purchaseRequestId || ''}
-                      onChange={(e) => {
-                        const prId = e.target.value;
-                        const selectedPr = activePurchaseRequests.find(pr => String(pr.id) === String(prId));
-                        let prItems = [{ name: '', qty: 1, price: 0 }];
-                        if (selectedPr && Array.isArray(selectedPr.items) && selectedPr.items.length > 0) {
-                          prItems = selectedPr.items.map(item => ({
-                            name: item.name || item.itemName || '',
-                            qty: item.qty ?? item.quantity ?? 1,
-                            price: item.price ?? item.estimatedCost ?? item.estimated_cost ?? 0
-                          }));
-                        }
-                        setFormData({
-                          ...formData,
-                          purchaseRequestId: prId,
-                          items: prItems
-                        });
-                      }}
-                      className="w-full bg-background border border-accent/30 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                      disabled={modalType === 'view' || modalType === 'edit'}
+            <>
+              <Table
+                columns={columns}
+                data={currentQuotes}
+                actions={true}
+                customAction={(quote) => (
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handlePrint(quote); }}
+                      className="p-2 rounded-lg text-secondary hover:text-white hover:bg-white/10 transition-all flex items-center justify-center"
+                      title="Print / download quote"
                     >
-                      <option value="">Select an approved Purchase Request...</option>
-                      {activePurchaseRequests
-                        .filter(pr => String(pr.status).toLowerCase() === 'approved' || String(pr.status).toLowerCase() === 'department_approved' || String(pr.status).toLowerCase() === 'procurement_review' || String(pr.status).toLowerCase() === 'pending' || String(pr.status).toLowerCase() === 'rfq_created') // temporarily broadened to show options if none are strictly 'approved'
-                        .map(pr => (
-                        <option key={pr.id} value={pr.id}>PR-{pr.id} ({pr.title || pr.item || 'Items'}) - {pr.status}</option>
-                      ))}
-                    </select>
+                      <Printer size={16} />
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleDownloadPdf(quote); }}
+                      className="p-2 rounded-lg text-secondary hover:text-white hover:bg-white/10 transition-all flex items-center justify-center"
+                      title="Download quote PDF"
+                    >
+                      <HardDrive size={16} />
+                    </button>
                   </div>
                 )}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Protocol Status</label>
-                  <select className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} disabled={modalType === 'view'}>
-                    <option value="Pending">Pending</option>
-                    <option value="Accepted">Accepted</option>
-                    <option value="Rejected">Rejected</option>
-                    <option value="Expired">Expired</option>
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Projected Lead Time</label>
-                  <input type="text" value={formData.leadTime} onChange={(e) => setFormData({ ...formData, leadTime: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={modalType === 'view'} placeholder="e.g. 5 Business Days" />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Validity Threshold</label>
-                  <input type="date" value={formData.validity} onChange={(e) => setFormData({ ...formData, validity: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={modalType === 'view'} />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Payment Terms</label>
-                  <select
-                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                    value={formData.paymentTerms || 'Net 30'}
-                    onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
-                    disabled={modalType === 'view'}
-                  >
-                    <option value="Immediate">Immediate</option>
-                    <option value="Net 15">Net 15</option>
-                    <option value="Net 30">Net 30</option>
-                    <option value="Net 45">Net 45</option>
-                    <option value="Net 60">Net 60</option>
-                  </select>
-                </div>
-                <div className="space-y-1 col-span-2">
-                  <label className="text-[10px] font-bold text-muted uppercase">Institutional Quote PDF</label>
-                  <div className="flex items-center gap-4">
-                    <label className="flex-1 flex items-center justify-between bg-white/5 border border-dashed border-accent/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-accent/5 transition-all">
-                      <div className="flex items-center gap-3">
-                        <HardDrive size={18} className="text-accent" />
-                        <span className="text-xs text-secondary">{formData.pdfName || 'Upload signed protocol manifest...'}</span>
-                      </div>
-                      <span className="text-[10px] font-black text-accent uppercase tracking-widest bg-accent/10 px-3 py-1 rounded-lg">Browse</span>
-                      <input type="file" className="hidden" onChange={(e) => setFormData({ ...formData, pdfName: e.target.files[0]?.name })} disabled={modalType === 'view'} />
-                    </label>
-                  </div>
+                onView={(item) => handleAction('view', item)}
+                onEdit={(item) => handleAction('edit', item)}
+                onDelete={(item) => handleAction('delete', item)}
+                canEdit={(!isCustomer && hasMenuPermission('Quotes', 'can_edit')) || isBusinessClient}
+                canDelete={(!isCustomer && hasMenuPermission('Quotes', 'can_delete')) || isBusinessClient}
+              />
+              <div className="mt-6 border-t border-white/5 pt-6">
+                <Pagination
+                  currentPage={page}
+                  totalPages={totalPages}
+                  onPageChange={setPage}
+                  totalItems={meta.totalItems}
+                />
+              </div>
+            </>
+          )}
+        </div>
+
+        <Modal
+          isOpen={isModalOpen}
+          onClose={() => setIsModalOpen(false)}
+          title={
+            modalType === 'view' ? 'Institutional Quote Manifest' :
+              modalType === 'edit' ? 'Update Procurement Terms' :
+                modalType === 'delete' ? 'Discard Quote' : 'Initiate Quote Submission'
+          }
+        >
+          <div className="space-y-6">
+            {modalType === 'delete' ? (
+              <div className="space-y-4">
+                <p className="text-secondary">Are you sure you want to permanently discard the quote request <span className="text-accent font-bold">{selectedQuote?.id}</span>?</p>
+                <div className="flex gap-3 justify-end pt-6 border-t border-border/50">
+                  <button onClick={() => setIsModalOpen(false)} className="btn-secondary h-11 px-8 rounded-xl font-bold uppercase text-xs">
+                    Cancel
+                  </button>
+                  <button onClick={handleSave} className="btn-primary bg-danger hover:bg-danger/80 border-danger h-11 px-8 rounded-xl font-bold uppercase text-xs">
+                    Confirm Delete
+                  </button>
                 </div>
               </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[10px] font-bold text-muted uppercase">Supply Partner</label>
+                    <select
+                      value={String(formData.vendorId || '')}
+                      onChange={(e) => {
+                        const nextId = e.target.value;
+                        const selected = (vendors || []).find((v) => String(v.id) === String(nextId));
+                        const selectedName = selected?.name || selected?.vendor_name || selected?.business_name || selected?.company_name || '';
+                        setFormData({ ...formData, vendorId: nextId, vendor: selectedName });
+                      }}
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                      disabled={modalType === 'view'}
+                    >
+                      <option value="">Select supply partner...</option>
+                      {(vendors || []).filter(v => String(v.status || '').toLowerCase() === 'active').map((v) => {
+                        const label = v.name || v.vendor_name || v.business_name || v.company_name || `Vendor #${v.id}`;
+                        return (
+                          <option key={String(v.id)} value={v.id}>
+                            {label}
+                          </option>
+                        );
+                      })}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase">Protocol ID</label>
+                    <input type="text" value={formData.id || 'AUTO'} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-mono text-accent" disabled={true} />
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[10px] font-bold text-muted uppercase">Quote purpose</label>
+                    <select
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                      value={formData.quoteType || 'client'}
+                      onChange={(e) => {
+                        setFormData({ ...formData, quoteType: e.target.value, purchaseRequestId: '', rfqId: '' });
+                      }}
+                      disabled={modalType === 'view' || modalType === 'edit'}
+                    >
+                      <option value="client">Client quote (with unit pricing)</option>
+                      <option value="vendor">Vendor Quote Request (RFQ)</option>
+                    </select>
+                  </div>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Asset Manifest Highlights</label>
-                  {modalType !== 'view' && (
-                    <button onClick={handleAddItem} className="text-[10px] font-bold text-accent hover:underline flex items-center gap-1">
-                      <Plus size={10} /> Add Item
-                    </button>
+                  {formData.quoteType === 'vendor' && (
+                    <div className="space-y-1 col-span-2 border-l-2 border-accent pl-4 py-2">
+                      <label className="text-[10px] font-bold text-accent uppercase">Link Purchase Request (Required for RFQ)</label>
+                      <select
+                        value={formData.purchaseRequestId || ''}
+                        onChange={(e) => {
+                          const prId = e.target.value;
+                          const selectedPr = activePurchaseRequests.find(pr => String(pr.id) === String(prId));
+                          let prItems = [{ name: '', qty: 1, price: 0 }];
+                          if (selectedPr && Array.isArray(selectedPr.items) && selectedPr.items.length > 0) {
+                            prItems = selectedPr.items.map(item => ({
+                              name: item.name || item.itemName || '',
+                              qty: item.qty ?? item.quantity ?? 1,
+                              price: item.price ?? item.estimatedCost ?? item.estimated_cost ?? 0
+                            }));
+                          }
+                          setFormData({
+                            ...formData,
+                            purchaseRequestId: prId,
+                            items: prItems
+                          });
+                        }}
+                        className="w-full bg-background border border-accent/30 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                        disabled={modalType === 'view' || modalType === 'edit'}
+                      >
+                        <option value="">Select an approved Purchase Request...</option>
+                        {activePurchaseRequests
+                          .filter(pr => String(pr.status).toLowerCase() === 'approved' || String(pr.status).toLowerCase() === 'department_approved' || String(pr.status).toLowerCase() === 'procurement_review' || String(pr.status).toLowerCase() === 'pending' || String(pr.status).toLowerCase() === 'rfq_created') // temporarily broadened to show options if none are strictly 'approved'
+                          .map(pr => (
+                            <option key={pr.id} value={pr.id}>PR-{pr.id} ({pr.title || pr.item || 'Items'}) - {pr.status}</option>
+                          ))}
+                      </select>
+                    </div>
                   )}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase">Protocol Status</label>
+                    <select className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} disabled={modalType === 'view'}>
+                      <option value="Pending">Pending</option>
+                      <option value="Accepted">Accepted</option>
+                      <option value="Rejected">Rejected</option>
+                      <option value="Expired">Expired</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase">Projected Lead Time</label>
+                    <input type="text" value={formData.leadTime} onChange={(e) => setFormData({ ...formData, leadTime: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={modalType === 'view'} placeholder="e.g. 5 Business Days" />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase">Validity Threshold</label>
+                    <input type="date" value={formData.validity} onChange={(e) => setFormData({ ...formData, validity: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={modalType === 'view'} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted uppercase">Payment Terms</label>
+                    <select
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                      value={formData.paymentTerms || 'Net 30'}
+                      onChange={(e) => setFormData({ ...formData, paymentTerms: e.target.value })}
+                      disabled={modalType === 'view'}
+                    >
+                      <option value="Immediate">Immediate</option>
+                      <option value="Net 15">Net 15</option>
+                      <option value="Net 30">Net 30</option>
+                      <option value="Net 45">Net 45</option>
+                      <option value="Net 60">Net 60</option>
+                    </select>
+                  </div>
+                  <div className="space-y-1 col-span-2">
+                    <label className="text-[10px] font-bold text-muted uppercase">Institutional Quote PDF</label>
+                    <div className="flex items-center gap-4">
+                      <label className="flex-1 flex items-center justify-between bg-white/5 border border-dashed border-accent/20 rounded-xl px-4 py-3 cursor-pointer hover:bg-accent/5 transition-all">
+                        <div className="flex items-center gap-3">
+                          <HardDrive size={18} className="text-accent" />
+                          <span className="text-xs text-secondary">{formData.pdfName || 'Upload signed protocol manifest...'}</span>
+                        </div>
+                        <span className="text-[10px] font-black text-accent uppercase tracking-widest bg-accent/10 px-3 py-1 rounded-lg">Browse</span>
+                        <input type="file" className="hidden" onChange={(e) => setFormData({ ...formData, pdfName: e.target.files[0]?.name })} disabled={modalType === 'view'} />
+                      </label>
+                    </div>
+                  </div>
                 </div>
-                <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
-                  {normalizeQuoteItems(formData.items).map((item, idx) => (
-                    <div key={idx} className="flex gap-2 items-end bg-white/5 p-2 rounded-lg border border-border">
-                      <div className="flex-1 space-y-1">
-                        <label className="text-[8px] text-muted uppercase">Asset Name</label>
-                        <input
-                          type="text"
-                          value={item.name}
-                          onChange={(e) => {
-                            const newItems = [...normalizeQuoteItems(formData.items)];
-                            newItems[idx] = { ...newItems[idx], name: e.target.value };
-                            setFormData({ ...formData, items: newItems });
-                          }}
-                          className="w-full bg-transparent border-0 border-b border-border focus:border-accent text-xs p-0 outline-none"
-                          placeholder="Product Title"
-                          disabled={modalType === 'view'}
-                        />
-                      </div>
-                      <div className="w-16 space-y-1">
-                        <label className="text-[8px] text-muted uppercase">Qty</label>
-                        <input
-                          type="number"
-                          value={item.qty}
-                          onChange={(e) => {
-                            const newItems = [...normalizeQuoteItems(formData.items)];
-                            newItems[idx] = { ...newItems[idx], qty: e.target.value };
-                            setFormData({ ...formData, items: newItems });
-                          }}
-                          className="w-full bg-transparent border-0 border-b border-border focus:border-accent text-xs p-0 outline-none"
-                          disabled={modalType === 'view'}
-                        />
-                      </div>
-                      <div className="w-20 space-y-1">
-                        <label className="text-[8px] text-muted uppercase">Unit Price</label>
+
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Asset Manifest Highlights</label>
+                    {modalType !== 'view' && (
+                      <button onClick={handleAddItem} className="text-[10px] font-bold text-accent hover:underline flex items-center gap-1">
+                        <Plus size={10} /> Add Item
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2 max-h-[200px] overflow-y-auto pr-2 custom-scrollbar">
+                    {normalizeQuoteItems(formData.items).map((item, idx) => (
+                      <div key={idx} className="flex gap-2 items-end bg-white/5 p-2 rounded-lg border border-border">
+                        <div className="flex-1 space-y-1">
+                          <label className="text-[8px] text-muted uppercase">Asset Name</label>
+                          <input
+                            type="text"
+                            value={item.name}
+                            onChange={(e) => {
+                              const newItems = [...normalizeQuoteItems(formData.items)];
+                              newItems[idx] = { ...newItems[idx], name: e.target.value };
+                              setFormData({ ...formData, items: newItems });
+                            }}
+                            className="w-full bg-transparent border-0 border-b border-border focus:border-accent text-xs p-0 outline-none"
+                            placeholder="Product Title"
+                            disabled={modalType === 'view'}
+                          />
+                        </div>
+                        <div className="w-16 space-y-1">
+                          <label className="text-[8px] text-muted uppercase">Qty</label>
+                          <input
+                            type="number"
+                            value={item.qty}
+                            onChange={(e) => {
+                              const newItems = [...normalizeQuoteItems(formData.items)];
+                              newItems[idx] = { ...newItems[idx], qty: e.target.value };
+                              setFormData({ ...formData, items: newItems });
+                            }}
+                            className="w-full bg-transparent border-0 border-b border-border focus:border-accent text-xs p-0 outline-none"
+                            disabled={modalType === 'view'}
+                          />
+                        </div>
+                        <div className="w-20 space-y-1">
+                          <label className="text-[8px] text-muted uppercase">Unit Price</label>
                           <input
                             type="number"
                             value={item.price}
@@ -762,50 +765,50 @@ const Quotes = () => {
                             disabled={modalType === 'view'}
                             step="0.01"
                           />
+                        </div>
+                        {modalType !== 'view' && normalizeQuoteItems(formData.items).length > 1 && (
+                          <button onClick={() => removeItem(idx)} className="p-1.5 text-danger hover:bg-danger/10 rounded-lg">
+                            <Trash2 size={14} />
+                          </button>
+                        )}
                       </div>
-                      {modalType !== 'view' && normalizeQuoteItems(formData.items).length > 1 && (
-                        <button onClick={() => removeItem(idx)} className="p-1.5 text-danger hover:bg-danger/10 rounded-lg">
-                          <Trash2 size={14} />
-                        </button>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {modalType === 'view' && (
-                <div className="mt-6 p-4 bg-white/5 rounded-xl border border-border space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3 text-sm text-secondary">
-                      <DollarSign size={16} className="text-accent" /> Total Manifest Value
-                    </div>
-                    <span className="text-xl font-bold font-mono text-accent">
-                      {formData.quoteType === 'vendor'
-                        ? 'N/A'
-                        : `$${normalizeQuoteItems(formData.items).reduce((acc, i) => acc + (parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 0), 0).toLocaleString()}`}
-                    </span>
+                    ))}
                   </div>
                 </div>
-              )}
 
-              <div className="flex gap-3 justify-end pt-6">
-                <button onClick={() => setIsModalOpen(false)} className="btn-secondary">{modalType === 'view' ? 'Close' : 'Cancel'}</button>
                 {modalType === 'view' && (
-                  <button onClick={() => handlePrint(formData)} className="btn-secondary flex items-center gap-2">
-                    <Printer size={16} /> Print Quote
-                  </button>
+                  <div className="mt-6 p-4 bg-white/5 rounded-xl border border-border space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-sm text-secondary">
+                        <DollarSign size={16} className="text-accent" /> Total Manifest Value
+                      </div>
+                      <span className="text-xl font-bold font-mono text-accent">
+                        {formData.quoteType === 'vendor'
+                          ? 'N/A'
+                          : `$${normalizeQuoteItems(formData.items).reduce((acc, i) => acc + (parseFloat(i.price) || 0) * (parseInt(i.qty, 10) || 0), 0).toLocaleString()}`}
+                      </span>
+                    </div>
+                  </div>
                 )}
-                {modalType === 'view' && formData.status === 'Active' && (
-                  <button onClick={handleAccept} className="btn-primary bg-success hover:bg-success/90 border-success">Accept & Generate Order</button>
-                )}
-                {(modalType === 'add' || modalType === 'edit') && <button onClick={handleSave} className="btn-primary">Finalize Procurement Offer</button>}
-              </div>
-            </div>
-          )}
-        </div>
-      </Modal>
 
-            </div>
+                <div className="flex gap-3 justify-end pt-6">
+                  <button onClick={() => setIsModalOpen(false)} className="btn-secondary">{modalType === 'view' ? 'Close' : 'Cancel'}</button>
+                  {modalType === 'view' && (
+                    <button onClick={() => handlePrint(formData)} className="btn-secondary flex items-center gap-2">
+                      <Printer size={16} /> Print Quote
+                    </button>
+                  )}
+                  {modalType === 'view' && formData.status === 'Active' && (
+                    <button onClick={handleAccept} className="btn-primary bg-success hover:bg-success/90 border-success">Accept & Generate Order</button>
+                  )}
+                  {(modalType === 'add' || modalType === 'edit') && <button onClick={handleSave} className="btn-primary">Finalize Procurement Offer</button>}
+                </div>
+              </div>
+            )}
+          </div>
+        </Modal>
+
+      </div>
 
       {/* Premium Institutional Quote Print Template */}
       <div className="hidden print-quote-container bg-white text-black font-sans">
@@ -835,8 +838,8 @@ const Quotes = () => {
               <div className="border-l-2 border-black pl-4">
                 <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 underline italic">Supply Partner:</p>
                 <p className="text-base font-black italic tracking-tight uppercase leading-tight">
-                  {typeof selectedQuote.vendor === 'object' && selectedQuote.vendor !== null 
-                    ? (selectedQuote.vendor.companyName || selectedQuote.vendor.name || selectedQuote.vendor.vendor_name || 'Unknown Provider') 
+                  {typeof selectedQuote.vendor === 'object' && selectedQuote.vendor !== null
+                    ? (selectedQuote.vendor.companyName || selectedQuote.vendor.name || selectedQuote.vendor.vendor_name || 'Unknown Provider')
                     : (selectedQuote.vendor_name || selectedQuote.vendor || 'Unknown Provider')}
                 </p>
                 <p className="text-[8px] text-gray-500 mt-0.5 font-medium leading-tight italic">Strategic Sourcing Partner</p>

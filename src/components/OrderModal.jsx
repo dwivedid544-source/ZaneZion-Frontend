@@ -49,6 +49,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     const portalRole = normalizeRole(currentUser?.role || role || '');
     const isPersonalCustomer = portalRole === 'customer';
 
+    const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
     const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
     const currentClient = (clients || []).find(c => {
         const cId = normalizeId(c.id);
@@ -56,7 +57,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         return cId && uId && cId === uId;
     });
     const isBusinessClient = portalRole === 'client' && (
-        String(currentUser?.role).toLowerCase().includes('business') ||
+        rawRoleStr.toLowerCase().includes('business') ||
         currentClient?.clientType === 'Business' ||
         currentClient?.client_type === 'Business'
     );
@@ -164,7 +165,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         if (modalType === 'add') {
             const requestDate = normalizeIsoDate(initialData?.requestDate) || todayIso();
             const dueDate = clampDueDateToRequest(requestDate, initialData?.dueDate || initialData?.date);
-            
+
             let initialRaw = initialData?.items || initialData?.customItems || [];
             if (typeof initialRaw === 'string') {
                 try {
@@ -285,7 +286,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             const matchedDropdown = customerOnlyForDropdown.find(c =>
                 String(c.rawId) === String(existingClientId)
             );
-            
+
             const dropLoc = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || firstCustom.dropLocation || firstCustom.location || '';
             const pickLoc = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || '';
 
@@ -400,11 +401,11 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
         const requestDate = normalizeIsoDate(formData.requestDate) || todayIso();
         const dueDate = clampDueDateToRequest(requestDate, formData.dueDate);
-        const payload = { 
-            ...formData, 
-            requestDate, 
-            dueDate, 
-            totalAmount: parseFloat(calculateTotal()), 
+        const payload = {
+            ...formData,
+            requestDate,
+            dueDate,
+            totalAmount: parseFloat(calculateTotal()),
             clientId: parsedClientId || Number(formData.clientId) || undefined,
             orderType: formData.type || 'Custom Order'
         };
@@ -416,575 +417,575 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
     return (
         <>
-        <Modal
-            isOpen={isOpen}
-            onClose={onClose}
-            title={
-                currentModalType === 'view' ? 'Order Details' :
-                    currentModalType === 'edit' ? 'Edit Order' :
-                        currentModalType === 'delete' ? 'Cancel Order' : 'Create New Order'
-            }
-        >
-            {isFetchingDetails ? (
-                <div className="flex flex-col items-center justify-center py-10 space-y-4">
-                    <div className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
-                    <p className="text-muted text-sm font-bold animate-pulse">Fetching complete order details...</p>
-                </div>
-            ) : (
-            <form className="space-y-6" onSubmit={handleSubmit}>
-                {modalType === 'delete' ? (
-                    <div className="space-y-4">
-                        <p className="text-secondary">Are you sure you want to cancel order <span className="text-primary font-bold">{selectedOrder?.id}</span>?</p>
-                        <div className="flex gap-3 justify-end pt-4">
-                            <button type="button" onClick={onClose} className="btn-secondary">Keep Order</button>
-                            <button type="button" onClick={() => onDelete(selectedOrder.id)} className="px-6 py-2 bg-danger text-white rounded-lg font-bold">Cancel Order</button>
-                        </div>
+            <Modal
+                isOpen={isOpen}
+                onClose={onClose}
+                title={
+                    currentModalType === 'view' ? 'Order Details' :
+                        currentModalType === 'edit' ? 'Edit Order' :
+                            currentModalType === 'delete' ? 'Cancel Order' : 'Create New Order'
+                }
+            >
+                {isFetchingDetails ? (
+                    <div className="flex flex-col items-center justify-center py-10 space-y-4">
+                        <div className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
+                        <p className="text-muted text-sm font-bold animate-pulse">Fetching complete order details...</p>
                     </div>
                 ) : (
-                    <div className="space-y-4">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {(currentModalType === 'view' || currentModalType === 'edit') && (
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-muted uppercase">Order ID</label>
-                                    <input type="text" value={selectedOrder?.id || ''} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled />
+                    <form className="space-y-6" onSubmit={handleSubmit}>
+                        {modalType === 'delete' ? (
+                            <div className="space-y-4">
+                                <p className="text-secondary">Are you sure you want to cancel order <span className="text-primary font-bold">{selectedOrder?.id}</span>?</p>
+                                <div className="flex gap-3 justify-end pt-4">
+                                    <button type="button" onClick={onClose} className="btn-secondary">Keep Order</button>
+                                    <button type="button" onClick={() => onDelete(selectedOrder.id)} className="px-6 py-2 bg-danger text-white rounded-lg font-bold">Cancel Order</button>
                                 </div>
-                            )}
-                            {(currentModalType === 'view' || currentModalType === 'edit') && (
-                                <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-muted uppercase">Status</label>
-                                    <select
-                                        value={formData.status}
-                                        onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                        disabled={currentModalType === 'view' || !canEditOrderStatus}
-                                    >
-                                        {ORDER_STATUS_OPTIONS.map(({ value, label }) => (
-                                            <option key={value} value={value}>{label}</option>
-                                        ))}
-                                    </select>
-                                </div>
-                            )}
-                            {portalRole !== 'client' && portalRole !== 'customer' && (
-                                <div className={`space-y-1 relative ${modalType === 'add' ? 'col-span-1 md:col-span-2' : ''}`}>
-                                    <label className="text-[10px] font-bold text-muted uppercase">
-                                        Client / Customer
-                                        {formData.client && modalType !== 'add' && (
-                                            <span className="ml-2 text-accent normal-case font-normal">
-                                                — {formData.client}
-                                            </span>
-                                        )}
-                                    </label>
-                                    {currentModalType === 'view' ? (
-                                        <input
-                                            type="text"
-                                            value={formData.client || 'No Customer Assigned'}
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-muted cursor-not-allowed"
-                                            disabled
-                                        />
-                                    ) : (
-                                        <div className="relative">
-                                            <button
-                                                type="button"
-                                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-left flex justify-between items-center text-white min-h-[38px]"
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {(currentModalType === 'view' || currentModalType === 'edit') && (
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-muted uppercase">Order ID</label>
+                                            <input type="text" value={selectedOrder?.id || ''} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled />
+                                        </div>
+                                    )}
+                                    {(currentModalType === 'view' || currentModalType === 'edit') && (
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-muted uppercase">Status</label>
+                                            <select
+                                                value={formData.status}
+                                                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                                                className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                                disabled={currentModalType === 'view' || !canEditOrderStatus}
                                             >
-                                                <span>
-                                                    {formData.client
-                                                        ? `${formData.client} (${customerOnlyForDropdown.find(c => c.id === formData.clientDropdownId)?.type || 'Account'})`
-                                                        : 'Select Customer...'}
-                                                </span>
-                                                <span className="text-muted text-[10px]">▼</span>
-                                            </button>
-                                            
-                                            {isDropdownOpen && (
-                                                <>
-                                                    <div 
-                                                        className="fixed inset-0 z-[998]" 
-                                                        onClick={() => setIsDropdownOpen(false)}
-                                                    />
-                                                    <div className="absolute z-[999] w-full mt-1 bg-[#1a1a1a] border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto font-bold text-sm">
-                                                        <div 
-                                                            onClick={() => {
-                                                                setFormData({
-                                                                    ...formData,
-                                                                    clientDropdownId: '',
-                                                                    clientId: '',
-                                                                    client: ''
-                                                                });
-                                                                setIsDropdownOpen(false);
-                                                            }}
-                                                            className="px-4 py-2 hover:bg-accent hover:text-black cursor-pointer text-muted"
-                                                        >
-                                                            Select Customer...
-                                                        </div>
-                                                        {customerOnlyForDropdown.map(c => (
+                                                {ORDER_STATUS_OPTIONS.map(({ value, label }) => (
+                                                    <option key={value} value={value}>{label}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                    {portalRole !== 'client' && portalRole !== 'customer' && (
+                                        <div className={`space-y-1 relative ${modalType === 'add' ? 'col-span-1 md:col-span-2' : ''}`}>
+                                            <label className="text-[10px] font-bold text-muted uppercase">
+                                                Client / Customer
+                                                {formData.client && modalType !== 'add' && (
+                                                    <span className="ml-2 text-accent normal-case font-normal">
+                                                        — {formData.client}
+                                                    </span>
+                                                )}
+                                            </label>
+                                            {currentModalType === 'view' ? (
+                                                <input
+                                                    type="text"
+                                                    value={formData.client || 'No Customer Assigned'}
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-muted cursor-not-allowed"
+                                                    disabled
+                                                />
+                                            ) : (
+                                                <div className="relative">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-left flex justify-between items-center text-white min-h-[38px]"
+                                                    >
+                                                        <span>
+                                                            {formData.client
+                                                                ? `${formData.client} (${customerOnlyForDropdown.find(c => c.id === formData.clientDropdownId)?.type || 'Account'})`
+                                                                : 'Select Customer...'}
+                                                        </span>
+                                                        <span className="text-muted text-[10px]">▼</span>
+                                                    </button>
+
+                                                    {isDropdownOpen && (
+                                                        <>
                                                             <div
-                                                                key={c.id}
-                                                                onClick={() => {
-                                                                    setFormData({
-                                                                        ...formData,
-                                                                        clientDropdownId: c.id,
-                                                                        clientId: c.rawId,
-                                                                        client: c.name
-                                                                    });
-                                                                    setIsDropdownOpen(false);
-                                                                }}
-                                                                className={`px-4 py-2 hover:bg-accent hover:text-black cursor-pointer text-white ${formData.clientDropdownId === c.id ? 'bg-accent/20 text-accent' : ''}`}
-                                                            >
-                                                                {c.name} ({c.type})
+                                                                className="fixed inset-0 z-[998]"
+                                                                onClick={() => setIsDropdownOpen(false)}
+                                                            />
+                                                            <div className="absolute z-[999] w-full mt-1 bg-[#1a1a1a] border border-border rounded-lg shadow-xl max-h-48 overflow-y-auto font-bold text-sm">
+                                                                <div
+                                                                    onClick={() => {
+                                                                        setFormData({
+                                                                            ...formData,
+                                                                            clientDropdownId: '',
+                                                                            clientId: '',
+                                                                            client: ''
+                                                                        });
+                                                                        setIsDropdownOpen(false);
+                                                                    }}
+                                                                    className="px-4 py-2 hover:bg-accent hover:text-black cursor-pointer text-muted"
+                                                                >
+                                                                    Select Customer...
+                                                                </div>
+                                                                {customerOnlyForDropdown.map(c => (
+                                                                    <div
+                                                                        key={c.id}
+                                                                        onClick={() => {
+                                                                            setFormData({
+                                                                                ...formData,
+                                                                                clientDropdownId: c.id,
+                                                                                clientId: c.rawId,
+                                                                                client: c.name
+                                                                            });
+                                                                            setIsDropdownOpen(false);
+                                                                        }}
+                                                                        className={`px-4 py-2 hover:bg-accent hover:text-black cursor-pointer text-white ${formData.clientDropdownId === c.id ? 'bg-accent/20 text-accent' : ''}`}
+                                                                    >
+                                                                        {c.name} ({c.type})
+                                                                    </div>
+                                                                ))}
                                                             </div>
-                                                        ))}
-                                                    </div>
-                                                </>
+                                                        </>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
                                     )}
-                                </div>
-                            )}
 
-                            <div className="col-span-1 md:col-span-2 space-y-3">
-                                <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                                    <div className="flex flex-col">
-                                        <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em]">Institutional Requisition Items</label>
-                                        <p className="text-[9px] text-secondary italic uppercase tracking-tighter mt-0.5">Define multi-line asset specifications below</p>
-                                    </div>
-                                    {currentModalType !== 'view' && (
-                                        <button
-                                            type="button"
-                                            onClick={handleAddItem}
-                                            className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/30 rounded-xl text-[10px] font-black text-accent hover:bg-accent hover:text-black transition-all shadow-lg shadow-accent/5 group"
-                                        >
-                                            <Plus size={14} className="group-hover:rotate-90 transition-transform duration-300" /> ADD ITEM PROTOCOL
-                                        </button>
-                                    )}
-                                </div>
+                                    <div className="col-span-1 md:col-span-2 space-y-3">
+                                        <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                                            <div className="flex flex-col">
+                                                <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em]">Institutional Requisition Items</label>
+                                                <p className="text-[9px] text-secondary italic uppercase tracking-tighter mt-0.5">Define multi-line asset specifications below</p>
+                                            </div>
+                                            {currentModalType !== 'view' && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleAddItem}
+                                                    className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/30 rounded-xl text-[10px] font-black text-accent hover:bg-accent hover:text-black transition-all shadow-lg shadow-accent/5 group"
+                                                >
+                                                    <Plus size={14} className="group-hover:rotate-90 transition-transform duration-300" /> ADD ITEM PROTOCOL
+                                                </button>
+                                            )}
+                                        </div>
 
-                                <div className="space-y-4">
-                                    {(Array.isArray(formData.items) ? formData.items : []).map((item, index) => (
-                                        <div key={index} className="p-3 bg-white/[0.02] border border-border/50 rounded-2xl">
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div className="space-y-1">
-                                                    <label className="text-[9px] font-bold text-muted uppercase ml-1">Item Name</label>
-                                                    <div className="relative">
-                                                        <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={12} />
-                                                        <input
-                                                            type="text"
-                                                            value={item.name}
-                                                            onChange={(e) => handleItemChange(index, 'name', e.target.value)}
-                                                            placeholder="e.g. Vintage Champagne"
-                                                            className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
-                                                            disabled={currentModalType === 'view'}
-                                                            required
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[9px] font-bold text-muted uppercase ml-1">Qty</label>
-                                                    <input
-                                                        type="number"
-                                                        value={item.qty}
-                                                        onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
-                                                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:border-accent outline-none text-center font-bold"
-                                                        disabled={currentModalType === 'view'}
-                                                        min="1"
-                                                        required
-                                                    />
-                                                </div>
-                                                <div className="space-y-1">
-                                                    <label className="text-[9px] font-bold text-muted uppercase ml-1">Unit Price</label>
-                                                    <div className="relative">
-                                                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 text-muted" size={12} />
-                                                        <input
-                                                            type="number"
-                                                            value={item.price}
-                                                            onChange={(e) => handleItemChange(index, 'price', e.target.value)}
-                                                            placeholder="0.00"
-                                                            className="w-full bg-background border border-border rounded-lg pl-6 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
-                                                            disabled={currentModalType === 'view'}
-                                                            step="0.01"
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="space-y-1 flex gap-2 items-end">
-                                                    <div className="flex-1 space-y-1">
-                                                        <label className="text-[9px] font-bold text-muted uppercase ml-1">Line Total</label>
-                                                        <div className="w-full bg-white/[0.04] border border-border rounded-lg px-3 py-2 text-xs text-accent font-black">
-                                                            ${(parseFloat(item.price || 0) * (parseInt(item.qty) || 0)).toFixed(2)}
+                                        <div className="space-y-4">
+                                            {(Array.isArray(formData.items) ? formData.items : []).map((item, index) => (
+                                                <div key={index} className="p-3 bg-white/[0.02] border border-border/50 rounded-2xl">
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-bold text-muted uppercase ml-1">Item Name</label>
+                                                            <div className="relative">
+                                                                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={12} />
+                                                                <input
+                                                                    type="text"
+                                                                    value={item.name}
+                                                                    onChange={(e) => handleItemChange(index, 'name', e.target.value)}
+                                                                    placeholder="e.g. Vintage Champagne"
+                                                                    className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
+                                                                    disabled={currentModalType === 'view'}
+                                                                    required
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-bold text-muted uppercase ml-1">Qty</label>
+                                                            <input
+                                                                type="number"
+                                                                value={item.qty}
+                                                                onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
+                                                                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:border-accent outline-none text-center font-bold"
+                                                                disabled={currentModalType === 'view'}
+                                                                min="1"
+                                                                required
+                                                            />
+                                                        </div>
+                                                        <div className="space-y-1">
+                                                            <label className="text-[9px] font-bold text-muted uppercase ml-1">Unit Price</label>
+                                                            <div className="relative">
+                                                                <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 text-muted" size={12} />
+                                                                <input
+                                                                    type="number"
+                                                                    value={item.price}
+                                                                    onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                                                                    placeholder="0.00"
+                                                                    className="w-full bg-background border border-border rounded-lg pl-6 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
+                                                                    disabled={currentModalType === 'view'}
+                                                                    step="0.01"
+                                                                />
+                                                            </div>
+                                                        </div>
+                                                        <div className="space-y-1 flex gap-2 items-end">
+                                                            <div className="flex-1 space-y-1">
+                                                                <label className="text-[9px] font-bold text-muted uppercase ml-1">Line Total</label>
+                                                                <div className="w-full bg-white/[0.04] border border-border rounded-lg px-3 py-2 text-xs text-accent font-black">
+                                                                    ${(parseFloat(item.price || 0) * (parseInt(item.qty) || 0)).toFixed(2)}
+                                                                </div>
+                                                            </div>
+                                                            {currentModalType !== 'view' && formData.items.length > 1 && (
+                                                                <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 mb-0.5 text-danger hover:bg-danger/10 rounded-lg transition-colors shrink-0">
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            )}
                                                         </div>
                                                     </div>
-                                                    {currentModalType !== 'view' && formData.items.length > 1 && (
-                                                        <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 mb-0.5 text-danger hover:bg-danger/10 rounded-lg transition-colors shrink-0">
-                                                            <Trash2 size={16} />
-                                                        </button>
-                                                    )}
                                                 </div>
+                                            ))}
+                                        </div>
+                                        {currentModalType !== 'view' && (
+                                            <p className="text-[9px] text-muted italic">* Prices can be left empty if currently unknown (e.g. pending store visit).</p>
+                                        )}
+
+                                        <div className="flex justify-end pt-2 border-t border-white/5 mt-4">
+                                            <div className="text-right p-4 bg-accent/[0.03] border border-accent/10 rounded-2xl min-w-[200px]">
+                                                <p className="text-[10px] font-black text-muted uppercase tracking-widest">Grand Total (Estimated)</p>
+                                                <p className="text-2xl font-black text-accent">${calculateTotal()}</p>
                                             </div>
                                         </div>
-                                    ))}
-                                </div>
-                                {currentModalType !== 'view' && (
-                                    <p className="text-[9px] text-muted italic">* Prices can be left empty if currently unknown (e.g. pending store visit).</p>
-                                )}
-
-                                <div className="flex justify-end pt-2 border-t border-white/5 mt-4">
-                                    <div className="text-right p-4 bg-accent/[0.03] border border-accent/10 rounded-2xl min-w-[200px]">
-                                        <p className="text-[10px] font-black text-muted uppercase tracking-widest">Grand Total (Estimated)</p>
-                                        <p className="text-2xl font-black text-accent">${calculateTotal()}</p>
                                     </div>
-                                </div>
-                            </div>
 
-                            {/* Pickup Location */}
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted uppercase">Pickup Location / Origin</label>
-                                <div className="relative">
-                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
-                                    <input
-                                        type="text"
-                                        value={formData.pickupLocation}
-                                        onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
-                                        className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                        disabled={currentModalType === 'view'}
-                                        placeholder="Enter pickup location"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Destination */}
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted uppercase">Destination Address / Drop Location</label>
-                                <div className="relative">
-                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
-                                    <input
-                                        type="text"
-                                        value={formData.location}
-                                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                                        className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                        disabled={currentModalType === 'view'}
-                                        placeholder="Enter destination"
-                                    />
-                                </div>
-                            </div>
-
-                            {/* Total Distance */}
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-accent uppercase tracking-widest pl-1">Total Distance (km)</label>
-                                <input
-                                    type="text"
-                                    value={formData.totalDistance}
-                                    onChange={(e) => setFormData({ ...formData, totalDistance: e.target.value })}
-                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-accent font-black focus:border-accent outline-none"
-                                    disabled={currentModalType === 'view'}
-                                    placeholder="Distance auto-calculated..."
-                                />
-                            </div>
-                            {currentModalType === 'view' && String(effectiveOrder?.delivery_instructions || '').trim() && (
-                                <div className="space-y-1 p-4 rounded-xl border border-warning/25 bg-warning/5">
-                                    <label className="text-[10px] font-bold text-warning uppercase tracking-widest">Customer delivery instructions</label>
-                                    <p className="text-sm text-secondary font-medium whitespace-pre-wrap leading-relaxed">
-                                        {effectiveOrder.delivery_instructions}
-                                    </p>
-                                </div>
-                            )}
-                            <div className="space-y-3 pt-2">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-[10px] font-bold text-muted uppercase">Vendor (Optional)</label>
-                                </div>
-
-                                <select
-                                    value={formData.vendorId}
-                                    onChange={(e) => {
-                                        const selectedVendor = marketplaceVendors.find(v => v.id.toString() === e.target.value);
-                                        setFormData({ 
-                                            ...formData, 
-                                            vendorId: e.target.value,
-                                            vendor: selectedVendor ? selectedVendor.name : ''
-                                        });
-                                    }}
-                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                    disabled={currentModalType === 'view'}
-                                >
-                                    <option value="">Select Vendor...</option>
-                                    {marketplaceVendors.map(v => (
-                                        <option key={v.id} value={v.id}>{v.name} {v.category ? `(${v.category})` : ''}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted uppercase">Request Date</label>
-                                <input type="text" value={formData.requestDate} disabled className="w-full bg-background/50 border border-border rounded-lg px-4 py-2 text-sm text-muted focus:outline-none" />
-                            </div>
-                            <div className="space-y-1">
-                                <CustomDatePicker
-                                    label="Due Date"
-                                    disabled={currentModalType === 'view'}
-                                    selectedDate={formData.dueDate}
-                                    onChange={(date) => setFormData({ ...formData, dueDate: clampDueDateToRequest(formData.requestDate, date) })}
-                                />
-                                {currentModalType === 'view' && effectiveOrder?.createdAt && (
-                                    <p className="text-[9px] text-muted italic mt-1">Requested On: {new Date(effectiveOrder.createdAt).toLocaleDateString()}</p>
-                                )}
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Logistics Transport Mode</label>
-                                <div className="flex gap-2">
-                                    {['Road', 'Sea', 'Air'].map((mode) => (
-                                        <button
-                                            key={mode}
-                                            type="button"
-                                            onClick={() => setFormData({ ...formData, deliveryType: mode })}
-                                            className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter border transition-all ${formData.deliveryType === mode
-                                                ? 'bg-accent/20 border-accent text-accent shadow-lg shadow-accent/5'
-                                                : 'bg-white/5 border-white/10 text-muted hover:border-white/30'
-                                                }`}
-                                            disabled={currentModalType === 'view'}
-                                        >
-                                            {mode}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[10px] font-bold text-muted uppercase">Order Type</label>
-                                <select
-                                    value={formData.type}
-                                    onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                    disabled={currentModalType === 'view'}
-                                >
-                                    <option>Procurement</option>
-                                    <option>Provisioning</option>
-                                    <option>Delivery</option>
-                                    <option>Inventory</option>
-                                    <option>Custom Order</option>
-                                    <option>Chauffeur Service</option>
-                                </select>
-                            </div>
-
-                            {formData.type === 'Chauffeur Service' && (
-                                <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 border border-accent/20 rounded-2xl bg-accent/5">
-                                    <h4 className="col-span-1 md:col-span-2 text-xs font-black text-accent uppercase tracking-widest mb-2 border-b border-accent/10 pb-2">Chauffeur Mission Details</h4>
-
+                                    {/* Pickup Location */}
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Service Type</label>
+                                        <label className="text-[10px] font-bold text-muted uppercase">Pickup Location / Origin</label>
+                                        <div className="relative">
+                                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                                            <input
+                                                type="text"
+                                                value={formData.pickupLocation}
+                                                onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
+                                                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                                disabled={currentModalType === 'view'}
+                                                placeholder="Enter pickup location"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Destination */}
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-muted uppercase">Destination Address / Drop Location</label>
+                                        <div className="relative">
+                                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                                            <input
+                                                type="text"
+                                                value={formData.location}
+                                                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                                disabled={currentModalType === 'view'}
+                                                placeholder="Enter destination"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Total Distance */}
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-accent uppercase tracking-widest pl-1">Total Distance (km)</label>
+                                        <input
+                                            type="text"
+                                            value={formData.totalDistance}
+                                            onChange={(e) => setFormData({ ...formData, totalDistance: e.target.value })}
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-accent font-black focus:border-accent outline-none"
+                                            disabled={currentModalType === 'view'}
+                                            placeholder="Distance auto-calculated..."
+                                        />
+                                    </div>
+                                    {currentModalType === 'view' && String(effectiveOrder?.delivery_instructions || '').trim() && (
+                                        <div className="space-y-1 p-4 rounded-xl border border-warning/25 bg-warning/5">
+                                            <label className="text-[10px] font-bold text-warning uppercase tracking-widest">Customer delivery instructions</label>
+                                            <p className="text-sm text-secondary font-medium whitespace-pre-wrap leading-relaxed">
+                                                {effectiveOrder.delivery_instructions}
+                                            </p>
+                                        </div>
+                                    )}
+                                    <div className="space-y-3 pt-2">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-bold text-muted uppercase">Vendor (Optional)</label>
+                                        </div>
+
                                         <select
-                                            value={formData.serviceType}
-                                            onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
+                                            value={formData.vendorId}
+                                            onChange={(e) => {
+                                                const selectedVendor = marketplaceVendors.find(v => v.id.toString() === e.target.value);
+                                                setFormData({
+                                                    ...formData,
+                                                    vendorId: e.target.value,
+                                                    vendor: selectedVendor ? selectedVendor.name : ''
+                                                });
+                                            }}
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
                                             disabled={currentModalType === 'view'}
                                         >
-                                            <option>One Way</option>
-                                            <option>Return</option>
-                                            <option>Daily</option>
+                                            <option value="">Select Vendor...</option>
+                                            {marketplaceVendors.map(v => (
+                                                <option key={v.id} value={v.id}>{v.name} {v.category ? `(${v.category})` : ''}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-muted uppercase">Request Date</label>
+                                        <input type="text" value={formData.requestDate} disabled className="w-full bg-background/50 border border-border rounded-lg px-4 py-2 text-sm text-muted focus:outline-none" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <CustomDatePicker
+                                            label="Due Date"
+                                            disabled={currentModalType === 'view'}
+                                            selectedDate={formData.dueDate}
+                                            onChange={(date) => setFormData({ ...formData, dueDate: clampDueDateToRequest(formData.requestDate, date) })}
+                                        />
+                                        {currentModalType === 'view' && effectiveOrder?.createdAt && (
+                                            <p className="text-[9px] text-muted italic mt-1">Requested On: {new Date(effectiveOrder.createdAt).toLocaleDateString()}</p>
+                                        )}
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Logistics Transport Mode</label>
+                                        <div className="flex gap-2">
+                                            {['Road', 'Sea', 'Air'].map((mode) => (
+                                                <button
+                                                    key={mode}
+                                                    type="button"
+                                                    onClick={() => setFormData({ ...formData, deliveryType: mode })}
+                                                    className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter border transition-all ${formData.deliveryType === mode
+                                                        ? 'bg-accent/20 border-accent text-accent shadow-lg shadow-accent/5'
+                                                        : 'bg-white/5 border-white/10 text-muted hover:border-white/30'
+                                                        }`}
+                                                    disabled={currentModalType === 'view'}
+                                                >
+                                                    {mode}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-muted uppercase">Order Type</label>
+                                        <select
+                                            value={formData.type}
+                                            onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                            disabled={currentModalType === 'view'}
+                                        >
+                                            <option>Procurement</option>
+                                            <option>Provisioning</option>
+                                            <option>Delivery</option>
+                                            <option>Inventory</option>
+                                            <option>Custom Order</option>
+                                            <option>Chauffeur Service</option>
                                         </select>
                                     </div>
 
-                                    {formData.serviceType === 'Daily' && (
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-muted uppercase">Number of Days</label>
-                                            <input type="number" min="1" value={formData.dailyDays} onChange={e => setFormData({ ...formData, dailyDays: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
-                                        </div>
-                                    )}
+                                    {formData.type === 'Chauffeur Service' && (
+                                        <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 border border-accent/20 rounded-2xl bg-accent/5">
+                                            <h4 className="col-span-1 md:col-span-2 text-xs font-black text-accent uppercase tracking-widest mb-2 border-b border-accent/10 pb-2">Chauffeur Mission Details</h4>
 
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Pick-up Location</label>
-                                        <input type="text" value={formData.pickupLocation} onChange={e => setFormData({ ...formData, pickupLocation: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. LPIA Airport" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Pick-up Time</label>
-                                        <input type="time" value={formData.pickupTime} onChange={e => setFormData({ ...formData, pickupTime: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
-                                    </div>
-
-                                    {formData.serviceType === 'Return' && (
-                                        <>
                                             <div className="space-y-1">
-                                                <CustomDatePicker label="Return Date" selectedDate={formData.returnDate} onChange={date => setFormData({ ...formData, returnDate: date })} disabled={currentModalType === 'view'} />
+                                                <label className="text-[10px] font-bold text-muted uppercase">Service Type</label>
+                                                <select
+                                                    value={formData.serviceType}
+                                                    onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
+                                                    disabled={currentModalType === 'view'}
+                                                >
+                                                    <option>One Way</option>
+                                                    <option>Return</option>
+                                                    <option>Daily</option>
+                                                </select>
+                                            </div>
+
+                                            {formData.serviceType === 'Daily' && (
+                                                <div className="space-y-1">
+                                                    <label className="text-[10px] font-bold text-muted uppercase">Number of Days</label>
+                                                    <input type="number" min="1" value={formData.dailyDays} onChange={e => setFormData({ ...formData, dailyDays: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
+                                                </div>
+                                            )}
+
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-muted uppercase">Pick-up Location</label>
+                                                <input type="text" value={formData.pickupLocation} onChange={e => setFormData({ ...formData, pickupLocation: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. LPIA Airport" />
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-muted uppercase">Return Time</label>
-                                                <input type="time" value={formData.returnTime} onChange={e => setFormData({ ...formData, returnTime: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
+                                                <label className="text-[10px] font-bold text-muted uppercase">Pick-up Time</label>
+                                                <input type="time" value={formData.pickupTime} onChange={e => setFormData({ ...formData, pickupTime: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
+                                            </div>
+
+                                            {formData.serviceType === 'Return' && (
+                                                <>
+                                                    <div className="space-y-1">
+                                                        <CustomDatePicker label="Return Date" selectedDate={formData.returnDate} onChange={date => setFormData({ ...formData, returnDate: date })} disabled={currentModalType === 'view'} />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-bold text-muted uppercase">Return Time</label>
+                                                        <input type="time" value={formData.returnTime} onChange={e => setFormData({ ...formData, returnTime: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
+                                                    </div>
+                                                    <div className="col-span-1 md:col-span-2 space-y-1">
+                                                        <label className="text-[10px] font-bold text-muted uppercase">Return Location</label>
+                                                        <input type="text" value={formData.returnLocation} onChange={e => setFormData({ ...formData, returnLocation: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
+                                                    </div>
+                                                </>
+                                            )}
+
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-muted uppercase">Luggage Specification</label>
+                                                <input type="text" value={formData.luggage} onChange={e => setFormData({ ...formData, luggage: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. 2 large suitcases, 1 carry-on" />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-muted uppercase">Required Stops</label>
+                                                <input type="text" value={formData.stops} onChange={e => setFormData({ ...formData, stops: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. Stop at pharmacy" />
                                             </div>
                                             <div className="col-span-1 md:col-span-2 space-y-1">
-                                                <label className="text-[10px] font-bold text-muted uppercase">Return Location</label>
-                                                <input type="text" value={formData.returnLocation} onChange={e => setFormData({ ...formData, returnLocation: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
+                                                <label className="text-[10px] font-bold text-muted uppercase">Special Amenities</label>
+                                                <input type="text" value={formData.amenities} onChange={e => setFormData({ ...formData, amenities: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. Baby Car Seat, Wheelchair, Stroller, Champagne" />
                                             </div>
-                                        </>
+                                        </div>
                                     )}
-
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Luggage Specification</label>
-                                        <input type="text" value={formData.luggage} onChange={e => setFormData({ ...formData, luggage: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. 2 large suitcases, 1 carry-on" />
-                                    </div>
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Required Stops</label>
-                                        <input type="text" value={formData.stops} onChange={e => setFormData({ ...formData, stops: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. Stop at pharmacy" />
-                                    </div>
-                                    <div className="col-span-1 md:col-span-2 space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Special Amenities</label>
-                                        <input type="text" value={formData.amenities} onChange={e => setFormData({ ...formData, amenities: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. Baby Car Seat, Wheelchair, Stroller, Champagne" />
-                                    </div>
                                 </div>
-                            )}
-                        </div>
 
-                        {currentModalType === 'view' && effectiveOrder?.createdAt && (
-                            <div className="mt-6 p-4 bg-white/5 rounded-xl border border-border space-y-4">
-                                <div className="flex items-center gap-3 text-sm">
-                                    <Clock size={16} className="text-accent" />
-                                    <span className="text-secondary">Created At:</span>
-                                    <span className="font-bold">{new Date(effectiveOrder.createdAt).toLocaleString()}</span>
+                                {currentModalType === 'view' && effectiveOrder?.createdAt && (
+                                    <div className="mt-6 p-4 bg-white/5 rounded-xl border border-border space-y-4">
+                                        <div className="flex items-center gap-3 text-sm">
+                                            <Clock size={16} className="text-accent" />
+                                            <span className="text-secondary">Created At:</span>
+                                            <span className="font-bold">{new Date(effectiveOrder.createdAt).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                <div className="flex gap-3 justify-end pt-6">
+                                    <button type="button" onClick={handleCancel} className="btn-secondary">{currentModalType === 'view' ? 'Close' : 'Cancel'}</button>
+                                    {currentModalType === 'view' && (
+                                        <button type="button" onClick={() => window.print()} className="btn-primary flex items-center gap-2">
+                                            <Printer size={16} /> Print Acknowledgement
+                                        </button>
+                                    )}
+                                    {currentModalType === 'view' && canCreateManualOrder && (
+                                        <button type="button" onClick={() => setCurrentModalType('edit')} className="px-6 py-2.5 bg-accent border border-accent/50 text-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-accent/80 shadow-lg shadow-accent/20">
+                                            Edit Details
+                                        </button>
+                                    )}
+                                    {currentModalType !== 'view' && canCreateManualOrder && (
+                                        <button type="submit" className="btn-primary">Save Order</button>
+                                    )}
                                 </div>
                             </div>
                         )}
-
-                        <div className="flex gap-3 justify-end pt-6">
-                            <button type="button" onClick={handleCancel} className="btn-secondary">{currentModalType === 'view' ? 'Close' : 'Cancel'}</button>
-                            {currentModalType === 'view' && (
-                                <button type="button" onClick={() => window.print()} className="btn-primary flex items-center gap-2">
-                                    <Printer size={16} /> Print Acknowledgement
-                                </button>
-                            )}
-                            {currentModalType === 'view' && canCreateManualOrder && (
-                                <button type="button" onClick={() => setCurrentModalType('edit')} className="px-6 py-2.5 bg-accent border border-accent/50 text-black rounded-xl text-xs font-black uppercase tracking-widest hover:bg-accent/80 shadow-lg shadow-accent/20">
-                                    Edit Details
-                                </button>
-                            )}
-                            {currentModalType !== 'view' && canCreateManualOrder && (
-                                <button type="submit" className="btn-primary">Save Order</button>
-                            )}
-                        </div>
-                    </div>
+                    </form>
                 )}
-            </form>
-            )}
-        </Modal>
-        {isOpen && !isFetchingDetails && currentModalType === 'view' && effectiveOrder && (
-            <div className="hidden invoice-print-container bg-white text-black font-sans">
-                <div className="w-full flex-1 flex flex-col">
-                    {/* Sovereign Header */}
-                    <div className="flex justify-between items-start border-b-[3px] border-black pb-4 mb-4 print-section">
-                        <div className="flex items-center gap-5">
-                            <div>
-                                <h1 className="text-xl font-black italic uppercase tracking-tighter leading-none">ZANEZION</h1>
-                                <p className="text-[8px] font-black uppercase tracking-[0.2em] mt-0.5 opacity-80">Institutional Asset & Fiscal Management</p>
-                                <div className="mt-1.5 text-[7px] font-bold uppercase text-gray-400 tracking-widest leading-none">
-                                    Nassau, Bahamas | Sovereign HQ | Client Services
+            </Modal>
+            {isOpen && !isFetchingDetails && currentModalType === 'view' && effectiveOrder && (
+                <div className="hidden invoice-print-container bg-white text-black font-sans">
+                    <div className="w-full flex-1 flex flex-col">
+                        {/* Sovereign Header */}
+                        <div className="flex justify-between items-start border-b-[3px] border-black pb-4 mb-4 print-section">
+                            <div className="flex items-center gap-5">
+                                <div>
+                                    <h1 className="text-xl font-black italic uppercase tracking-tighter leading-none">ZANEZION</h1>
+                                    <p className="text-[8px] font-black uppercase tracking-[0.2em] mt-0.5 opacity-80">Institutional Asset & Fiscal Management</p>
+                                    <div className="mt-1.5 text-[7px] font-bold uppercase text-gray-400 tracking-widest leading-none">
+                                        Nassau, Bahamas | Sovereign HQ | Client Services
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="text-right">
+                                <h2 className="text-lg font-black text-black tracking-tighter italic border-b border-black inline-block mb-1 uppercase">Order Acknowledgement</h2>
+                                <p className="text-[9px] font-black text-gray-400 mt-0.5">PROTOCOL ID: {effectiveOrder.id}</p>
+                                <p className="text-[7px] font-black uppercase tracking-widest leading-none">ISSUED. {effectiveOrder.createdAt ? new Date(effectiveOrder.createdAt).toLocaleDateString() : effectiveOrder.date || formData.requestDate}</p>
+                            </div>
+                        </div>
+
+                        {/* Counterparty & Status Section */}
+                        <div className="grid grid-cols-2 gap-8 mb-6 px-1 print-section">
+                            <div className="flex items-center gap-4">
+                                <div className="p-3 bg-gray-100 rounded-lg"><CheckCircle size={16} className="text-gray-400" /></div>
+                                <div>
+                                    <p className="text-[6px] font-black uppercase tracking-[0.2em] opacity-40 mb-1">Billed Entity</p>
+                                    <p className="text-base font-black italic tracking-tight uppercase leading-tight">{formData.client || (typeof effectiveOrder.client === 'object' && effectiveOrder.client ? (effectiveOrder.client.companyName || effectiveOrder.client.name) : effectiveOrder.client) || 'Institutional Account'}</p>
+                                    <div className="flex items-center gap-2 mt-1 opacity-70">
+                                        <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded text-[6px] font-black uppercase tracking-widest">Corp / High-Net</span>
+                                        <p className="text-[7px] font-black mt-1 text-gray-400">REGISTRY: {formData.clientId || effectiveOrder.clientId || 'ZN-ACC-EXT'}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="text-right flex flex-col justify-end">
+                                <div className="inline-block px-3 py-1.5 border-[2px] border-black text-black">
+                                    <p className="text-[8px] font-black uppercase tracking-widest skew-x-12 leading-none">Status: {displayOrderStatus(effectiveOrder?.status || formData.status)}</p>
+                                </div>
+                                <div className="mt-2">
+                                    <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 leading-none">Required By:</p>
+                                    <p className="text-sm font-black italic uppercase leading-none">{formData.dueDate || 'Immediate Action'}</p>
                                 </div>
                             </div>
                         </div>
-                        <div className="text-right">
-                            <h2 className="text-lg font-black text-black tracking-tighter italic border-b border-black inline-block mb-1 uppercase">Order Acknowledgement</h2>
-                            <p className="text-[9px] font-black text-gray-400 mt-0.5">PROTOCOL ID: {effectiveOrder.id}</p>
-                            <p className="text-[7px] font-black uppercase tracking-widest leading-none">ISSUED. {effectiveOrder.createdAt ? new Date(effectiveOrder.createdAt).toLocaleDateString() : effectiveOrder.date || formData.requestDate}</p>
-                        </div>
-                    </div>
 
-                    {/* Counterparty & Status Section */}
-                    <div className="grid grid-cols-2 gap-8 mb-6 px-1 print-section">
-                        <div className="flex items-center gap-4">
-                            <div className="p-3 bg-gray-100 rounded-lg"><CheckCircle size={16} className="text-gray-400" /></div>
-                            <div>
-                                <p className="text-[6px] font-black uppercase tracking-[0.2em] opacity-40 mb-1">Billed Entity</p>
-                                <p className="text-base font-black italic tracking-tight uppercase leading-tight">{formData.client || (typeof effectiveOrder.client === 'object' && effectiveOrder.client ? (effectiveOrder.client.companyName || effectiveOrder.client.name) : effectiveOrder.client) || 'Institutional Account'}</p>
-                                <div className="flex items-center gap-2 mt-1 opacity-70">
-                                    <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded text-[6px] font-black uppercase tracking-widest">Corp / High-Net</span>
-                                    <p className="text-[7px] font-black mt-1 text-gray-400">REGISTRY: {formData.clientId || effectiveOrder.clientId || 'ZN-ACC-EXT'}</p>
-                                </div>
-                            </div>
-                        </div>
-                        <div className="text-right flex flex-col justify-end">
-                            <div className="inline-block px-3 py-1.5 border-[2px] border-black text-black">
-                                <p className="text-[8px] font-black uppercase tracking-widest skew-x-12 leading-none">Status: {displayOrderStatus(effectiveOrder?.status || formData.status)}</p>
-                            </div>
-                            <div className="mt-2">
-                                <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 leading-none">Required By:</p>
-                                <p className="text-sm font-black italic uppercase leading-none">{formData.dueDate || 'Immediate Action'}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* High-Resolution Itemized Ledger */}
-                    <div className="mb-6 print-section">
-                        <table className="w-full border-collapse">
-                            <thead>
-                                <tr className="bg-gray-50 border-y border-black">
-                                    <th className="text-left py-2 px-2 text-[8px] font-black uppercase tracking-widest">Description of Sourcing / Service Protocol</th>
-                                    <th className="text-center py-2 px-2 text-[8px] font-black uppercase tracking-widest w-16">Qty</th>
-                                    <th className="text-right py-2 px-2 text-[8px] font-black uppercase tracking-widest w-32">Valuation (USD)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {formData.items.map((item, idx) => (
-                                    <tr key={idx} className="border-b border-gray-100">
-                                        <td className="py-3 px-2">
-                                            <div className="flex flex-col gap-0.5">
-                                                <p className="font-black text-sm italic tracking-tight uppercase leading-tight">{item.name}</p>
-                                                <p className="text-[7px] text-gray-400 font-bold uppercase tracking-widest italic leading-none">{formData.type}</p>
-                                            </div>
-                                        </td>
-                                        <td className="text-center py-3 px-2 font-black italic text-xs opacity-40 leading-none">{item.qty || 1}</td>
-                                        <td className="text-right py-3 px-2">
-                                            <span className="text-sm font-black tracking-tighter">
-                                                ${(parseFloat(item.price || 0) * parseInt(item.qty || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                            </span>
-                                        </td>
+                        {/* High-Resolution Itemized Ledger */}
+                        <div className="mb-6 print-section">
+                            <table className="w-full border-collapse">
+                                <thead>
+                                    <tr className="bg-gray-50 border-y border-black">
+                                        <th className="text-left py-2 px-2 text-[8px] font-black uppercase tracking-widest">Description of Sourcing / Service Protocol</th>
+                                        <th className="text-center py-2 px-2 text-[8px] font-black uppercase tracking-widest w-16">Qty</th>
+                                        <th className="text-right py-2 px-2 text-[8px] font-black uppercase tracking-widest w-32">Valuation (USD)</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody>
+                                    {formData.items.map((item, idx) => (
+                                        <tr key={idx} className="border-b border-gray-100">
+                                            <td className="py-3 px-2">
+                                                <div className="flex flex-col gap-0.5">
+                                                    <p className="font-black text-sm italic tracking-tight uppercase leading-tight">{item.name}</p>
+                                                    <p className="text-[7px] text-gray-400 font-bold uppercase tracking-widest italic leading-none">{formData.type}</p>
+                                                </div>
+                                            </td>
+                                            <td className="text-center py-3 px-2 font-black italic text-xs opacity-40 leading-none">{item.qty || 1}</td>
+                                            <td className="text-right py-3 px-2">
+                                                <span className="text-sm font-black tracking-tighter">
+                                                    ${(parseFloat(item.price || 0) * parseInt(item.qty || 1)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                                </span>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
 
-                    {/* Financial Totals & Verification */}
-                    <div className="flex justify-end mb-6 pr-2 print-section">
-                        <div className="w-64">
-                            <div className="flex justify-between items-center py-1.5 border-t border-black mb-1.5">
-                                <p className="text-[8px] font-black uppercase tracking-tighter opacity-100 italic">Estimated Subtotal</p>
-                                <span className="text-sm font-bold italic">${parseFloat(calculateTotal()).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                            </div>
-                            <div className="flex justify-between items-center p-3 bg-black text-white rounded-none">
-                                <div className="flex flex-col">
-                                    <p className="text-[6px] font-black uppercase tracking-widest opacity-60">Total Estimated</p>
-                                    <p className="text-[7px] font-bold leading-none mt-0.5">Fiscal Assessment</p>
+                        {/* Financial Totals & Verification */}
+                        <div className="flex justify-end mb-6 pr-2 print-section">
+                            <div className="w-64">
+                                <div className="flex justify-between items-center py-1.5 border-t border-black mb-1.5">
+                                    <p className="text-[8px] font-black uppercase tracking-tighter opacity-100 italic">Estimated Subtotal</p>
+                                    <span className="text-sm font-bold italic">${parseFloat(calculateTotal()).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                                 </div>
-                                <h3 className="text-xl font-black italic tracking-tighter">${parseFloat(calculateTotal()).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD</h3>
+                                <div className="flex justify-between items-center p-3 bg-black text-white rounded-none">
+                                    <div className="flex flex-col">
+                                        <p className="text-[6px] font-black uppercase tracking-widest opacity-60">Total Estimated</p>
+                                        <p className="text-[7px] font-bold leading-none mt-0.5">Fiscal Assessment</p>
+                                    </div>
+                                    <h3 className="text-xl font-black italic tracking-tighter">${parseFloat(calculateTotal()).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD</h3>
+                                </div>
+                                <p className="text-[6px] text-gray-400 font-bold italic mt-1.5 text-right uppercase tracking-widest">Auth Code: ZZ-{effectiveOrder.id}</p>
                             </div>
-                            <p className="text-[6px] text-gray-400 font-bold italic mt-1.5 text-right uppercase tracking-widest">Auth Code: ZZ-{effectiveOrder.id}</p>
                         </div>
-                    </div>
 
-                    {/* Legal & Sovereign Terms */}
-                    <div className="p-4 bg-gray-50 border-l-[6px] border-black italic print-section mb-6">
-                        <h4 className="text-[8px] font-black uppercase tracking-[0.05em] mb-2 text-black underline leading-none">Order Acknowledgement Protocol</h4>
-                        <div className="grid grid-cols-2 gap-6">
-                            <div className="text-[6px] text-gray-400 leading-normal uppercase font-bold text-justify">
-                                1. <strong>Commitment:</strong> This document represents an official acknowledgement of the requested services/sourcing items.
-                                2. <strong>Verification:</strong> All sourcing is strictly conducted in line with international fiscal compliance and asset authentication protocols.
-                            </div>
-                            <div className="text-[6px] text-gray-400 leading-normal uppercase font-bold text-justify">
-                                3. <strong>Jurisdiction:</strong> Execution and interactions are governed by the sovereign laws of the Commonwealth of the Bahamas.
-                                4. <strong>Logistics:</strong> Delivery times are approximations contingent on strategic freight movements and customs clearance.
+                        {/* Legal & Sovereign Terms */}
+                        <div className="p-4 bg-gray-50 border-l-[6px] border-black italic print-section mb-6">
+                            <h4 className="text-[8px] font-black uppercase tracking-[0.05em] mb-2 text-black underline leading-none">Order Acknowledgement Protocol</h4>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="text-[6px] text-gray-400 leading-normal uppercase font-bold text-justify">
+                                    1. <strong>Commitment:</strong> This document represents an official acknowledgement of the requested services/sourcing items.
+                                    2. <strong>Verification:</strong> All sourcing is strictly conducted in line with international fiscal compliance and asset authentication protocols.
+                                </div>
+                                <div className="text-[6px] text-gray-400 leading-normal uppercase font-bold text-justify">
+                                    3. <strong>Jurisdiction:</strong> Execution and interactions are governed by the sovereign laws of the Commonwealth of the Bahamas.
+                                    4. <strong>Logistics:</strong> Delivery times are approximations contingent on strategic freight movements and customs clearance.
+                                </div>
                             </div>
                         </div>
-                    </div>
 
-                    {/* Footer Authenticator */}
-                    <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-end print-section">
-                        <div>
-                            <p className="text-[6px] font-black uppercase tracking-[0.2em] opacity-30 mb-0.5 italic">Authorized Service Signature</p>
-                            <div className="relative">
-                                <div className="w-48 h-[1px] bg-black/20" />
-                                <p className="absolute -top-3 left-1 font-black italic text-gray-300 text-[10px] opacity-20 select-none uppercase tracking-tighter leading-none">Director of Global Operations</p>
+                        {/* Footer Authenticator */}
+                        <div className="mt-auto pt-4 border-t border-gray-100 flex justify-between items-end print-section">
+                            <div>
+                                <p className="text-[6px] font-black uppercase tracking-[0.2em] opacity-30 mb-0.5 italic">Authorized Service Signature</p>
+                                <div className="relative">
+                                    <div className="w-48 h-[1px] bg-black/20" />
+                                    <p className="absolute -top-3 left-1 font-black italic text-gray-300 text-[10px] opacity-20 select-none uppercase tracking-tighter leading-none">Director of Global Operations</p>
+                                </div>
+                                <p className="text-[7px] font-black mt-1.5 uppercase tracking-widest leading-none">Client Services Division | ZANEZION INTELLIGENCE</p>
                             </div>
-                            <p className="text-[7px] font-black mt-1.5 uppercase tracking-widest leading-none">Client Services Division | ZANEZION INTELLIGENCE</p>
-                        </div>
-                        <div className="text-right">
-                            <p className="text-[6px] font-black uppercase tracking-[0.3em] opacity-30 mb-0.5">HASH: ZZ-ORD-{Date.now().toString(16).slice(-6).toUpperCase()}</p>
-                            <p className="text-[8px] font-black tracking-tighter italic leading-none">VERIFIED ORDER PROTOCOL v1.1 // NASSAU HQ</p>
+                            <div className="text-right">
+                                <p className="text-[6px] font-black uppercase tracking-[0.3em] opacity-30 mb-0.5">HASH: ZZ-ORD-{Date.now().toString(16).slice(-6).toUpperCase()}</p>
+                                <p className="text-[8px] font-black tracking-tighter italic leading-none">VERIFIED ORDER PROTOCOL v1.1 // NASSAU HQ</p>
+                            </div>
                         </div>
                     </div>
                 </div>
-            </div>
-        )}
+            )}
         </>
     );
 };

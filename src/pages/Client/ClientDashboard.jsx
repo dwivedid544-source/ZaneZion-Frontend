@@ -71,12 +71,8 @@ const ClientDashboard = () => {
     orders, invoices, settleInvoice, currentUser, clients, inventory = [], deliveries = [],
     chauffeurRequests = [], fetchChauffeurRequests,
     fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats,
-<<<<<<< HEAD
-    events = [], fetchTickets, updateClient, guestRequests = [], luxuryItems = [], fetchLuxuryItems,
-=======
     events = [], fetchTickets, updateClient,
     guestRequests = [], luxuryItems = [], fetchLuxuryItems,
->>>>>>> 1bd272cbc9da5e01be472b1aad88c7e566847cd0
     purchaseOrders = [], fetchPurchaseOrders,
     purchaseRequests = [], fetchPurchaseRequests,
     quotes = [], fetchQuotes,

@@ -27,6 +27,7 @@ import { usePurchaseOrders, useCreatePurchaseOrder, useUpdatePurchaseOrder, useP
 import { useQueryClient } from "@tanstack/react-query";
 import { RefreshCcw } from "lucide-react";
 import { swalConfirm, swalSuccess, swalError } from "../../utils/swal";
+import { normalizeRole } from "../../utils/authUtils";
 
 const PurchaseOrders = () => {
   const queryClient = useQueryClient();
@@ -41,6 +42,8 @@ const PurchaseOrders = () => {
     updatePurchaseRequest,
     approvePOReceipt,
     hasMenuPermission,
+    clients,
+    fetchClients,
   } = useData();
   const approvedVendors = marketplaceVendors || [];
   const { data: prData } = usePurchaseRequests(1, 100);
@@ -52,8 +55,21 @@ const PurchaseOrders = () => {
   const purchaseOrders = poData?.purchaseOrders || [];
   const meta = poData ? { totalPages: poData.totalPages, totalItems: poData.total } : { totalPages: 1, totalItems: 0 };
 
+  const portalRole = normalizeRole(currentUser?.role);
+  const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
+  const currentClient = (clients || []).find(c => {
+    const cId = normalizeId(c.id);
+    const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
+    return cId && uId && cId === uId;
+  });
+  const isBusinessClient = portalRole === 'client' && (
+    String(currentUser?.role).toLowerCase().includes('business') ||
+    currentClient?.clientType === 'Business' ||
+    currentClient?.client_type === 'Business'
+  );
+
   const userRole = String(currentUser?.role?.name || currentUser?.role || "").toLowerCase().replace(/\s+/g, "_");
-  const isCustomer = ["customer", "saas_client", "client"].includes(userRole);
+  const isCustomer = ["customer", "saas_client", "client"].includes(userRole) && !isBusinessClient;
 
   const createPOMutation = useCreatePurchaseOrder();
   const updatePOMutation = useUpdatePurchaseOrder();
@@ -81,7 +97,8 @@ const PurchaseOrders = () => {
 
   React.useEffect(() => {
     fetchVendors();
-  }, [fetchVendors]);
+    if (fetchClients) fetchClients();
+  }, [fetchVendors, fetchClients]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showReceiveModal, setShowReceiveModal] = useState(false);

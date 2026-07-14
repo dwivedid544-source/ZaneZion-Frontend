@@ -48,8 +48,21 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     /** Logged-in user role drives permissions (parent `role` prop is often a portal default, e.g. ClientDashboard). */
     const portalRole = normalizeRole(currentUser?.role || role || '');
     const isPersonalCustomer = portalRole === 'customer';
-    const canCreateManualOrder = roleCanCreateInstitutionalOrder(portalRole);
-    const canEditOrderStatus = roleCanUpdateOrderStatus(portalRole);
+
+    const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
+    const currentClient = (clients || []).find(c => {
+        const cId = normalizeId(c.id);
+        const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
+        return cId && uId && cId === uId;
+    });
+    const isBusinessClient = portalRole === 'client' && (
+        String(currentUser?.role).toLowerCase().includes('business') ||
+        currentClient?.clientType === 'Business' ||
+        currentClient?.client_type === 'Business'
+    );
+
+    const canCreateManualOrder = roleCanCreateInstitutionalOrder(portalRole) || isBusinessClient;
+    const canEditOrderStatus = roleCanUpdateOrderStatus(portalRole) || isBusinessClient;
 
     useEffect(() => {
         if (isOpen) {

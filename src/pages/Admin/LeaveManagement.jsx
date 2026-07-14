@@ -15,6 +15,7 @@ const LeaveManagement = () => {
     updateLeaveRequest,
     deleteLeaveRequest,
     fetchStaff,
+    users,
     currentUser
   } = useData();
 
@@ -40,7 +41,8 @@ const LeaveManagement = () => {
     return () => clearInterval(interval);
   }, []);
 
-  const myRequests = leaveRequests.filter(r => !isClientAdmin || r.userId === currentUser?.id);
+  const isStaffOnly = userRole === 'staff';
+  const myRequests = leaveRequests.filter(r => !isStaffOnly || r.userId === currentUser?.id);
 
   const filtered = myRequests.filter(r => {
     const matchesFilter = filter === 'all' || r.status?.toLowerCase() === filter;
@@ -66,16 +68,16 @@ const LeaveManagement = () => {
             {isClientAdmin ? 'Submit and track your absence requests.' : 'Review and manage staff leave requests.'}
           </p>
         </div>
-        {isClientAdmin && (
+        {(isClientAdmin || ['superadmin', 'admin', 'operations', 'procurement', 'logistics', 'inventory', 'concierge', 'staff'].includes(userRole)) && (
           <button
             onClick={() => {
               setEditingLeaveRequest(null);
-              setLeaveFormData({ type: 'Vacation', duration: 'Full Day', hours: 8, start: '', end: '', reason: '' });
+              setLeaveFormData({ type: 'Vacation', duration: 'Full Day', hours: 8, start: '', end: '', reason: '', userId: '', name: '' });
               setIsLeaveModalOpen(true);
             }}
             className="btn-primary flex items-center gap-2"
           >
-            <Plus size={16} /> Request Absence
+            <Plus size={16} /> {isClientAdmin ? 'Request Absence' : 'Request Leave'}
           </button>
         )}
       </div>
@@ -148,7 +150,7 @@ const LeaveManagement = () => {
                 </div>
                 <div className="flex items-center justify-between w-full md:w-auto gap-3">
                   <StatusBadge status={req.status} />
-                  {!isClientAdmin && (req.status === 'Pending' || req.status === 'pending') && (
+                  {!isStaffOnly && req.userId !== currentUser?.id && (req.status === 'Pending' || req.status === 'pending') && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => updateLeaveRequest({ ...req, status: 'approved' })}
@@ -166,7 +168,7 @@ const LeaveManagement = () => {
                       </button>
                     </div>
                   )}
-                  {isClientAdmin && (req.status === 'Pending' || req.status === 'pending') && (
+                  {(isClientAdmin || ['superadmin', 'admin', 'operations', 'staff'].includes(userRole)) && (req.status === 'Pending' || req.status === 'pending') && (
                     <div className="flex gap-2">
                       <button
                         onClick={() => {
@@ -177,7 +179,9 @@ const LeaveManagement = () => {
                             hours: req.hours || 8,
                             start: req.start || '',
                             end: req.end || '',
-                            reason: req.reason || ''
+                            reason: req.reason || '',
+                            userId: req.userId || '',
+                            name: req.name || ''
                           });
                           setIsLeaveModalOpen(true);
                         }}
@@ -215,14 +219,36 @@ const LeaveManagement = () => {
           )}
         </div>
       </div>
-      {isClientAdmin && (
+      {(isClientAdmin || ['superadmin', 'admin', 'operations', 'procurement', 'logistics', 'inventory', 'concierge', 'staff'].includes(userRole)) && (
         <Modal
           isOpen={isLeaveModalOpen}
           onClose={() => setIsLeaveModalOpen(false)}
-          title={editingLeaveRequest ? "Edit Absence Request" : "Bespoke Absence Request"}
+          title={editingLeaveRequest ? (isClientAdmin ? "Edit Absence Request" : "Edit Leave Request") : (isClientAdmin ? "Bespoke Absence Request" : "Submit Leave Request")}
         >
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-1 md:col-span-2">
+                <label className="text-[10px] font-bold text-muted uppercase">Request For (Employee)</label>
+                <select
+                  className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
+                  value={leaveFormData.userId || currentUser?.id || ''}
+                  onChange={(e) => {
+                    const uId = Number(e.target.value);
+                    const selected = (users || []).find(u => u.id === uId);
+                    setLeaveFormData({
+                      ...leaveFormData,
+                      userId: uId,
+                      name: selected?.name || selected?.fullName || '',
+                      tenantId: selected?.tenantId || currentUser?.tenantId || currentUser?.company_id
+                    });
+                  }}
+                >
+                  <option value={currentUser?.id}>{currentUser?.name} (Me)</option>
+                  {(users || []).filter(u => u.id !== currentUser?.id).map(u => (
+                    <option key={u.id} value={u.id}>{u.name || u.fullName} ({u.role?.name || u.role || 'User'})</option>
+                  ))}
+                </select>
+              </div>
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-muted uppercase">Absence Category</label>
                 <select

@@ -2494,14 +2494,15 @@ export const GlobalDataProvider = ({ children }) => {
     }
   }, []);
 
-  const fetchDashboardStats = React.useCallback(async () => {
+  const fetchDashboardStats = React.useCallback(async (filter) => {
     try {
-      const res = await api.get("/dashboard/stats");
+      const filterParam = filter || revenueFilter || 'Monthly';
+      const res = await api.get(`/dashboard/stats?revenueFilter=${encodeURIComponent(filterParam)}`);
       if (res.data?.success) setDashboardStats(res.data.data);
     } catch (e) {
       console.error("Fetch dashboard stats failed", e);
     }
-  }, []);
+  }, [revenueFilter]);
 
   const fetchDashboardLogs = React.useCallback(async () => {
     try {
@@ -2509,9 +2510,9 @@ export const GlobalDataProvider = ({ children }) => {
       if (res.data?.success) {
         setLogs(res.data.data.map(audit => ({
           action: audit.action || "System Action",
-          detail: audit.description || `Module: ${audit.module}`,
+          detail: audit.detail || "System event recorded",
           type: "system",
-          time: new Date(audit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          time: audit.timestamp ? new Date(audit.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : "Unknown Time"
         })));
       }
     } catch (e) {
@@ -7248,6 +7249,7 @@ export const GlobalDataProvider = ({ children }) => {
         deleteAudit,
         logs,
         addLog,
+        fetchDashboardLogs,
 
         // Dashboard & Settings
         dashboardStats,

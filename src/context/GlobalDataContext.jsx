@@ -2489,14 +2489,15 @@ export const GlobalDataProvider = ({ children }) => {
     }
   }, []);
 
-  const fetchDashboardStats = React.useCallback(async () => {
+  const fetchDashboardStats = React.useCallback(async (filter) => {
     try {
-      const res = await api.get("/dashboard/stats");
+      const filterParam = filter || revenueFilter || 'Monthly';
+      const res = await api.get(`/dashboard/stats?revenueFilter=${encodeURIComponent(filterParam)}`);
       if (res.data?.success) setDashboardStats(res.data.data);
     } catch (e) {
       console.error("Fetch dashboard stats failed", e);
     }
-  }, []);
+  }, [revenueFilter]);
 
   const fetchDashboardLogs = React.useCallback(async () => {
     try {
@@ -7243,6 +7244,7 @@ export const GlobalDataProvider = ({ children }) => {
         deleteAudit,
         logs,
         addLog,
+        fetchDashboardLogs,
 
         // Dashboard & Settings
         dashboardStats,

@@ -997,7 +997,9 @@ const Inventory = () => {
                 <select className="w-full bg-background border border-white/10 rounded-xl px-4 py-3 text-xs focus:border-accent outline-none font-bold text-white">
                   <option>Select Auditor...</option>
                   {users?.filter(u => u && u.id).map(u => (
-                    <option key={u.id}>{u.name} ({u.role || 'Unassigned'})</option>
+                    <option key={u.id}>
+                      {u.name} ({typeof u.role === 'object' && u.role !== null ? u.role.name : (u.role || 'Unassigned')})
+                    </option>
                   ))}
                 </select>
               </div>

@@ -31,7 +31,7 @@ const Orders = () => {
     deliveries, purchaseRequests, stockMovements,
     addProject, invoices, projects, generateInvoiceFromOrder,
     currentUser, launchMissionFromOrder, convertOrderToProject,
-    fetchVendors, fetchClients,
+    fetchVendors, fetchClients, clients,
     hasMenuPermission
   } = useData();
   const navigate = useNavigate();
@@ -63,7 +63,20 @@ const Orders = () => {
   const normalizedRole = normalizeRole(currentUser?.role);
   const portalRole = normalizeRole(currentUser?.role);
   const canStaffCreateOrder = roleCanCreateInstitutionalOrder(portalRole);
-  const canManageOrders = ['superadmin', 'admin', 'operations', 'procurement', 'inventory', 'logistics', 'concierge', 'saas_client'].includes(normalizedRole);
+
+  const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
+  const currentClient = (clients || []).find(c => {
+    const cId = normalizeId(c.id);
+    const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
+    return cId && uId && cId === uId;
+  });
+  const isBusinessClient = portalRole === 'client' && (
+    String(currentUser?.role).toLowerCase().includes('business') ||
+    currentClient?.clientType === 'Business' ||
+    currentClient?.client_type === 'Business'
+  );
+
+  const canManageOrders = ['superadmin', 'admin', 'operations', 'procurement', 'inventory', 'logistics', 'concierge', 'saas_client'].includes(normalizedRole) || isBusinessClient;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('view');
@@ -285,7 +298,7 @@ const Orders = () => {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Order Management</h1>
           <p className="text-secondary mt-1">Track and manage multi-line supply chain requests and deliveries.</p>
-          {!canStaffCreateOrder && (
+          {!canStaffCreateOrder && !isBusinessClient && (
             <p className="text-[10px] font-bold text-muted mt-2 uppercase tracking-wide">
               Manual order creation is limited to staff only — customers use Marketplace / staff-assisted fulfilment.
             </p>
@@ -295,7 +308,7 @@ const Orders = () => {
           <button className="btn-secondary flex items-center gap-2" onClick={() => navigate('/dashboard/invoices')}>
             <FileText size={16} /> Ledger / Invoices
           </button>
-          {canStaffCreateOrder && hasMenuPermission('Orders', 'can_add') && (
+          {(canStaffCreateOrder || isBusinessClient) && (hasMenuPermission('Orders', 'can_add') || isBusinessClient) && (
             <button className="btn-primary flex items-center gap-2" onClick={() => handleAction('add', {})}>
               <Plus size={16} /> Create Order
             </button>
@@ -343,8 +356,8 @@ const Orders = () => {
             onView={(item) => handleAction('view', item)}
             onEdit={(item) => handleAction('edit', item)}
             onDelete={(item) => handleDelete(item.id)}
-            canEdit={hasMenuPermission('Orders', 'can_edit')}
-            canDelete={hasMenuPermission('Orders', 'can_delete')}
+            canEdit={hasMenuPermission('Orders', 'can_edit') || isBusinessClient}
+            canDelete={hasMenuPermission('Orders', 'can_delete') || isBusinessClient}
             customAction={(item) => canManageOrders ? (
               <div className="flex items-center gap-1 flex-wrap">
                 {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) && (

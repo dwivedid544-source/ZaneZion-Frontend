@@ -16,6 +16,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuotes, useRFQs, useCreateRFQ, useUpdateRFQ, useDeleteRFQ, useCreateQuotation, useUpdateQuotation, useDeleteQuotation, usePurchaseRequests, useCreatePurchaseOrder } from '../../hooks/api/useProcurement';
 import { RefreshCcw } from 'lucide-react';
 import { swalSuccess, swalError } from '../../utils/swal';
+import { normalizeRole } from '../../utils/authUtils';
 
 /** API may return items as JSON string, object, or array — form always uses [{ name, qty, price }]. */
 function normalizeQuoteItems(items) {
@@ -48,7 +49,7 @@ function normalizeQuoteItems(items) {
 }
 
 const Quotes = () => {
-  const { vendors, fetchVendors, addQuote, updateQuote, deleteQuote, addOrder, hasMenuPermission, currentUser } = useData();
+  const { vendors, fetchVendors, addQuote, updateQuote, deleteQuote, addOrder, hasMenuPermission, currentUser, clients, fetchClients } = useData();
   const location = useLocation();
   const navigate = useNavigate();
   const [page, setPage] = useState(1);
@@ -60,6 +61,7 @@ const Quotes = () => {
 
   React.useEffect(() => {
     if (fetchVendors && (!vendors || vendors.length === 0)) fetchVendors();
+    if (fetchClients) fetchClients();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -109,8 +111,21 @@ const Quotes = () => {
 
   const meta = quotesData?.meta || { totalPages: 1, totalItems: combinedQuotes.length };
 
+  const portalRole = normalizeRole(currentUser?.role);
+  const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
+  const currentClient = (clients || []).find(c => {
+    const cId = normalizeId(c.id);
+    const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
+    return cId && uId && cId === uId;
+  });
+  const isBusinessClient = portalRole === 'client' && (
+    String(currentUser?.role).toLowerCase().includes('business') ||
+    currentClient?.clientType === 'Business' ||
+    currentClient?.client_type === 'Business'
+  );
+
   const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
-  const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole);
+  const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole) && !isBusinessClient;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('view');
@@ -453,7 +468,7 @@ const Quotes = () => {
           <h1 className="text-3xl font-bold tracking-tight">Institutional Quoting</h1>
           <p className="text-secondary mt-1 text-sm">Manage luxury asset acquisition and vendor competitive analysis.</p>
         </div>
-        {hasMenuPermission('Quotes', 'can_add') && (
+        {(hasMenuPermission('Quotes', 'can_add') || isBusinessClient) && (
           <button className="btn-primary flex items-center gap-2 self-start" onClick={() => handleAction('add', {})}>
             <Plus size={16} /> New Quote Request
           </button>
@@ -528,8 +543,8 @@ const Quotes = () => {
               onView={(item) => handleAction('view', item)}
               onEdit={(item) => handleAction('edit', item)}
               onDelete={(item) => handleAction('delete', item)}
-              canEdit={!isCustomer && hasMenuPermission('Quotes', 'can_edit')}
-              canDelete={!isCustomer && hasMenuPermission('Quotes', 'can_delete')}
+              canEdit={(!isCustomer && hasMenuPermission('Quotes', 'can_edit')) || isBusinessClient}
+              canDelete={(!isCustomer && hasMenuPermission('Quotes', 'can_delete')) || isBusinessClient}
             />
             <div className="mt-6 border-t border-white/5 pt-6">
               <Pagination

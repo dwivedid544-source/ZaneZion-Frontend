@@ -5,10 +5,17 @@ import { useWarehouses, useCreateWarehouse, useUpdateWarehouse, useDeleteWarehou
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 
-const EMPTY_FORM = { name: '', location: '', capacity: 0, manager_id: '', status: 'active' };
+const EMPTY_FORM = { name: '', location: '', capacity: '', manager_id: '', status: 'active' };
 
 const Warehouses = () => {
-  const { hasMenuPermission, users, fetchStaff } = useData();
+  const { hasMenuPermission, users, fetchStaff, currentUser } = useData();
+  const userRole = (currentUser?.role?.name || currentUser?.role || '').toUpperCase();
+  const isInventoryStaff = userRole === 'INVENTORY' || userRole === 'INVENTORY_STAFF';
+  const canEditManager = !isInventoryStaff;
+
+  const canAdd = hasMenuPermission('Warehouses', 'can_add');
+  const canEdit = hasMenuPermission('Warehouses', 'can_edit');
+  const canDelete = hasMenuPermission('Warehouses', 'can_delete');
 
   const { data: whData, isLoading, error } = useWarehouses();
   // API returns: { success, data: { warehouses: [], total, page, totalPages } }
@@ -32,7 +39,7 @@ const Warehouses = () => {
         id: wh.id,
         name: wh.name || '',
         location: wh.location || '',
-        capacity: wh.capacity ?? 0,
+        capacity: wh.capacity != null ? String(wh.capacity) : '',
         status: wh.status || 'active',
         manager_id: wh.manager?.userId != null ? String(wh.manager.userId) : ''
       });
@@ -49,7 +56,7 @@ const Warehouses = () => {
       const payload = {
         name: formData.name,
         location: formData.location || null,
-        capacity: formData.capacity !== undefined ? Number(formData.capacity) : 0,
+        capacity: formData.capacity !== '' && formData.capacity !== undefined ? Number(formData.capacity) : 0,
         status: formData.status || 'active',
         managerId: formData.manager_id ? Number(formData.manager_id) : null
       };
@@ -82,7 +89,11 @@ const Warehouses = () => {
   };
 
   const getManagerName = (wh) => {
-    if (wh.manager) return `${wh.manager.firstName || ''} ${wh.manager.lastName || ''}`.trim();
+    if (wh.manager) {
+      const empName = `${wh.manager.firstName || ''} ${wh.manager.lastName || ''}`.trim();
+      if (empName) return empName;
+      if (wh.manager.user?.name) return wh.manager.user.name;
+    }
     const mid = wh.managerId ?? wh.manager_id;
     if (!mid) return null;
     const u = (users || []).find(x => String(x.id) === String(mid));
@@ -120,7 +131,7 @@ const Warehouses = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          {hasMenuPermission('Warehouses', 'can_add') && (
+          {canAdd && (
             <button className="btn-primary flex items-center gap-2 px-6" onClick={() => openModal('add')}>
               <Plus size={16} /> Add Facility
             </button>
@@ -207,13 +218,13 @@ const Warehouses = () => {
                           className="p-2 bg-white/5 border border-border text-secondary rounded-lg hover:text-white hover:bg-white/10 transition-all" title="View">
                           <Eye size={15} />
                         </button>
-                        {hasMenuPermission('Warehouses', 'can_edit') && (
+                        {canEdit && (
                           <button onClick={() => openModal('edit', wh)}
                             className="p-2 bg-white/5 border border-border text-secondary rounded-lg hover:text-accent hover:border-accent/30 transition-all" title="Edit">
                             <Edit2 size={15} />
                           </button>
                         )}
-                        {hasMenuPermission('Warehouses', 'can_delete') && (
+                        {canDelete && (
                           <button onClick={() => openModal('delete', wh)}
                             className="p-2 bg-danger/10 border border-danger/20 text-danger rounded-lg hover:bg-danger hover:text-white transition-all" title="Delete">
                             <Trash2 size={15} />
@@ -316,18 +327,25 @@ const Warehouses = () => {
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Manager (User)</label>
-                          <select value={formData.manager_id} onChange={(e) => setFormData({ ...formData, manager_id: e.target.value })}
-                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none cursor-pointer">
+                          <select value={formData.manager_id} onChange={(e) => canEditManager && setFormData({ ...formData, manager_id: e.target.value })}
+                            disabled={!canEditManager}
+                            className={`w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent appearance-none ${canEditManager ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                             <option value="">Select facility manager…</option>
-                            {(users || []).filter(u => u?.name).map(u => (
+                            {(users || []).filter(u => u?.name && (u.role?.name === 'INVENTORY' || u.role === 'INVENTORY')).map(u => (
                               <option key={u.id} value={String(u.id)}>{u.name}{u.role ? ` (${u.role?.name || u.role})` : ''}</option>
                             ))}
                           </select>
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Capacity (%)</label>
-                          <input type="number" value={formData.capacity}
-                            onChange={(e) => setFormData({ ...formData, capacity: parseInt(e.target.value) || 0 })}
+                          <input type="text" value={formData.capacity}
+                            onChange={(e) => {
+                              let val = e.target.value.replace(/\D/g, '');
+                              if (val.length > 1 && val.startsWith('0')) {
+                                val = val.replace(/^0+/, '');
+                              }
+                              setFormData({ ...formData, capacity: val });
+                            }}
                             className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm text-white focus:outline-none focus:border-accent" />
                         </div>
                       </div>

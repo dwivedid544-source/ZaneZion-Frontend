@@ -376,9 +376,13 @@ const Users = () => {
         return;
       }
       try {
+        console.log('[handleSave] edit mode started. formData:', formData);
         const mergedData = { ...selectedUser, ...formData };
         if (!formData.password || formData.password.trim() === '' || isDotsOnly) {
+          console.log('[handleSave] password unchanged or empty, removing from payload');
           delete mergedData.password;
+        } else {
+          console.log('[handleSave] password will be updated');
         }
 
         // Duplicate fields in snake_case for maximum compatibility
@@ -414,9 +418,12 @@ const Users = () => {
           });
         }
 
-        await updateMutation.mutateAsync({ id: selectedUser.id, data: mergedData });
+        console.log('[handleSave] calling updateMutation with:', { id: selectedUser.id, data: mergedData });
+        const result = await updateMutation.mutateAsync({ id: selectedUser.id, data: mergedData });
+        console.log('[handleSave] updateMutation success:', result);
         setIsModalOpen(false);
       } catch (err) {
+        console.error('[handleSave] Error during update:', err);
         const errorMsg = err.response?.data?.message || err.message || 'An error occurred';
         swalWarning('Failed to Update User', errorMsg);
       }
@@ -1542,7 +1549,15 @@ const Users = () => {
 
               <div className="flex gap-3 justify-end pt-6">
                 <button onClick={() => setIsModalOpen(false)} className="btn-secondary">{modalType === 'view' ? 'Close' : 'Cancel'}</button>
-                {modalType !== 'view' && <button onClick={handleSave} className="btn-primary">Save Changes</button>}
+                {modalType !== 'view' && (
+                  <button 
+                    onClick={handleSave} 
+                    className="btn-primary disabled:opacity-50"
+                    disabled={updateMutation.isPending || createMutation.isPending}
+                  >
+                    {(updateMutation.isPending || createMutation.isPending) ? 'Saving...' : 'Save Changes'}
+                  </button>
+                )}
               </div>
             </div>
           )}

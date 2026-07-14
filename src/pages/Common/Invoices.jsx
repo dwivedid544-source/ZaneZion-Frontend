@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import StatusBadge from '../../components/StatusBadge';
-import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment, useUpdateInvoice } from '../../hooks/api/useFinance';
+import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment, useUpdateInvoice, useDeleteInvoice } from '../../hooks/api/useFinance';
 import { swalSuccess, swalError, swalConfirm } from '../../utils/swal';
 import { RefreshCcw } from 'lucide-react';
 import Pagination from '../../components/Common/Pagination';
@@ -20,8 +20,9 @@ const Invoices = () => {
 
     const [page, setPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
 
-    const { data: invoicesData, isLoading, error } = useInvoices(page, 10, searchTerm);
+    const { data: invoicesData, isLoading, error } = useInvoices(page, 10, searchTerm, statusFilter);
     const invoices = invoicesData?.data?.invoices || [];
     const totalItems = invoicesData?.data?.total || 0;
     const totalPages = invoicesData?.data?.totalPages || 1;
@@ -30,6 +31,7 @@ const Invoices = () => {
     const updateInvoiceStatusMutation = useUpdateInvoiceStatus();
     const createPaymentMutation = useCreatePayment();
     const updateInvoiceMutation = useUpdateInvoice();
+    const deleteInvoiceMutation = useDeleteInvoice();
     React.useEffect(() => {
         fetchOrders();
         fetchDeliveries();
@@ -175,10 +177,10 @@ const Invoices = () => {
             render: (row) => <span className="font-bold text-accent">${parseFloat(row.totalAmount).toLocaleString()}</span>
         },
         {
-            header: "Balance",
+            header: "Remaining Balance",
             accessor: "paidAmount",
             render: (row) => {
-                const balance = row.totalAmount - row.paidAmount;
+                const balance = row.totalAmount - (row.paidAmount || 0);
                 return (
                     <span className={`font-mono text-xs ${balance === 0 ? 'text-success' : 'text-danger'}`}>
                         ${balance.toLocaleString()}
@@ -197,7 +199,14 @@ const Invoices = () => {
         {
             header: "Status",
             accessor: "status",
-            render: (row) => <StatusBadge status={row.status} />
+            render: (row) => (
+                <div className="flex flex-col gap-1 items-start">
+                    <StatusBadge status={row.status} />
+                    <span className="text-[9px] font-semibold text-secondary uppercase tracking-wider block mt-0.5 whitespace-nowrap">
+                        {row.deliveryId ? 'Delivery Invoice' : 'Order Invoice'}
+                    </span>
+                </div>
+            )
         }
     ];
 
@@ -256,6 +265,16 @@ const Invoices = () => {
         }, 300);
     };
 
+    const deleteInvoice = async (id) => {
+        try {
+            await deleteInvoiceMutation.mutateAsync(id);
+            swalSuccess(`Invoice successfully purged from official ledger.`);
+        } catch (err) {
+            const apiErrorMsg = err.response?.data?.message || err.message || '';
+            swalError(`purging failed: ${apiErrorMsg}`);
+        }
+    };
+
     return (
         <div className="space-y-8">
 
@@ -299,9 +318,9 @@ const Invoices = () => {
 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                     {[
-                        { label: 'Total Outstanding', value: filteredInvoices.filter(i => i.status !== 'Paid').reduce((acc, i) => acc + (i.totalAmount - i.paidAmount), 0), icon: AlertCircle, color: 'text-warning' },
-                        { label: 'Revenue (MTD)', value: filteredInvoices.filter(i => i.status === 'Paid').reduce((acc, i) => acc + i.totalAmount, 0), icon: CheckCircle2, color: 'text-success' },
-                        { label: 'Pending Approval', value: filteredInvoices.filter(i => i.status === 'Unpaid').length, icon: Clock, color: 'text-accent', isCount: true },
+                        { label: 'Total Outstanding', value: filteredInvoices.filter(i => (i.status || '').toLowerCase() !== 'paid').reduce((acc, i) => acc + (i.totalAmount - (i.paidAmount || 0)), 0), icon: AlertCircle, color: 'text-warning' },
+                        { label: 'Revenue (MTD)', value: filteredInvoices.filter(i => (i.status || '').toLowerCase() === 'paid').reduce((acc, i) => acc + i.totalAmount, 0), icon: CheckCircle2, color: 'text-success' },
+                        { label: 'Pending Approval', value: filteredInvoices.filter(i => ['unpaid', 'generated', 'draft'].includes((i.status || '').toLowerCase())).length, icon: Clock, color: 'text-accent', isCount: true },
                         { label: 'Total Invoiced', value: filteredInvoices.reduce((acc, i) => acc + i.totalAmount, 0), icon: DollarSign, color: 'text-primary' }
                     ].map((stat, idx) => (
                         <div key={idx} className="glass-card p-6 border-white/5 relative overflow-hidden group">
@@ -316,18 +335,40 @@ const Invoices = () => {
 
                 <div className="glass-card p-6 border-white/5">
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                        <div className="relative max-w-sm w-full">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
-                            <input
-                                type="text"
-                                placeholder="Search by ID, Client or Order..."
-                                value={searchTerm}
-                                onChange={(e) => {
-                                    setSearchTerm(e.target.value);
-                                    setPage(1);
-                                }}
-                                className="w-full bg-background border border-border rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent font-bold"
-                            />
+                        <div className="flex flex-col md:flex-row items-center gap-4 max-w-2xl w-full">
+                            <div className="relative flex-1 w-full">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
+                                <input
+                                    type="text"
+                                    placeholder="Search by ID, Client or Order..."
+                                    value={searchTerm}
+                                    onChange={(e) => {
+                                        setSearchTerm(e.target.value);
+                                        setPage(1);
+                                    }}
+                                    className="w-full bg-background border border-border rounded-xl py-2 pl-10 pr-4 text-sm focus:outline-none focus:border-accent font-bold"
+                                />
+                            </div>
+                            <div className="w-full md:w-56">
+                                <select
+                                    value={statusFilter}
+                                    onChange={(e) => {
+                                        setStatusFilter(e.target.value);
+                                        setPage(1);
+                                    }}
+                                    className="w-full bg-background border border-border rounded-xl py-2 px-4 text-sm focus:outline-none focus:border-accent font-bold text-secondary"
+                                >
+                                    <option value="">All Statuses</option>
+                                    <option value="draft">Draft</option>
+                                    <option value="generated">Unpaid / Generated</option>
+                                    <option value="approved">Approved</option>
+                                    <option value="sent">Sent</option>
+                                    <option value="partially_paid">Partially Paid</option>
+                                    <option value="paid">Paid</option>
+                                    <option value="overdue">Overdue</option>
+                                    <option value="cancelled">Cancelled</option>
+                                </select>
+                            </div>
                         </div>
                     </div>
 
@@ -352,7 +393,12 @@ const Invoices = () => {
                                 )}
                                 onView={(inv) => handleAction('view', inv)}
                                 onEdit={(inv) => handleAction('edit', inv)}
+                                onDelete={(inv) => {
+                                    setInvoiceToDelete(inv);
+                                    setShowDeleteConfirm(true);
+                                }}
                                 canEdit={!procurementInvoiceReadOnly && hasMenuPermission('Invoices', 'can_edit')}
+                                canDelete={!procurementInvoiceReadOnly && hasMenuPermission('Invoices', 'can_delete')}
                             />
                             <div className="mt-6 border-t border-white/5 pt-6">
                                 <Pagination
@@ -511,8 +557,10 @@ const Invoices = () => {
                         <div className="space-y-8">
                             <div className="flex justify-between items-start">
                                 <div>
-                                    <h2 className="text-3xl font-bold text-white">{selectedInvoice.id}</h2>
-                                    <p className="text-[10px] text-accent font-bold uppercase tracking-widest mt-1">Institutional Billing Record</p>
+                                    <h2 className="text-3xl font-bold text-white">{selectedInvoice.invoiceNumber || selectedInvoice.id}</h2>
+                                    <p className="text-[10px] text-accent font-bold uppercase tracking-widest mt-1">
+                                        {selectedInvoice.deliveryId ? 'Delivery Billing Record' : 'Order Billing Record'}
+                                    </p>
                                 </div>
                                 <StatusBadge status={selectedInvoice.status} size="lg" />
                             </div>
@@ -541,8 +589,8 @@ const Invoices = () => {
                                 </div>
                             </div>
 
-                            <div className="p-6 bg-white/[0.02] border border-white/5 rounded-3xl">
-                                <div className="flex justify-between items-center mb-4">
+                            <div className="p-6 bg-white/[0.02] border border-white/5 rounded-3xl space-y-3">
+                                <div className="flex justify-between items-center mb-2">
                                     <span className="text-[10px] font-black text-muted uppercase tracking-widest">Description & Order References</span>
                                     <span className="text-[10px] font-black text-muted uppercase tracking-widest">Valuation</span>
                                 </div>
@@ -553,9 +601,20 @@ const Invoices = () => {
                                     </div>
                                     <span className="text-sm font-bold text-white">${parseFloat(selectedInvoice.totalAmount).toLocaleString()}</span>
                                 </div>
-                                <div className="flex justify-between items-center py-6 border-t border-white/10 mt-6">
-                                    <span className="text-sm font-bold text-accent uppercase tracking-widest">Total Due (USD)</span>
-                                    <span className="text-3xl font-bold text-primary">${parseFloat(selectedInvoice.totalAmount).toLocaleString()}</span>
+
+                                <div className="pt-4 border-t border-white/10 space-y-2">
+                                    <div className="flex justify-between text-xs text-secondary">
+                                        <span>Total Invoiced</span>
+                                        <span className="font-bold text-white">${parseFloat(selectedInvoice.totalAmount).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between text-xs text-secondary">
+                                        <span>Total Paid</span>
+                                        <span className="font-bold text-success">${parseFloat(selectedInvoice.paidAmount || 0).toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center pt-3 border-t border-white/5">
+                                        <span className="text-sm font-bold text-accent uppercase tracking-widest">Remaining Balance</span>
+                                        <span className="text-2xl font-bold text-primary">${parseFloat(selectedInvoice.totalAmount - (selectedInvoice.paidAmount || 0)).toLocaleString()}</span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -677,7 +736,7 @@ const Invoices = () => {
                             </div>
                             <div className="text-right">
                                 <div className="inline-block bg-black text-white px-3 py-1 rounded-sm transform -skew-x-12">
-                                    <p className="text-[8px] font-black uppercase tracking-widest skew-x-12 leading-none">Status: {selectedInvoice.status}</p>
+                                    <p className="text-[8px] font-black uppercase tracking-widest skew-x-12 leading-none">Status: {String(selectedInvoice.status || '').replace(/_/g, ' ')}</p>
                                 </div>
                                 <div className="flex gap-4 mt-2 justify-end text-right">
                                     <div>

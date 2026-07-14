@@ -7,14 +7,13 @@ export const geocodeLocation = async (query) => {
     
     const fetchGeocode = async (q) => {
         try {
+            const headers = {};
+            if (typeof window === 'undefined') {
+                headers['User-Agent'] = 'ZaneZion-App';
+            }
             const response = await fetch(
                 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
-                {
-                    headers: {
-                        'Accept-Language': 'en',
-                        'User-Agent': 'ZaneZion-App'
-                    }
-                }
+                { headers }
             );
             const data = await response.json();
             if (data && data.length > 0) {
@@ -56,10 +55,54 @@ export const geocodeLocation = async (query) => {
 };
 
 /**
+ * Curated list of major port / coastal cities worldwide.
+ * Used to validate whether SEA transport is feasible between two locations.
+ * A sea route is valid only if BOTH the pickup and drop are port/coastal cities.
+ */
+const PORT_CITIES = new Set([
+    // India
+    'mumbai','chennai','kolkata','kochi','visakhapatnam','paradip','ennore','new mangalore',
+    'mangalore','tuticorin','tuticorin port','port blair','kandla','mormugao','goa','haldia',
+    'nhava sheva','jawaharlal nehru port','mundra','pipavav','hazira','dahej','krishnapatnam',
+    // Middle East
+    'dubai','abu dhabi','sharjah','muscat','salalah','aden','jeddah','dammam','bahrain','doha','kuwait',
+    // Southeast Asia
+    'singapore','port klang','kuala lumpur','jakarta','surabaya','manila','ho chi minh city',
+    'bangkok','laem chabang','yangon','dhaka','chittagong',
+    // East Asia
+    'shanghai','shenzhen','guangzhou','tianjin','qingdao','ningbo','hong kong','busan','incheon',
+    'tokyo','yokohama','nagoya','osaka','kaohsiung','taipei',
+    // Europe
+    'rotterdam','hamburg','antwerp','amsterdam','felixstowe','southampton','london','le havre',
+    'marseille','barcelona','valencia','genoa','naples','piraeus','istanbul','odessa',
+    // Americas
+    'new york','los angeles','long beach','houston','new orleans','miami','savannah',
+    'vancouver','montreal','buenos aires','santos','rio de janeiro','callao',
+    // Africa
+    'durban','cape town','mombasa','dar es salaam','lagos','dakar','port said','alexandria',
+    // Australia/Oceania
+    'sydney','melbourne','brisbane','fremantle','auckland',
+]);
+
+/**
+ * Checks whether a geocoded location display name suggests it is a port/coastal city.
+ * Matches against the curated PORT_CITIES list using the city name tokens.
+ */
+export const isPortOrCoastalCity = (displayName) => {
+    if (!displayName) return false;
+    const lower = displayName.toLowerCase();
+    for (const port of PORT_CITIES) {
+        if (lower.includes(port)) return true;
+    }
+    return false;
+};
+
+/**
  * Calculates distance (in km) between pickup and drop queries based on the transport mode:
  * - 'Road': Actual driving distance following the road network via OSRM API.
  * - 'Air': Straight-line (great-circle) distance using the Haversine formula (no road routing).
- * - 'Sea': Sea route distance using a documented marine routing approximation (1.4x straight-line distance).
+ * - 'Sea': Sea route distance (1.4× straight-line). Returns {noSeaRoute:true} if neither
+ *          location is a recognised port/coastal city.
  */
 export const calculateOSRMRouteDistance = async (pickup, drop, mode = 'Road') => {
     if (!pickup || !pickup.trim() || !drop || !drop.trim()) return null;
@@ -129,20 +172,46 @@ export const calculateOSRMRouteDistance = async (pickup, drop, mode = 'Road') =>
             const data = await response.json();
             if (data && data.routes && data.routes.length > 0) {
                 const distanceMeters = data.routes[0].distance;
-                const distanceKm = (distanceMeters / 1000).toFixed(2);
+                let distanceKm = parseFloat((distanceMeters / 1000).toFixed(2));
+                
+                // Apply smart highway circuity adjustment for real-world highway routes in India (OSRM defaults to slow rural shortcuts)
+                let multiplier = 1.0;
+                if (distanceKm > 50 && distanceKm <= 500) {
+                    multiplier = 1.0 + (distanceKm - 50) * (0.13 / 450);
+                } else if (distanceKm > 500 && distanceKm <= 1500) {
+                    multiplier = 1.13 - (distanceKm - 500) * (0.11 / 1000);
+                } else if (distanceKm > 1500) {
+                    multiplier = 1.02;
+                }
+                
+                distanceKm = parseFloat((distanceKm * multiplier).toFixed(2));
+                
+                // Calculate realistic travel duration based on realistic average speeds (55 km/h for highways, 40 km/h for local/short routes)
+                const avgSpeedKmh = distanceKm > 50 ? 55 : 40;
+                const durationMins = Math.round((distanceKm / avgSpeedKmh) * 60);
+
                 return {
-                    distanceKm: parseFloat(distanceKm),
-                    durationMins: Math.round(data.routes[0].duration / 60),
+                    distanceKm,
+                    durationMins,
                     pickupCoords,
                     dropCoords
                 };
             } else {
                 console.warn(`No driving route found via OSRM road network. Falling back to straight-line estimation.`);
                 // Safe fallback to straight-line if OSRM driving route is not found (e.g. no road path exists)
-                const distanceKm = calculateHaversine(pickupCoords, dropCoords).toFixed(2);
+                const straightLineKm = calculateHaversine(pickupCoords, dropCoords);
+                // Apply realistic road circuity factor to straight-line distance
+                let roadCircuityFactor = 1.22;
+                if (straightLineKm > 500) {
+                    roadCircuityFactor = 1.25;
+                }
+                const distanceKm = parseFloat((straightLineKm * roadCircuityFactor).toFixed(2));
+                const avgSpeedKmh = distanceKm > 50 ? 55 : 40;
+                const durationMins = Math.round((distanceKm / avgSpeedKmh) * 60);
+                
                 return {
-                    distanceKm: parseFloat(distanceKm),
-                    durationMins: Math.round(parseFloat(distanceKm) / 80 * 60),
+                    distanceKm,
+                    durationMins,
                     pickupCoords,
                     dropCoords
                 };

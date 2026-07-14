@@ -10,6 +10,7 @@ const StatusBadge = ({ status, className }) => {
       case 'stable':
       case 'approved':
       case 'assigned':
+      case 'paid':
         return 'bg-success/10 text-success border-success/20';
       case 'pending':
       case 'pending review':
@@ -21,6 +22,8 @@ const StatusBadge = ({ status, className }) => {
       case 'warning':
       case 'planning':
       case 'pending receipt approval':
+      case 'partially_paid':
+      case 'partially paid':
         return 'bg-warning/10 text-warning border-warning/20';
       case 'on way':
       case 'picked up':
@@ -36,6 +39,9 @@ const StatusBadge = ({ status, className }) => {
       case 'in progress':
       case 'in_progress':
       case 'partially received':
+      case 'generated':
+      case 'sent':
+      case 'draft':
         return 'bg-info/10 text-info border-info/20';
       case 'danger':
       case 'critical':
@@ -44,6 +50,7 @@ const StatusBadge = ({ status, className }) => {
       case 'inactive':
       case 'cancelled':
       case 'rejected':
+      case 'overdue':
         return 'bg-danger/10 text-danger border-danger/20';
       case 'received':
         return 'bg-success/10 text-success border-success/20';
@@ -58,7 +65,7 @@ const StatusBadge = ({ status, className }) => {
       getStatusStyles(status),
       className
     )}>
-      {status}
+      {String(status || '').replace(/_/g, ' ')}
     </span>
   );
 };

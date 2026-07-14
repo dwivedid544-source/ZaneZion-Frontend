@@ -83,13 +83,11 @@ const ClientInvoices = () => {
     };
 
     const getStatusClasses = (status) => {
-        switch (status) {
-            case 'Paid': return 'bg-success/20 text-success';
-            case 'Partially Paid': return 'bg-info/20 text-info';
-            case 'Unpaid':
-            case 'Pending': return 'bg-warning/20 text-warning';
-            default: return 'bg-danger/20 text-danger';
-        }
+        const s = String(status || '').toLowerCase();
+        if (s === 'paid') return 'bg-success/20 text-success';
+        if (s === 'partially_paid' || s === 'partially paid') return 'bg-info/20 text-info';
+        if (s === 'unpaid' || s === 'pending' || s === 'generated' || s === 'draft' || s === 'approved' || s === 'sent') return 'bg-warning/20 text-warning';
+        return 'bg-danger/20 text-danger';
     };
 
     const columns = [
@@ -115,7 +113,7 @@ const ClientInvoices = () => {
             accessor: "status",
             render: (row) => (
                 <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${getStatusClasses(row.status)}`}>
-                    {row.status}
+                    {String(row.status || '').replace(/_/g, ' ')}
                 </span>
             )
         },

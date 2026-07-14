@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
-import { Clock, MapPin, Plus, Trash2, Tag, DollarSign, Package, Printer } from 'lucide-react';
+import { Clock, MapPin, Plus, Trash2, Tag, DollarSign, Package, Printer, CheckCircle } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
 import { useData } from '../context/GlobalDataContext';
 import { calculateOSRMRouteDistance } from '../utils/distanceHelper';
 import { ORDER_STATUS_OPTIONS, coerceOrderStatusToApi, isoDateSlice, displayOrderStatus } from '../utils/orderWorkflow';
 import { normalizeRole, roleCanCreateInstitutionalOrder, roleCanUpdateOrderStatus } from '../utils/authUtils';
 import { swalWarning } from '../utils/swal';
+import { useOrder } from '../hooks/api/useOrders';
 
 const todayIso = () => new Date().toISOString().split('T')[0];
 const normalizeIsoDate = (v) => {
@@ -24,6 +25,12 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     const { currentUser, marketplaceVendors = [], clients, fetchVendors, fetchClients, customerUsers, fetchCustomerUsers } = useData();
     const [currentModalType, setCurrentModalType] = useState(modalType);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+
+    const { data: fetchedOrderData, isLoading: isFetchingDetails } = useOrder(
+        isOpen && selectedOrder?.id && modalType !== 'add' ? selectedOrder.id : null
+    );
+
+    const effectiveOrder = fetchedOrderData?.data || selectedOrder;
 
     useEffect(() => {
         setCurrentModalType(modalType);
@@ -203,8 +210,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 stops: initialData?.stops || '',
                 amenities: initialData?.amenities || ''
             });
-        } else if (selectedOrder) {
-            let meta = selectedOrder.metadata;
+        } else if (effectiveOrder) {
+            let meta = effectiveOrder.metadata;
             if (typeof meta === 'string') {
                 try {
                     meta = JSON.parse(meta);
@@ -212,10 +219,10 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                     meta = {};
                 }
             }
-            const isChauffeur = String(selectedOrder.orderType || selectedOrder.type || '').toLowerCase() === 'chauffeur';
+            const isChauffeur = String(effectiveOrder.orderType || effectiveOrder.type || '').toLowerCase() === 'chauffeur';
             const firstCustom = (meta?.customItems && meta.customItems[0]) || {};
 
-            let rawItems = selectedOrder.items || selectedOrder.customItems || meta?.customItems;
+            let rawItems = (effectiveOrder.items && effectiveOrder.items.length > 0) ? effectiveOrder.items : (effectiveOrder.customItems || meta?.customItems || []);
             if (typeof rawItems === 'string') {
                 try {
                     rawItems = JSON.parse(rawItems);
@@ -247,68 +254,68 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 });
             }
 
-            if (parsedItems.length === 0 && (selectedOrder.product || selectedOrder.qty)) {
+            if (parsedItems.length === 0 && (effectiveOrder.product || effectiveOrder.qty)) {
                 parsedItems = [{
-                    name: selectedOrder.product || '',
-                    qty: parseInt(selectedOrder.qty) || 1,
-                    price: selectedOrder.price !== undefined && selectedOrder.price !== null ? Number(selectedOrder.price) : ''
+                    name: effectiveOrder.product || '',
+                    qty: parseInt(effectiveOrder.qty) || 1,
+                    price: effectiveOrder.price !== undefined && effectiveOrder.price !== null ? Number(effectiveOrder.price) : ''
                 }];
             }
             if (parsedItems.length === 0) {
                 parsedItems = [{ name: '', qty: 1, price: '' }];
             }
 
-            const requestDate = normalizeIsoDate(selectedOrder.requestDate || selectedOrder.order_date || selectedOrder.created_at) || todayIso();
-            const dueDate = clampDueDateToRequest(requestDate, selectedOrder.dueDate || selectedOrder.due_date);
+            const requestDate = normalizeIsoDate(effectiveOrder.requestDate || effectiveOrder.order_date || effectiveOrder.created_at) || todayIso();
+            const dueDate = clampDueDateToRequest(requestDate, effectiveOrder.dueDate || effectiveOrder.due_date);
             // Try to match existing order's client in dropdown list
-            const existingClientId = selectedOrder.clientId || selectedOrder.client_id || '';
+            const existingClientId = effectiveOrder.clientId || effectiveOrder.client_id || '';
             const matchedDropdown = customerOnlyForDropdown.find(c =>
                 String(c.rawId) === String(existingClientId)
             );
             
-            const dropLoc = selectedOrder.location || selectedOrder.deliveryAddress || selectedOrder.delivery_address || firstCustom.dropLocation || firstCustom.location || '';
-            const pickLoc = selectedOrder.pickupLocation || selectedOrder.pickup_location || firstCustom.pickupLocation || '';
+            const dropLoc = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || firstCustom.dropLocation || firstCustom.location || '';
+            const pickLoc = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || '';
 
             setFormData({
-                client: (typeof selectedOrder.client === 'object' && selectedOrder.client !== null ? (selectedOrder.client.companyName || selectedOrder.client.name || '') : selectedOrder.client) || selectedOrder.customer_name || selectedOrder.created_by_name || '',
+                client: (typeof effectiveOrder.client === 'object' && effectiveOrder.client !== null ? (effectiveOrder.client.companyName || effectiveOrder.client.name || '') : effectiveOrder.client) || effectiveOrder.customer_name || effectiveOrder.created_by_name || '',
                 clientId: existingClientId,
                 clientDropdownId: matchedDropdown?.id || '',
                 items: parsedItems,
                 location: dropLoc,
-                status: coerceOrderStatusToApi(selectedOrder.status, 'created'),
+                status: coerceOrderStatusToApi(effectiveOrder.status, 'created'),
                 requestDate,
                 dueDate,
-                department: selectedOrder.department || '',
-                vendor: selectedOrder.vendor || '',
-                vendorId: selectedOrder.vendorId || selectedOrder.vendor_id || '',
-                isPreferredVendor: !!(selectedOrder.vendorId || selectedOrder.vendor_id),
-                type: selectedOrder.orderType || selectedOrder.type || 'Custom Order',
-                deliveryType: selectedOrder.deliveryType || selectedOrder.delivery_mode || selectedOrder.deliveryMode || selectedOrder.mode || 'Road',
+                department: effectiveOrder.department || '',
+                vendor: effectiveOrder.vendor || '',
+                vendorId: effectiveOrder.vendorId || effectiveOrder.vendor_id || '',
+                isPreferredVendor: !!(effectiveOrder.vendorId || effectiveOrder.vendor_id),
+                type: effectiveOrder.orderType || effectiveOrder.type || 'Custom Order',
+                deliveryType: effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road',
                 pickupLocation: pickLoc,
-                pickupTime: selectedOrder.pickupTime || firstCustom.pickupTime || '',
-                totalDistance: selectedOrder.totalDistance || selectedOrder.total_distance || '',
-                serviceType: selectedOrder.serviceType || firstCustom.serviceType || 'One Way',
-                returnDate: selectedOrder.returnDate || firstCustom.returnDate || '',
-                returnTime: selectedOrder.returnTime || firstCustom.returnTime || '',
-                returnLocation: selectedOrder.returnLocation || '',
-                dailyDays: selectedOrder.dailyDays || firstCustom.numberOfDays || 1,
-                luggage: selectedOrder.luggage || firstCustom.luggage || '',
-                stops: selectedOrder.stops || firstCustom.stops || '',
-                amenities: selectedOrder.amenities || (firstCustom.amenities ? firstCustom.amenities.join(', ') : '')
+                pickupTime: effectiveOrder.pickupTime || firstCustom.pickupTime || '',
+                totalDistance: effectiveOrder.totalDistance || effectiveOrder.total_distance || '',
+                serviceType: effectiveOrder.serviceType || firstCustom.serviceType || 'One Way',
+                returnDate: effectiveOrder.returnDate || firstCustom.returnDate || '',
+                returnTime: effectiveOrder.returnTime || firstCustom.returnTime || '',
+                returnLocation: effectiveOrder.returnLocation || '',
+                dailyDays: effectiveOrder.dailyDays || firstCustom.numberOfDays || 1,
+                luggage: effectiveOrder.luggage || firstCustom.luggage || '',
+                stops: effectiveOrder.stops || firstCustom.stops || '',
+                amenities: effectiveOrder.amenities || (firstCustom.amenities ? (Array.isArray(firstCustom.amenities) ? firstCustom.amenities.join(', ') : firstCustom.amenities) : '')
             });
         }
-    }, [isOpen, selectedOrder, modalType]);
+    }, [isOpen, effectiveOrder, modalType, customerOnlyForDropdown]);
 
     useEffect(() => {
         if (currentModalType === 'view') return;
 
         // If editing an existing order, and the locations or transport mode haven't changed from their initial values,
         // and we already have a loaded totalDistance, skip recalculating to preserve the database value.
-        if (modalType === 'edit' && selectedOrder) {
-            const initialPickup = selectedOrder.pickupLocation || selectedOrder.pickup_location || '';
-            const initialLocation = selectedOrder.location || '';
-            const initialMode = selectedOrder.deliveryType || selectedOrder.delivery_mode || selectedOrder.deliveryMode || selectedOrder.mode || 'Road';
-            const initialDistance = selectedOrder.totalDistance || selectedOrder.total_distance || '';
+        if (modalType === 'edit' && effectiveOrder) {
+            const initialPickup = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || '';
+            const initialLocation = effectiveOrder.location || '';
+            const initialMode = effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road';
+            const initialDistance = effectiveOrder.totalDistance || effectiveOrder.total_distance || '';
 
             if (
                 formData.pickupLocation === initialPickup &&
@@ -405,6 +412,12 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                         currentModalType === 'delete' ? 'Cancel Order' : 'Create New Order'
             }
         >
+            {isFetchingDetails ? (
+                <div className="flex flex-col items-center justify-center py-10 space-y-4">
+                    <div className="w-8 h-8 border-4 border-accent border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-muted text-sm font-bold animate-pulse">Fetching complete order details...</p>
+                </div>
+            ) : (
             <form className="space-y-6" onSubmit={handleSubmit}>
                 {modalType === 'delete' ? (
                     <div className="space-y-4">
@@ -652,11 +665,11 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                     placeholder="Distance auto-calculated..."
                                 />
                             </div>
-                            {currentModalType === 'view' && String(selectedOrder?.delivery_instructions || '').trim() && (
+                            {currentModalType === 'view' && String(effectiveOrder?.delivery_instructions || '').trim() && (
                                 <div className="space-y-1 p-4 rounded-xl border border-warning/25 bg-warning/5">
                                     <label className="text-[10px] font-bold text-warning uppercase tracking-widest">Customer delivery instructions</label>
                                     <p className="text-sm text-secondary font-medium whitespace-pre-wrap leading-relaxed">
-                                        {selectedOrder.delivery_instructions}
+                                        {effectiveOrder.delivery_instructions}
                                     </p>
                                 </div>
                             )}
@@ -695,8 +708,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                     selectedDate={formData.dueDate}
                                     onChange={(date) => setFormData({ ...formData, dueDate: clampDueDateToRequest(formData.requestDate, date) })}
                                 />
-                                {currentModalType === 'view' && selectedOrder?.createdAt && (
-                                    <p className="text-[9px] text-muted italic mt-1">Requested On: {new Date(selectedOrder.createdAt).toLocaleDateString()}</p>
+                                {currentModalType === 'view' && effectiveOrder?.createdAt && (
+                                    <p className="text-[9px] text-muted italic mt-1">Requested On: {new Date(effectiveOrder.createdAt).toLocaleDateString()}</p>
                                 )}
                             </div>
                             <div className="space-y-1">
@@ -801,12 +814,12 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                             )}
                         </div>
 
-                        {currentModalType === 'view' && selectedOrder?.createdAt && (
+                        {currentModalType === 'view' && effectiveOrder?.createdAt && (
                             <div className="mt-6 p-4 bg-white/5 rounded-xl border border-border space-y-4">
                                 <div className="flex items-center gap-3 text-sm">
                                     <Clock size={16} className="text-accent" />
                                     <span className="text-secondary">Created At:</span>
-                                    <span className="font-bold">{new Date(selectedOrder.createdAt).toLocaleString()}</span>
+                                    <span className="font-bold">{new Date(effectiveOrder.createdAt).toLocaleString()}</span>
                                 </div>
                             </div>
                         )}
@@ -830,8 +843,9 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                     </div>
                 )}
             </form>
+            )}
         </Modal>
-        {isOpen && currentModalType === 'view' && selectedOrder && (
+        {isOpen && !isFetchingDetails && currentModalType === 'view' && effectiveOrder && (
             <div className="hidden invoice-print-container bg-white text-black font-sans">
                 <div className="w-full flex-1 flex flex-col">
                     {/* Sovereign Header */}
@@ -847,23 +861,27 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                         </div>
                         <div className="text-right">
                             <h2 className="text-lg font-black text-black tracking-tighter italic border-b border-black inline-block mb-1 uppercase">Order Acknowledgement</h2>
-                            <p className="text-[9px] font-black text-gray-400 mt-0.5">PROTOCOL ID: {selectedOrder.id}</p>
-                            <p className="text-[7px] font-black uppercase tracking-widest leading-none">ISSUED. {selectedOrder.createdAt ? new Date(selectedOrder.createdAt).toLocaleDateString() : selectedOrder.date || formData.requestDate}</p>
+                            <p className="text-[9px] font-black text-gray-400 mt-0.5">PROTOCOL ID: {effectiveOrder.id}</p>
+                            <p className="text-[7px] font-black uppercase tracking-widest leading-none">ISSUED. {effectiveOrder.createdAt ? new Date(effectiveOrder.createdAt).toLocaleDateString() : effectiveOrder.date || formData.requestDate}</p>
                         </div>
                     </div>
 
                     {/* Counterparty & Status Section */}
                     <div className="grid grid-cols-2 gap-8 mb-6 px-1 print-section">
-                        <div className="border-l-2 border-black pl-4">
-                            <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 underline italic">Client Details:</p>
-                            <p className="text-base font-black italic tracking-tight uppercase leading-tight">{formData.client || (typeof selectedOrder.client === 'object' && selectedOrder.client ? (selectedOrder.client.companyName || selectedOrder.client.name) : selectedOrder.client) || 'Institutional Account'}</p>
-                            {formData.pickupLocation && <p className="text-[8px] text-gray-500 mt-0.5 font-medium leading-tight italic">Origin: {formData.pickupLocation}</p>}
-                            <p className="text-[8px] text-gray-500 mt-0.5 font-medium leading-tight italic">Destination: {formData.location}</p>
-                            <p className="text-[7px] font-black mt-1 text-gray-400">REGISTRY: {formData.clientId || selectedOrder.clientId || 'ZN-ACC-EXT'}</p>
+                        <div className="flex items-center gap-4">
+                            <div className="p-3 bg-gray-100 rounded-lg"><CheckCircle size={16} className="text-gray-400" /></div>
+                            <div>
+                                <p className="text-[6px] font-black uppercase tracking-[0.2em] opacity-40 mb-1">Billed Entity</p>
+                                <p className="text-base font-black italic tracking-tight uppercase leading-tight">{formData.client || (typeof effectiveOrder.client === 'object' && effectiveOrder.client ? (effectiveOrder.client.companyName || effectiveOrder.client.name) : effectiveOrder.client) || 'Institutional Account'}</p>
+                                <div className="flex items-center gap-2 mt-1 opacity-70">
+                                    <span className="px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded text-[6px] font-black uppercase tracking-widest">Corp / High-Net</span>
+                                    <p className="text-[7px] font-black mt-1 text-gray-400">REGISTRY: {formData.clientId || effectiveOrder.clientId || 'ZN-ACC-EXT'}</p>
+                                </div>
+                            </div>
                         </div>
-                        <div className="text-right">
-                            <div className="inline-block bg-black text-white px-3 py-1 rounded-sm transform -skew-x-12">
-                                <p className="text-[8px] font-black uppercase tracking-widest skew-x-12 leading-none">Status: {displayOrderStatus(selectedOrder?.status || formData.status)}</p>
+                        <div className="text-right flex flex-col justify-end">
+                            <div className="inline-block px-3 py-1.5 border-[2px] border-black text-black">
+                                <p className="text-[8px] font-black uppercase tracking-widest skew-x-12 leading-none">Status: {displayOrderStatus(effectiveOrder?.status || formData.status)}</p>
                             </div>
                             <div className="mt-2">
                                 <p className="text-[6px] font-black uppercase tracking-widest opacity-40 mb-0.5 leading-none">Required By:</p>
@@ -917,7 +935,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                 </div>
                                 <h3 className="text-xl font-black italic tracking-tighter">${parseFloat(calculateTotal()).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD</h3>
                             </div>
-                            <p className="text-[6px] text-gray-400 font-bold italic mt-1.5 text-right uppercase tracking-widest">Auth Code: ZZ-{selectedOrder.id}</p>
+                            <p className="text-[6px] text-gray-400 font-bold italic mt-1.5 text-right uppercase tracking-widest">Auth Code: ZZ-{effectiveOrder.id}</p>
                         </div>
                     </div>
 

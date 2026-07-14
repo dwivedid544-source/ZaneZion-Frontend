@@ -877,7 +877,7 @@ export const GlobalDataProvider = ({ children }) => {
 
   useEffect(() => {
     // Determine the base URL for the socket connection from the API URL
-    const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+    const baseURL = import.meta.env.VITE_API_URL || 'https://zanezion-backend-production.up.railway.app/api/v1';
     const socketURL = baseURL.replace('/api/v1', '');
 
     const socket = io(socketURL, {
@@ -1410,11 +1410,11 @@ export const GlobalDataProvider = ({ children }) => {
       // real API: { stock: [...], total: N } or just an array
       stockArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.stock) ? raw.stock : []);
     } catch (e) {
-      console.warn("Fetch real stock failed, attempting /inventory fallback", e);
+      console.warn("Fetch real stock API failed (possibly 403), falling back to /inventory", e.message);
     }
 
-    if (stockArr.length > 0) {
-      try {
+    try {
+      if (stockArr.length > 0) {
         setInventory(
           stockArr.map((i) => ({
             ...i,
@@ -1457,9 +1457,9 @@ export const GlobalDataProvider = ({ children }) => {
           }))
         );
         return;
-      } catch (e) {
-        console.error("Mapping stock failed", e);
       }
+    } catch (e) {
+      console.error("Mapping stock failed", e);
     }
 
     // Fallback to mock /inventory endpoint if real stock is empty or failed
@@ -1986,36 +1986,43 @@ export const GlobalDataProvider = ({ children }) => {
   const fetchProcurement = React.useCallback(async () => {
     try {
       const [reqs, quotes, pos] = await Promise.all([
-        api.get("/procurement/requests").catch((e) => ({ data: [] })),
-        api.get("/procurement/quotes").catch((e) => ({ data: [] })),
-        api.get("/procurement/po").catch((e) => ({ data: [] })),
+        api.get("/purchase-requests").catch((e) => ({ data: [] })),
+        api.get("/quotations").catch((e) => ({ data: [] })),
+        api.get("/purchase-orders").catch((e) => ({ data: [] })),
       ]);
-      if (reqs.data?.success) {
-        setPurchaseRequests(reqs.data.data.map(mapPurchaseRequest));
+      if (reqs.data?.success || Array.isArray(reqs.data?.data) || Array.isArray(reqs.data?.data?.purchaseRequests)) {
+        const reqData = Array.isArray(reqs.data?.data) ? reqs.data.data : (reqs.data?.data?.purchaseRequests || []);
+        setPurchaseRequests(reqData.map(mapPurchaseRequest));
       }
-      if (quotes.data?.success) {
+      if (quotes.data?.success || Array.isArray(quotes.data?.data) || Array.isArray(quotes.data?.data?.quotations)) {
+        const quoteData = Array.isArray(quotes.data?.data) ? quotes.data.data : (quotes.data?.data?.quotations || []);
         setQuotes(
-          quotes.data.data.map((q) => ({
+          quoteData.map((q) => ({
             ...q,
             vendorId: q.vendor_id ?? q.vendorId ?? null,
             vendor: q.vendor_name || q.vendor,
             vendorName: q.vendor_name || q.vendor,
             date: q.created_at || q.date,
-            total: parseFloat(q.total_amount || q.total || 0),
+            total: parseFloat(q.amount || q.totalAmount || q.total_amount || q.total || 0),
             validity: q.validity_date || q.validity,
-          })),
+          }))
         );
       }
-      if (pos.data?.success)
+      if (pos.data?.success || Array.isArray(pos.data?.data) || Array.isArray(pos.data?.data?.purchaseOrders)) {
+        const poData = Array.isArray(pos.data?.data) ? pos.data.data : (pos.data?.data?.purchaseOrders || []);
         setPurchaseOrders(
-          pos.data.data.map((po) => ({
+          poData.map((po) => ({
             ...po,
-            paymentTerms: po.payment_terms || po.paymentTerms,
-            items: parsePOItems(po.items),
-          })),
+            vendorId: po.vendor_id ?? po.vendorId ?? null,
+            vendor: po.vendor_name || po.vendor,
+            vendorName: po.vendor_name || po.vendor,
+            date: po.created_at || po.date,
+            total: parseFloat(po.amount || po.totalAmount || po.total_amount || po.total || 0),
+          }))
         );
+      }
     } catch (e) {
-      console.error("Fetch procurement failed", e);
+      console.error("fetchProcurement error", e);
     }
   }, [mapPurchaseRequest]);
 
@@ -2496,6 +2503,22 @@ export const GlobalDataProvider = ({ children }) => {
     }
   }, []);
 
+  const fetchDashboardLogs = React.useCallback(async () => {
+    try {
+      const res = await api.get("/dashboard/logs");
+      if (res.data?.success) {
+        setLogs(res.data.data.map(audit => ({
+          action: audit.action || "System Action",
+          detail: audit.description || `Module: ${audit.module}`,
+          type: "system",
+          time: new Date(audit.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        })));
+      }
+    } catch (e) {
+      console.error("Fetch dashboard logs failed", e);
+    }
+  }, []);
+
   const fetchSystemSettings = React.useCallback(async () => {
     try {
       const res = await api.get("/settings/system");
@@ -2575,10 +2598,14 @@ export const GlobalDataProvider = ({ children }) => {
         // No additional client-side filtering needed — this prevents false notifications for new accounts.
         let notifs = res.data.data || [];
 
-        // TEMPORARY FIX: Ignore default mock notifications that leak from outdated mockApi fallback
-        if (notifs.length === 2 && notifs[0]?.id === 1 && notifs[1]?.id === 2 && notifs[0]?.title === "New Purchase Order") {
-          notifs = [];
-        }
+        // Ignore default mock notifications that leak from outdated mockApi fallback
+        notifs = notifs.filter(n => {
+          const title = n.title || '';
+          const msg = n.message || '';
+          const isDefaultMock1 = title === "New Purchase Order" && msg.includes("PO-001");
+          const isDefaultMock2 = title === "Critical Stock Alert" && msg.includes("Dom Perignon");
+          return !isDefaultMock1 && !isDefaultMock2;
+        });
 
         setNotifications(notifs);
         // Compute unread count directly from the scoped list to prevent phantom badges
@@ -2644,6 +2671,7 @@ export const GlobalDataProvider = ({ children }) => {
 
       const fetches = [
         fetchDashboardStats(),
+        fetchDashboardLogs(),
         fetchSystemSettings(),
         fetchInventoryAlerts(),
         fetchTracking(),
@@ -2673,7 +2701,7 @@ export const GlobalDataProvider = ({ children }) => {
 
       // Only fetch roles if the role has Security menu permission or can access users
       if (canAccessRoles || canAccessUsers) {
-        fetches.push(api.get('/roles').then(res => {
+        fetches.push(api.get('/roles?limit=100').then(res => {
           const rawData = res.data?.data;
           const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
           setRoles(rolesArray);
@@ -3176,7 +3204,7 @@ export const GlobalDataProvider = ({ children }) => {
     const now = new Date();
     const dataMap = {};
 
-    const paidInvoices = invoices.filter((inv) => inv.status === "Paid");
+    const paidInvoices = invoices.filter((inv) => inv.status?.toLowerCase() === "paid");
 
     if (revenueFilter === "Daily") {
       // Last 24 hours in 2-hour blocks

@@ -147,9 +147,9 @@ const Table = ({ columns, data, actions, onView, onEdit, onDelete, canEdit = tru
                 <p className="text-[9px] text-muted font-black uppercase tracking-[0.2em] mb-1.5 opacity-60">
                   {columns[0].header}
                 </p>
-                <p className="text-base font-black text-white italic tracking-tight truncate leading-tight">
+                <div className="text-base font-black text-white italic tracking-tight truncate leading-tight">
                   {columns[0].render ? columns[0].render(row) : row[columns[0].accessor]}
-                </p>
+                </div>
               </div>
               <StatusBadge status={row.status} />
             </div>

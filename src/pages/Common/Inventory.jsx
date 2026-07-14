@@ -65,7 +65,8 @@ const Inventory = () => {
   }, [clients]);
   
   const { data: itemsData, isLoading, error } = useItems(page, 10, searchTerm);
-  const realInventory = (itemsData?.items || itemsData?.data || []).map(i => {
+  const realInventoryItems = Array.isArray(itemsData) ? itemsData : (itemsData?.items || itemsData?.data || []);
+  const realInventory = realInventoryItems.map(i => {
     let totalQty = 0;
     let mainLoc = '';
     if (i.inventoryStock && Array.isArray(i.inventoryStock) && i.inventoryStock.length > 0) {
@@ -155,7 +156,7 @@ const Inventory = () => {
     clientId: ''
   });
   const userRoleNorm = normalizeRole(currentUser?.role);
-  const [activeTab, setActiveTab] = useState(['superadmin', 'admin', 'inventory', 'inventorymanager', 'procurement', 'operations'].includes(userRoleNorm) ? 'Marketplace' : 'Business');
+  const [activeTab, setActiveTab] = useState(['superadmin', 'admin', 'client', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations'].includes(userRoleNorm) ? 'Marketplace' : 'Business');
 
   /** When stock entry name matches an existing SKU, keep category dropdown aligned with that row */
   const entryCategorySyncKeyRef = React.useRef('');
@@ -193,7 +194,7 @@ const Inventory = () => {
     [clientListForSelect],
   );
 
-  const isAdmin = ['superadmin', 'admin', 'client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge', 'conciergemanager'].includes(userRoleNorm);
+  const isAdmin = ['superadmin', 'admin', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge', 'conciergemanager'].includes(userRoleNorm);
 
   const isCustomer = ['customer'].includes(userRoleNorm);
 
@@ -240,7 +241,8 @@ const Inventory = () => {
   const inboundAssets = purchaseRequests.filter(pr => pr.status === 'Approved' || pr.status === 'Ordered');
 
   const handleAction = (type, item, projectContext = null, prContext = null) => {
-    if (!isAdmin && type !== 'view') return;
+    const isB2BClient = userRoleNorm === 'client';
+    if (!isAdmin && !(['issue', 'loss', 'view'].includes(type) && isB2BClient) && type !== 'view') return;
     setSelectedItem(item);
     setModalType(type);
     setImageFile(null);
@@ -455,19 +457,30 @@ const Inventory = () => {
             remarks: formData.reason || formData.remarks || ''
           });
           console.log('[REAL_API_SUCCESS] Stock issued via real API');
-        } catch (e) {
-          console.warn('[REAL_API_FAILED] Stock issue failed on real API', e);
-        }
-        
-        // Always update mock state for UI consistency since fetchInventory uses mock DB
-        await issueStock(formData);
-        swalSuccess('Success', 'Stock successfully issued.');
 
-        if (formData.projectRef) {
-          const targetProject = projects.find(p => p.id === formData.projectRef);
-          if (targetProject) {
-            await updateProject({ ...targetProject, fulfilled: true, status: 'Fulfilled' });
+          // Always update mock state for UI consistency since fetchInventory uses mock DB
+          await issueStock(formData);
+          swalSuccess('Success', 'Stock successfully issued.');
+
+          // Refresh the Dashboard stats to ensure it shows up immediately!
+          try {
+            await fetchDashboardStats();
+            await fetchStockMovements();
+          } catch (e) {
+            console.warn('Dashboard stats refresh failed', e);
           }
+
+          if (formData.projectRef) {
+            const targetProject = projects.find(p => p.id === formData.projectRef);
+            if (targetProject) {
+              await updateProject({ ...targetProject, fulfilled: true, status: 'Fulfilled' });
+            }
+          }
+
+          setIsModalOpen(false);
+        } catch (e) {
+          console.error('[REAL_API_FAILED] Stock issue failed', e);
+          swalError('Failed to Issue Stock', e.response?.data?.message || 'Could not perform outbound stock issue.');
         }
       } else if (modalType === 'loss') {
         if (!formData.item || !formData.item.trim()) {

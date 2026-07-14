@@ -5,12 +5,12 @@ import api from '../../services/api/setupAxios';
 // Invoices Hooks
 // -----------------------------
 
-export const useInvoices = (page = 1, limit = 10, search = '') => {
+export const useInvoices = (page = 1, limit = 10, search = '', status = '') => {
   return useQuery({
-    queryKey: ['invoices', page, limit, search],
+    queryKey: ['invoices', page, limit, search, status],
     queryFn: async () => {
       const response = await api.get('/invoices', {
-        params: { page, limit, search }
+        params: { page, limit, search, ...(status && { status }) }
       });
       return response.data;
     },
@@ -65,6 +65,19 @@ export const useUpdateInvoice = () => {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['invoices'] });
       queryClient.invalidateQueries({ queryKey: ['invoices', variables.id] });
+    },
+  });
+};
+
+export const useDeleteInvoice = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id) => {
+      const response = await api.delete(`/invoices/${id}`);
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['invoices'] });
     },
   });
 };

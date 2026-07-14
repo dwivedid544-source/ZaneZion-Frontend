@@ -196,6 +196,8 @@ const Inventory = () => {
 
   const isAdmin = ['superadmin', 'admin', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge', 'conciergemanager'].includes(userRoleNorm);
 
+  const isB2BClient = userRoleNorm === 'client';
+
   const isCustomer = ['customer'].includes(userRoleNorm);
 
   const myClient = isCustomer ? (clients || []).find(c =>
@@ -242,7 +244,7 @@ const Inventory = () => {
 
   const handleAction = (type, item, projectContext = null, prContext = null) => {
     const isB2BClient = userRoleNorm === 'client';
-    if (!isAdmin && !(['issue', 'loss', 'view'].includes(type) && isB2BClient) && type !== 'view') return;
+    if (!isAdmin && !(['issue', 'loss', 'entry', 'view'].includes(type) && isB2BClient) && type !== 'view') return;
     setSelectedItem(item);
     setModalType(type);
     setImageFile(null);
@@ -717,7 +719,7 @@ const Inventory = () => {
           <p className="text-secondary mt-1 font-medium">Precision stock orchestration and institutional supply chain visibility.</p>
         </div>
         <div className="flex gap-3">
-          {isAdmin && (
+          {(isAdmin || isB2BClient) && (
             <>
               <button className="btn-secondary flex items-center gap-2 border-danger/20 text-danger hover:bg-danger/10" onClick={() => handleAction('loss', {})}>
                 <AlertTriangle size={16} /> Record Loss
@@ -725,11 +727,9 @@ const Inventory = () => {
               <button className="btn-secondary flex items-center gap-2 border-accent/20 text-accent" onClick={() => handleAction('issue', {})}>
                 <Box size={16} /> Stock Issue
               </button>
-              {hasMenuPermission('Inventory', 'can_add') && (
-                <button className="btn-primary flex items-center gap-2 shadow-xl shadow-accent/10" onClick={() => handleAction('entry', {})}>
-                  <Plus size={16} /> Stock Entry
-                </button>
-              )}
+              <button className="btn-primary flex items-center gap-2 shadow-xl shadow-accent/10" onClick={() => handleAction('entry', {})}>
+                <Plus size={16} /> Stock Entry
+              </button>
             </>
           )}
         </div>

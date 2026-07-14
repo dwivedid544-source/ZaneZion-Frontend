@@ -150,7 +150,7 @@ const Users = () => {
   const filteredUsers = users.filter(u => {
     const rName = (typeof u?.role === 'object' ? u.role?.name || '' : u?.role || '').toLowerCase();
     const isClientOrSaaS = roleNormalized === 'client' || roleNormalized === 'saas_client';
-    if (!isClientOrSaaS && ['customer', 'saas_client', 'business_client', 'client'].includes(rName)) {
+    if (['customer', 'saas_client', 'business_client', 'client'].includes(rName)) {
       return false;
     }
     const statusLower = String(u.status || '').toLowerCase();

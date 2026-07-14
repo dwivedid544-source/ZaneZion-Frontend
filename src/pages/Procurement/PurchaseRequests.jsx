@@ -21,8 +21,17 @@ const PurchaseRequests = () => {
     fetchCustomerUsers,
     fetchStaff,
     fetchClients,
+<<<<<<< HEAD
     clients,
+=======
+    users = [],
+    customerUsers = [],
+>>>>>>> 7681f7f91c603a6118bcabdcafe5674fcc7a055c
   } = useData();
+
+  React.useEffect(() => {
+    window._allGlobalUsers = [...users, ...customerUsers];
+  }, [users, customerUsers]);
 
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
@@ -136,6 +145,13 @@ const PurchaseRequests = () => {
       header: "Requester",
       accessor: "requester",
       render: (item) => {
+        // Try looking up the injected created_by (userId) or the requester's ID from our global user list
+        const requesterId = item.created_by || (item.requester && typeof item.requester === 'object' ? item.requester.id : null);
+        if (requesterId && window._allGlobalUsers) {
+           const matchedUser = window._allGlobalUsers.find(u => Number(u.id) === Number(requesterId));
+           if (matchedUser) return matchedUser.name;
+        }
+        
         if (item.requester && typeof item.requester === 'object') {
           return `${item.requester.firstName || ''} ${item.requester.lastName || ''}`.trim() || 'Unknown';
         }

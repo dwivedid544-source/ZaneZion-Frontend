@@ -8,14 +8,15 @@ import { useDepartments } from '../hooks/api/useAdminCore';
 
 const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'add' }) => {
   const { currentUser, users = [], customerUsers = [], clients = [], hasMenuPermission } = useData();
-  const { data: deptData } = useDepartments(1, 100, '');
-  const departmentsList = deptData?.data?.departments || [];
-  const defaultDeptId = departmentsList.length > 0 ? departmentsList[0].id : '';
-  
   const rawRole = currentUser?.role;
   const roleStr = typeof rawRole === 'object' ? (rawRole?.name || '') : String(rawRole || '');
   const userRole = roleStr.toLowerCase().replace(/\s+/g, '_');
   const isAdmin = ['admin', 'super_admin', 'procurement', 'procurement_staff', 'operations', 'saas_client'].includes(userRole);
+  const canViewDepartments = hasMenuPermission('Departments', 'can_view') || ['admin', 'super_admin', 'saas_client', 'customer'].includes(userRole);
+
+  const { data: deptData } = useDepartments(1, 100, '', { enabled: canViewDepartments });
+  const departmentsList = deptData?.data?.departments || [];
+  const defaultDeptId = departmentsList.length > 0 ? departmentsList[0].id : '';
 
   const [formData, setFormData] = useState({
     requestId: 'REQ-' + Math.floor(100 + Math.random() * 900),
@@ -101,7 +102,7 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
     }
   }, [isOpen, selectedRequest?.id, modalType, defaultDeptId]);
 
-  const allUsers = [...users, ...customerUsers];
+  const allUsers = Array.from(new Map([...users, ...customerUsers].map(u => [u.id, u])).values());
   const filteredUsers = allUsers.filter(u => {
     // 1. Basic search match (show all if userSearch is empty)
     const matchesSearch = !userSearch || 

@@ -61,7 +61,17 @@ const Users = () => {
   };
 
   const { leaveRequests, updateLeaveRequest, staffAssignments, addStaffAssignment, updateAssignment, fetchStaff, reviewStaff, currentUser, payHistory, fetchPayHistory, clients, fetchClients, subscriptionRequests, updateSubscriptionRequest, hasMenuPermission, cancelPersonalMembership, roles } = useData();
-  const roleNormalized = normalizeRole(currentUser?.role);
+  const getRoleFromStorage = () => {
+    try {
+      const saved = localStorage.getItem('user');
+      if (saved) {
+        const u = JSON.parse(saved);
+        if (u?.role) return u.role;
+      }
+    } catch(e){}
+    return localStorage.getItem('userRole') || currentUser?.role;
+  };
+  const roleNormalized = normalizeRole(getRoleFromStorage());
   const isSuperAdmin = roleNormalized === 'superadmin';
   const isAdminOrSuper = isSuperAdmin || roleNormalized === 'admin' || roleNormalized === 'client' || roleNormalized === 'saas_client' || hasMenuPermission('Staff Management', 'can_edit') || hasMenuPermission('Staff Management', 'can_add');
   const getRoleName = (u) => (typeof u?.role === 'object' ? u.role?.name || '' : u?.role || '').toString();
@@ -139,6 +149,7 @@ const Users = () => {
 
   const filteredUsers = users.filter(u => {
     const rName = (typeof u?.role === 'object' ? u.role?.name || '' : u?.role || '').toLowerCase();
+    const isClientOrSaaS = roleNormalized === 'client' || roleNormalized === 'saas_client';
     if (['customer', 'saas_client', 'business_client', 'client'].includes(rName)) {
       return false;
     }
@@ -658,7 +669,7 @@ const Users = () => {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 let extra = {};
-                                try { if (client.address && client.address.startsWith('{')) extra = JSON.parse(client.address); } catch(err){}
+                                try { if (client.address && client.address.startsWith('{')) extra = JSON.parse(client.address); } catch (err) { }
                                 setSelectedClient(client);
                                 setClientFormData({
                                   companyName: client.companyName || client.name || client.business_name || '',
@@ -921,7 +932,7 @@ const Users = () => {
                   </div>
                 </div>
 
-                 <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 flex-1">
+                <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3 flex-1">
                   {[
                     { label: 'Passport', key: 'hasPassport', urlKey: 'passportUrl', type: 'passport' },
                     { label: 'D. License', key: 'hasLicense', urlKey: 'licenseUrl', type: 'license' },
@@ -933,17 +944,17 @@ const Users = () => {
                     const isUploading = uploadingDocs[`${user.id}-${doc.type}`];
                     const hasDoc = user[doc.key] || !!user[doc.urlKey];
                     const docUrl = user[doc.urlKey];
-                    
+
                     return (
                       <div key={doc.label} className="space-y-1.5 flex flex-col">
                         <p className="text-[9px] font-black text-muted uppercase tracking-tighter truncate">{doc.label}</p>
-                        
+
                         {hasDoc && docUrl ? (
                           <div className="flex gap-1 w-full">
-                            <a 
-                              href={docUrl} 
-                              target="_blank" 
-                              rel="noreferrer" 
+                            <a
+                              href={docUrl}
+                              target="_blank"
+                              rel="noreferrer"
                               className="flex-1 py-2.5 rounded-lg text-[9px] font-black uppercase border bg-success/20 border-success/40 text-success hover:bg-success/30 transition-all flex items-center justify-center gap-1.5"
                             >
                               <CheckCircle2 size={11} />
@@ -1302,7 +1313,7 @@ const Users = () => {
                     autoComplete="new-phone-number"
                   />
                 </div>
-                 <div className="space-y-1">
+                <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted uppercase">Login Password {modalType === 'add' && <span className="text-danger">*</span>}</label>
                   <input
                     type="password"
@@ -1550,8 +1561,8 @@ const Users = () => {
               <div className="flex gap-3 justify-end pt-6">
                 <button onClick={() => setIsModalOpen(false)} className="btn-secondary">{modalType === 'view' ? 'Close' : 'Cancel'}</button>
                 {modalType !== 'view' && (
-                  <button 
-                    onClick={handleSave} 
+                  <button
+                    onClick={handleSave}
                     className="btn-primary disabled:opacity-50"
                     disabled={updateMutation.isPending || createMutation.isPending}
                   >
@@ -1740,7 +1751,7 @@ const Users = () => {
           </div>
         </form>
       </Modal>
-    
+
       <Modal isOpen={isClientModalOpen} onClose={() => setIsClientModalOpen(false)} title="Edit Client Protocol">
         <form onSubmit={async (e) => {
           e.preventDefault();
@@ -1763,7 +1774,7 @@ const Users = () => {
             swalSuccess('Protocol Executed', 'Client updated successfully.');
             setIsClientModalOpen(false);
             if (typeof fetchClients === 'function') fetchClients();
-          } catch(err) {
+          } catch (err) {
             console.error(err);
             swalWarning('Error', 'Failed to execute protocol.');
           }
@@ -1771,47 +1782,47 @@ const Users = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-muted uppercase">Company / Name <span className="text-danger">*</span></label>
-              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.companyName} onChange={e => setClientFormData({...clientFormData, companyName: e.target.value})} required />
+              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.companyName} onChange={e => setClientFormData({ ...clientFormData, companyName: e.target.value })} required />
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-muted uppercase">Contact Person</label>
-              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.contactPerson} onChange={e => setClientFormData({...clientFormData, contactPerson: e.target.value})} />
+              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.contactPerson} onChange={e => setClientFormData({ ...clientFormData, contactPerson: e.target.value })} />
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-muted uppercase">Phone</label>
-              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.phone} onChange={e => setClientFormData({...clientFormData, phone: e.target.value.replace(/\D/g, '').slice(0, 10)})} autoComplete="new-phone" />
+              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.phone} onChange={e => setClientFormData({ ...clientFormData, phone: e.target.value.replace(/\D/g, '').slice(0, 10) })} autoComplete="new-phone" />
             </div>
             <div className="space-y-1">
               <label className="text-[9px] font-bold text-muted uppercase">Plan</label>
-              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.plan} onChange={e => setClientFormData({...clientFormData, plan: e.target.value})} />
+              <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.plan} onChange={e => setClientFormData({ ...clientFormData, plan: e.target.value })} />
             </div>
           </div>
-          
+
           <div className="p-4 bg-accent/5 border border-accent/20 rounded-2xl space-y-4">
             <p className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-2"><Shield size={12} /> SaaS Requirements</p>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-muted uppercase">Property Type</label>
-                <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.propertyType} onChange={e => setClientFormData({...clientFormData, propertyType: e.target.value})} />
+                <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.propertyType} onChange={e => setClientFormData({ ...clientFormData, propertyType: e.target.value })} />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-muted uppercase">Throughput</label>
-                <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.throughput} onChange={e => setClientFormData({...clientFormData, throughput: e.target.value})} />
+                <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.throughput} onChange={e => setClientFormData({ ...clientFormData, throughput: e.target.value })} />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-muted uppercase">Add-On</label>
-                <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.addOn} onChange={e => setClientFormData({...clientFormData, addOn: e.target.value})} />
+                <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.addOn} onChange={e => setClientFormData({ ...clientFormData, addOn: e.target.value })} />
               </div>
               <div className="space-y-1">
                 <label className="text-[9px] font-bold text-muted uppercase">Requirements</label>
-                <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.requirements} onChange={e => setClientFormData({...clientFormData, requirements: e.target.value})} />
+                <input type="text" className="w-full bg-background/50 border border-white/10 rounded-lg px-3 py-2 text-xs text-white" value={clientFormData.requirements} onChange={e => setClientFormData({ ...clientFormData, requirements: e.target.value })} />
               </div>
             </div>
           </div>
 
           <div className="space-y-1 mt-4">
             <label className="text-[10px] font-bold text-success uppercase tracking-widest flex items-center gap-2"><ShieldCheck size={12} /> Account Provisioning (Password)</label>
-            <input type="text" placeholder="Enter password to provision login access..." className="w-full bg-background border border-success/30 rounded-lg px-4 py-3 text-sm focus:border-success outline-none font-bold text-white" value={clientFormData.password} onChange={e => setClientFormData({...clientFormData, password: e.target.value})} />
+            <input type="text" placeholder="Enter password to provision login access..." className="w-full bg-background border border-success/30 rounded-lg px-4 py-3 text-sm focus:border-success outline-none font-bold text-white" value={clientFormData.password} onChange={e => setClientFormData({ ...clientFormData, password: e.target.value })} />
             <p className="text-[9px] text-muted">If provided, this will create or update the user account for this client.</p>
           </div>
 
@@ -1821,8 +1832,9 @@ const Users = () => {
           </div>
         </form>
       </Modal>
-</div >
+    </div >
   );
 };
 
 export default Users;
+

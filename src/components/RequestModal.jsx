@@ -165,16 +165,28 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
     };
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     if (e) e.preventDefault();
-    onSave(getNormalizedPayload());
+    setIsSubmitting(true);
+    await onSave(getNormalizedPayload());
+    setIsSubmitting(false);
   };
 
-  const handleStatusChange = (newStatus) => {
-    onSave(getNormalizedPayload(newStatus));
+  const handleStatusChange = async (newStatus) => {
+    setIsSubmitting(true);
+    await onSave(getNormalizedPayload(newStatus));
+    setIsSubmitting(false);
   };
 
   const isView = modalType === 'view';
+
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleConfirmDelete = async () => {
+    setIsSubmitting(true);
+    await onSave(formData);
+    setIsSubmitting(false);
+  };
 
   return (
     <Modal
@@ -186,11 +198,26 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
         <div className="space-y-6">
           <p className="text-secondary">Are you sure you want to permanently discard the purchase request <span className="text-accent font-bold">{formData.requestId}</span>?</p>
           <div className="flex gap-3 justify-end pt-6 border-t border-border/50">
-            <button type="button" onClick={onClose} className="btn-secondary h-11 px-8 rounded-xl font-bold uppercase text-xs">
+            <button type="button" onClick={onClose} disabled={isSubmitting} className="btn-secondary h-11 px-8 rounded-xl font-bold uppercase text-xs disabled:opacity-50">
               Cancel
             </button>
-            <button type="button" onClick={() => onSave(formData)} className="btn-primary bg-danger hover:bg-danger/80 border-danger h-11 px-8 rounded-xl font-bold uppercase text-xs">
-              Confirm Delete
+            <button 
+              type="button" 
+              onClick={handleConfirmDelete} 
+              disabled={isSubmitting}
+              className="btn-primary bg-danger hover:bg-danger/80 border-danger h-11 px-8 rounded-xl font-bold uppercase text-xs flex items-center justify-center min-w-[140px] disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Deleting...
+                </>
+              ) : (
+                'Confirm Delete'
+              )}
             </button>
           </div>
         </div>
@@ -461,8 +488,22 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
           )}
 
           {!isView && (
-            <button type="submit" className="btn-primary h-11 px-8 rounded-xl font-bold uppercase text-xs">
-              {modalType === 'add' ? 'Submit Request' : 'Update Strategic Request'}
+            <button 
+              type="submit" 
+              disabled={isSubmitting}
+              className="btn-primary h-11 px-8 rounded-xl font-bold uppercase text-xs flex items-center justify-center min-w-[140px] disabled:opacity-70 disabled:cursor-not-allowed"
+            >
+              {isSubmitting ? (
+                <>
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Submitting...
+                </>
+              ) : (
+                modalType === 'add' ? 'Submit Request' : 'Update Strategic Request'
+              )}
             </button>
           )}
         </div>

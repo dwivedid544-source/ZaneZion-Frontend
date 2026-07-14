@@ -157,9 +157,10 @@ const Chauffeur = () => {
 
     const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
     /** Admin, concierge, or logistics may approve / assign drivers (client: tenant staff booking on behalf). */
-    const isAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'client', 'saas_client'].includes(userRole);
+    const isAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'client', 'saas_client', 'business_client'].includes(userRole);
     const isCustomer = ['customer'].includes(userRole);
-    const isClientAdmin = ['client', 'saas_client'].includes(userRole);
+    const isClientAdmin = ['client', 'saas_client', 'business_client'].includes(userRole);
+    const isStaffAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin'].includes(userRole);
     const isFeeLocked = isCustomer || (isClientAdmin && (!editingRequest || editingRequest?.userId === currentUser?.id));
 
     /** Admin-configured base price (Settings → system), fallback to env default */
@@ -219,9 +220,9 @@ const Chauffeur = () => {
         e.preventDefault();
         const formData = new FormData(e.target);
 
-        // For admin: resolve selected client from dropdown
-        const selectedClientId = isAdmin ? formData.get('assignClient') : null;
-        const selectedClient = isAdmin && selectedClientId ? (clients || []).find(c => String(c.id) === selectedClientId) : null;
+        // For staff admin: resolve selected client from dropdown
+        const selectedClientId = isStaffAdmin ? formData.get('assignClient') : null;
+        const selectedClient = isStaffAdmin && selectedClientId ? (clients || []).find(c => String(c.id) === selectedClientId) : null;
         let normalizedFee = 0;
         if (isFeeLocked) {
             const existing = Number(editingRequest?.chauffeurFee ?? editingRequest?.chauffeur_fee ?? editingRequest?.total_amount);
@@ -234,8 +235,8 @@ const Chauffeur = () => {
         }
 
         const request = {
-            clientId: isAdmin ? (selectedClientId || currentUser?.company_id || 'CLT-GUEST') : (currentUser?.clientId || currentUser?.company_id || 'CLT-GUEST'),
-            clientName: isAdmin ? (selectedClient?.name || selectedClient?.business_name || currentUser?.name) : (currentUser?.name || 'Guest Client'),
+            clientId: isStaffAdmin ? (selectedClientId || currentUser?.company_id || 'CLT-GUEST') : (currentUser?.clientId || currentUser?.company_id || 'CLT-GUEST'),
+            clientName: isStaffAdmin ? (selectedClient?.name || selectedClient?.business_name || currentUser?.name) : (currentUser?.name || 'Guest Client'),
             serviceType,
             requestDate: editingRequest ? editingRequest.requestDate : new Date().toISOString().split('T')[0],
             dueDate: formData.get('dueDate'),
@@ -254,10 +255,10 @@ const Chauffeur = () => {
             chauffeurFee: normalizedFee,
             chauffeur_fee: normalizedFee,
             chauffeur_fee_mode: CHAUFFEUR_BILLING_MODE,
-            driverName: isAdmin ? (formData.get('driverName') || null) : null,
-            plateNumber: isAdmin ? (formData.get('plateNumber') || null) : null,
-            driver_user_id: isAdmin ? (formData.get('driverUserId') ? Number(formData.get('driverUserId')) : (editingRequest?.driver_user_id || editingRequest?.driverId || null)) : (editingRequest?.driver_user_id || editingRequest?.driverId || null),
-            passenger_info: isAdmin ? (() => {
+            driverName: isStaffAdmin ? (formData.get('driverName') || null) : null,
+            plateNumber: isStaffAdmin ? (formData.get('plateNumber') || null) : null,
+            driver_user_id: isStaffAdmin ? (formData.get('driverUserId') ? Number(formData.get('driverUserId')) : (editingRequest?.driver_user_id || editingRequest?.driverId || null)) : (editingRequest?.driver_user_id || editingRequest?.driverId || null),
+            passenger_info: isStaffAdmin ? (() => {
                 const driverUserIdVal = formData.get('driverUserId');
                 const photo = (users || []).find(u => String(u.id) === String(driverUserIdVal))?.profile_pic_url || null;
                 return {
@@ -269,7 +270,7 @@ const Chauffeur = () => {
             })() : (editingRequest?.passenger_info || editingRequest?._passengerInfo || null),
             status: isClientAdmin
                 ? (editingRequest?.status || 'pending')
-                : (isAdmin ? (formData.get('driverName') ? 'assigned' : 'pending') : (editingRequest?.status || 'pending')),
+                : (isStaffAdmin ? (formData.get('driverName') ? 'assigned' : 'pending') : (editingRequest?.status || 'pending')),
             orderType: 'CHAUFFEUR',
             missionType: 'CHAUFFEUR'
         };
@@ -719,7 +720,7 @@ const Chauffeur = () => {
                                                 )}
                                             </div>
 
-                                            {isAdmin && (
+                                            {isStaffAdmin && (
                                                 <div className="space-y-4 pt-4 border-t border-white/5">
                                                     <label className="text-[10px] font-black text-accent uppercase tracking-widest">Chauffeur Assignment & Status</label>
 
@@ -1030,7 +1031,7 @@ const Chauffeur = () => {
                                             </div>
 
                                             {/* Admin: Client Selection + Driver Assignment */}
-                                            {isAdmin && (
+                                            {isStaffAdmin && (
                                                 <div className="space-y-6 pt-6 mt-6 border-t border-accent/20">
                                                     <div className="flex items-center gap-3">
                                                         <div className="w-8 h-8 bg-accent/20 rounded-lg flex items-center justify-center text-accent">

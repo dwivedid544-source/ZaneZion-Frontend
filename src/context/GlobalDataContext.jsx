@@ -6810,7 +6810,7 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       const payload = {
         user_id: requestData.userId,
-        company_id: currentUser?.company_id,
+        company_id: requestData.tenantId || currentUser?.tenantId || currentUser?.company_id,
         leave_type: requestData.type,
         start_date: requestData.start,
         end_date: requestData.end,

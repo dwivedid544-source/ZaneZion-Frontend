@@ -49,19 +49,21 @@ const Invoices = () => {
     const isSuperAdmin = normalizeRole(currentUser?.role) === 'superadmin';
     const procurementInvoiceReadOnly = normalizeRole(currentUser?.role) === 'procurement';
 
+    const portalRole = normalizeRole(currentUser?.role);
+    const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
     const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
-    const currentClient = clients.find(c => {
+    const currentClient = (clients || []).find(c => {
         const cId = normalizeId(c.id);
         const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
         return cId && uId && cId === uId;
     });
-    const isBusinessClient = isClient && (
-        String(currentUser?.role).toLowerCase().includes('business') ||
+    const isBusinessClient = portalRole === 'client' && (
+        rawRoleStr.toLowerCase().includes('business') ||
         currentClient?.clientType === 'Business' ||
         currentClient?.client_type === 'Business'
     );
-    const isSaaSClient = isClient && (
-        String(currentUser?.role).toLowerCase().includes('saas') ||
+    const isSaaSClient = portalRole === 'client' && (
+        rawRoleStr.toLowerCase().includes('saas') ||
         currentClient?.clientType === 'SaaS' ||
         currentClient?.client_type === 'SaaS'
     );
@@ -524,11 +526,10 @@ const Invoices = () => {
                                         <input
                                             type="text"
                                             readOnly
-                                            className={`w-full bg-background/50 border rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none font-black cursor-not-allowed ${
-                                                (Number(formData.totalAmount) - Number(formData.paidAmount)) <= 0
+                                            className={`w-full bg-background/50 border rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none font-black cursor-not-allowed ${(Number(formData.totalAmount) - Number(formData.paidAmount)) <= 0
                                                     ? 'border-success/40 text-success'
                                                     : 'border-danger/40 text-danger'
-                                            }`}
+                                                }`}
                                             value={`${Math.max(0, Number(formData.totalAmount) - Number(formData.paidAmount)).toLocaleString()}`}
                                         />
                                     </div>

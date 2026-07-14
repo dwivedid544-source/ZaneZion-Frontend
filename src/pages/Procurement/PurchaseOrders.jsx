@@ -56,6 +56,7 @@ const PurchaseOrders = () => {
   const meta = poData ? { totalPages: poData.totalPages, totalItems: poData.total } : { totalPages: 1, totalItems: 0 };
 
   const portalRole = normalizeRole(currentUser?.role);
+  const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
   const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
   const currentClient = (clients || []).find(c => {
     const cId = normalizeId(c.id);
@@ -63,7 +64,7 @@ const PurchaseOrders = () => {
     return cId && uId && cId === uId;
   });
   const isBusinessClient = portalRole === 'client' && (
-    String(currentUser?.role).toLowerCase().includes('business') ||
+    rawRoleStr.toLowerCase().includes('business') ||
     currentClient?.clientType === 'Business' ||
     currentClient?.client_type === 'Business'
   );

@@ -59,9 +59,9 @@ const ClientEvents = () => {
         const parts = s.split(/[-\/]/).map(p => p.trim());
         if (parts.length === 3) {
             // detect if first part is year
-            if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+            if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
             // assume D-M-YYYY
-            return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+            return `${parts[2]}-${parts[1].padStart(2, '0')}-${parts[0].padStart(2, '0')}`;
         }
         return s;
     };
@@ -174,14 +174,14 @@ const ClientEvents = () => {
                                 <Star size={24} />
                             </div>
                             <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${String(evt.status).toLowerCase() === 'confirmed' || String(evt.status).toLowerCase() === 'active'
-                                    ? 'bg-success/20 text-success'
-                                    : String(evt.status).toLowerCase() === 'completed'
-                                        ? 'bg-muted/20 text-muted'
-                                        : String(evt.status).toLowerCase() === 'cancelled'
-                                            ? 'bg-danger/20 text-danger'
-                                            : String(evt.status).toLowerCase().includes('progress')
-                                                ? 'bg-info/20 text-info'
-                                                : 'bg-warning/20 text-warning'
+                                ? 'bg-success/20 text-success'
+                                : String(evt.status).toLowerCase() === 'completed'
+                                    ? 'bg-muted/20 text-muted'
+                                    : String(evt.status).toLowerCase() === 'cancelled'
+                                        ? 'bg-danger/20 text-danger'
+                                        : String(evt.status).toLowerCase().includes('progress')
+                                            ? 'bg-info/20 text-info'
+                                            : 'bg-warning/20 text-warning'
                                 }`}>
                                 {evt.status}
                             </span>

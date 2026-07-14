@@ -19,6 +19,7 @@ import {
   canonicalMarketplaceCategory,
   PERSONAL_MEMBERSHIP_FEE_USD,
 } from "../utils/constants";
+import { INVENTORY, VENDORS, ACCESS_PLANS } from "../utils/data";
 
 const GlobalDataContext = createContext();
 
@@ -1401,14 +1402,19 @@ export const GlobalDataProvider = ({ children }) => {
   );
 
   const fetchInventory = React.useCallback(async () => {
+    let stockArr = [];
     try {
       // Try real DB stock endpoint first
       const res = await api.get("/stock", { params: { limit: 500 } });
       const raw = res.data?.data;
       // real API: { stock: [...], total: N } or just an array
-      const stockArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.stock) ? raw.stock : []);
+      stockArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.stock) ? raw.stock : []);
+    } catch (e) {
+      console.warn("Fetch real stock failed, attempting /inventory fallback", e);
+    }
 
-      if (stockArr.length > 0) {
+    if (stockArr.length > 0) {
+      try {
         setInventory(
           stockArr.map((i) => ({
             ...i,
@@ -1451,9 +1457,13 @@ export const GlobalDataProvider = ({ children }) => {
           }))
         );
         return;
+      } catch (e) {
+        console.error("Mapping stock failed", e);
       }
+    }
 
-      // Fallback to mock /inventory endpoint if real stock is empty
+    // Fallback to mock /inventory endpoint if real stock is empty or failed
+    try {
       const res2 = await api.get("/inventory");
       const data = res2.data?.success
         ? res2.data.data
@@ -1488,7 +1498,7 @@ export const GlobalDataProvider = ({ children }) => {
         }))
       );
     } catch (e) {
-      console.error("Fetch inventory failed", e);
+      console.error("Fetch /inventory failed, using default mock data", e);
       setInventory(INVENTORY);
     }
   }, []);

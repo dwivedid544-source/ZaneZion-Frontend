@@ -71,24 +71,13 @@ const ClientDashboard = () => {
     orders, invoices, settleInvoice, currentUser, clients, inventory = [], deliveries = [],
     chauffeurRequests = [], fetchChauffeurRequests,
     fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats,
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
->>>>>>> bc19114c2f4410b2bc8752f23f81d9be9df40047
-=======
->>>>>>> 47edd4ed553fae39934839ba5a62822f29a0b0de
     events = [], fetchTickets, updateClient,
-    guestRequests = [], luxuryItems = [], fetchLuxuryItems,
     purchaseOrders = [], fetchPurchaseOrders,
     purchaseRequests = [], fetchPurchaseRequests,
     quotes = [], fetchQuotes,
     warehouses = [], fetchWarehouses,
     fleet = [], fetchFleet,
-<<<<<<< HEAD
     guestRequests = [], luxuryItems = [], fetchLuxuryItems,
-=======
->>>>>>> bc19114c2f4410b2bc8752f23f81d9be9df40047
   } = useData();
   const navigate = useNavigate();
 
@@ -101,36 +90,13 @@ const ClientDashboard = () => {
     fetchDashboardStats();
     if (fetchTickets) fetchTickets();
     if (fetchChauffeurRequests) fetchChauffeurRequests();
-<<<<<<< HEAD
-=======
-    if (fetchLuxuryItems) fetchLuxuryItems();
->>>>>>> bc19114c2f4410b2bc8752f23f81d9be9df40047
     if (fetchPurchaseOrders) fetchPurchaseOrders();
     if (fetchPurchaseRequests) fetchPurchaseRequests();
     if (fetchQuotes) fetchQuotes();
     if (fetchWarehouses) fetchWarehouses();
     if (fetchFleet) fetchFleet();
-<<<<<<< HEAD
     if (fetchLuxuryItems) fetchLuxuryItems();
   }, []);
-=======
-  }, [
-    fetchOrders,
-    fetchFinance,
-    fetchInventory,
-    fetchClients,
-    fetchDeliveries,
-    fetchDashboardStats,
-    fetchTickets,
-    fetchChauffeurRequests,
-    fetchLuxuryItems,
-    fetchPurchaseOrders,
-    fetchPurchaseRequests,
-    fetchQuotes,
-    fetchWarehouses,
-    fetchFleet
-  ]);
->>>>>>> bc19114c2f4410b2bc8752f23f81d9be9df40047
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('add');
@@ -558,41 +524,24 @@ const ClientDashboard = () => {
             {/* Concierge Active Requests */}
             <SectionCard title="Concierge Active Requests" viewAllPath="/dashboard/client-events" navigate={navigate}>
               <div className="space-y-3">
-<<<<<<< HEAD
                 {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).slice(0, 3).map((event, i) => (
-=======
-                {clientGuestRequests.slice(0, 2).map((req, i) => (
->>>>>>> bc19114c2f4410b2bc8752f23f81d9be9df40047
                   <div key={i} className="p-4 bg-white/5 border border-border rounded-xl">
                     <p className="text-sm font-black text-white italic">{event.request || event.title || event.name}</p>
                     <p className="text-[10px] text-accent font-black uppercase tracking-widest mt-1">{event.date} - {event.status || 'Pending'}</p>
                   </div>
                 ))}
-<<<<<<< HEAD
                 {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).length === 0 && (
                   <EmptyState text="No active concierge logs found." />
-=======
-                {clientGuestRequests.length === 0 && (
-                  <EmptyState text="No active concierge logs found." />
-<<<<<<< HEAD
-=======
-                  <div className="p-4 bg-white/[0.02] border border-border rounded-xl opacity-40 text-xs text-center italic py-10">
-                    <p className="text-muted text-[10px] font-black uppercase">No active concierge logs found.</p>
-                  </div>
->>>>>>> 99178945b15e46d9ed305449ec01dd5ca4ea08b0
->>>>>>> bc19114c2f4410b2bc8752f23f81d9be9df40047
-=======
->>>>>>> 47edd4ed553fae39934839ba5a62822f29a0b0de
                 )}
               </div>
-  <button onClick={() => navigate('/dashboard/client-events')}
-    className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
-    Initiate Request
-  </button>
-            </SectionCard >
+              <button onClick={() => navigate('/dashboard/client-events')}
+                className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
+                Initiate Request
+              </button>
+            </SectionCard>
 
-  {/* Chauffeur Requests */ }
-  < SectionCard title = "Active Chauffeur Requests" icon = { Car } viewAllPath = "/dashboard/chauffeur" navigate = { navigate } >
+            {/* Chauffeur Requests */}
+            <SectionCard title="Active Chauffeur Requests" icon={Car} viewAllPath="/dashboard/chauffeur" navigate={navigate}>
               <div className="space-y-3">
                 {clientChauffeurRequests.slice(0, 3).map((req, i) => (
                   <div key={i} className="p-4 bg-white/5 border border-border rounded-xl">
@@ -612,10 +561,10 @@ const ClientDashboard = () => {
                 className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
                 Manage Protocols
               </button>
-            </SectionCard >
+            </SectionCard>
 
-  {/* Warehouse Network */ }
-  < SectionCard title = "Warehouse Network" icon = { Building2 } viewAllPath = "/dashboard/warehouses" navigate = { navigate } >
+            {/* Warehouse Network */}
+            <SectionCard title="Warehouse Network" icon={Building2} viewAllPath="/dashboard/warehouses" navigate={navigate}>
               <div className="space-y-3">
                 {(warehouses || []).slice(0, 4).map((wh, i) => (
                   <div key={i} className="flex items-center justify-between p-3.5 bg-white/[0.02] border border-white/5 rounded-2xl hover:border-info/30 transition-all">
@@ -639,10 +588,10 @@ const ClientDashboard = () => {
                 className="w-full mt-4 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
                 Manage Network
               </button>
-            </SectionCard >
+            </SectionCard>
 
-  {/* Private Asset Reserve */ }
-  < div className = "glass-card p-6 sm:p-8 border-accent/20 bg-accent/[0.02]" >
+            {/* Private Asset Reserve */}
+            <div className="glass-card p-6 sm:p-8 border-accent/20 bg-accent/[0.02]">
               <h3 className="text-lg font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2">
                 <Package size={18} className="text-accent" /> Private Asset Reserve
               </h3>
@@ -664,10 +613,10 @@ const ClientDashboard = () => {
                 className="w-full py-3 bg-accent text-black rounded-xl text-[9px] font-black uppercase tracking-[0.2em] shadow-lg shadow-accent/10 hover:scale-[1.02] transition-all">
                 Access Full Manifest
               </button>
-            </div >
+            </div>
 
-  {/* Marketplace Spotlight */ }
-  < div className = "glass-card p-6 sm:p-8 bg-white/[0.01]" >
+            {/* Marketplace Spotlight */}
+            <div className="glass-card p-6 sm:p-8 bg-white/[0.01]">
               <h3 className="text-[10px] font-black text-white uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
                 <ShoppingBag size={14} className="text-info" /> Marketplace Spotlight
               </h3>
@@ -692,10 +641,10 @@ const ClientDashboard = () => {
                 className="w-full py-3 border border-white/10 bg-white/5 text-white rounded-xl text-[9px] font-black uppercase tracking-[0.2em] hover:bg-info hover:text-white hover:border-info transition-all">
                 Open Catalog
               </button>
-            </div >
+            </div>
 
-  {/* Quick Protocols */ }
-  < div className = "glass-card p-6 sm:p-8" >
+            {/* Quick Protocols */}
+            <div className="glass-card p-6 sm:p-8">
               <h3 className="text-lg font-black text-white italic uppercase tracking-tighter mb-6">Quick Protocols</h3>
               <div className="space-y-2">
                 {[
@@ -719,10 +668,10 @@ const ClientDashboard = () => {
                   </button>
                 ))}
               </div>
-            </div >
-          </div >
-        </div >
-      </div >
+            </div>
+          </div>
+        </div>
+      </div>
 
       <OrderModal
         isOpen={isModalOpen}
@@ -771,7 +720,7 @@ const ClientDashboard = () => {
           </div>
         </div>
       </Modal>
-    </div >
+    </div>
   );
 };
 

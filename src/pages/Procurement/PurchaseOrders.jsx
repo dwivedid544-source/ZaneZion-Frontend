@@ -167,12 +167,12 @@ const PurchaseOrders = () => {
     ];
     const rows = filteredPOs.map((po) => [
       po.id,
-      po.vendorName,
-      po.date,
-      po.total,
+      po.vendor?.companyName || po.vendor_name || po.vendorName || "Unknown Vendor",
+      (po.createdAt || po.created_at || po.date)?.split("T")[0] || "N/A",
+      po.totalAmount || po.total_amount || po.total || 0,
       po.status,
-      po.paymentTerms || "",
-      (po.items || []).map((i) => `${i.name} x${i.orderedQty}`).join("; "),
+      po.payment_terms || po.paymentTerms || "Net 30",
+      (po.items || []).map((i) => `${i.name || "Item"} x${i.orderedQty || i.quantity || 1}`).join("; "),
     ]);
     const csvContent = [headers, ...rows]
       .map((r) =>

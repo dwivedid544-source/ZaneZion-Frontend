@@ -19,6 +19,7 @@ import {
   canonicalMarketplaceCategory,
   PERSONAL_MEMBERSHIP_FEE_USD,
 } from "../utils/constants";
+import { INVENTORY, VENDORS, ACCESS_PLANS } from "../utils/data";
 
 const GlobalDataContext = createContext();
 
@@ -1457,8 +1458,12 @@ export const GlobalDataProvider = ({ children }) => {
         );
         return;
       }
+    } catch (e) {
+      console.error("Mapping stock failed", e);
+    }
 
-      // Fallback to mock /inventory endpoint if real stock is empty
+    // Fallback to mock /inventory endpoint if real stock is empty or failed
+    try {
       const res2 = await api.get("/inventory");
       const data = res2.data?.success
         ? res2.data.data
@@ -1493,7 +1498,7 @@ export const GlobalDataProvider = ({ children }) => {
         }))
       );
     } catch (e) {
-      console.error("Fetch inventory failed", e);
+      console.error("Fetch /inventory failed, using default mock data", e);
       setInventory(INVENTORY);
     }
   }, []);

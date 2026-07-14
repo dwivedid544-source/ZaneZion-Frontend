@@ -21,12 +21,9 @@ const PurchaseRequests = () => {
     fetchCustomerUsers,
     fetchStaff,
     fetchClients,
-<<<<<<< HEAD
     clients,
-=======
     users = [],
     customerUsers = [],
->>>>>>> 7681f7f91c603a6118bcabdcafe5674fcc7a055c
   } = useData();
 
   React.useEffect(() => {

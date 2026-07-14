@@ -49,6 +49,23 @@ const Invoices = () => {
     const isSuperAdmin = normalizeRole(currentUser?.role) === 'superadmin';
     const procurementInvoiceReadOnly = normalizeRole(currentUser?.role) === 'procurement';
 
+    const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
+    const currentClient = clients.find(c => {
+        const cId = normalizeId(c.id);
+        const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
+        return cId && uId && cId === uId;
+    });
+    const isBusinessClient = isClient && (
+        String(currentUser?.role).toLowerCase().includes('business') ||
+        currentClient?.clientType === 'Business' ||
+        currentClient?.client_type === 'Business'
+    );
+    const isSaaSClient = isClient && (
+        String(currentUser?.role).toLowerCase().includes('saas') ||
+        currentClient?.clientType === 'SaaS' ||
+        currentClient?.client_type === 'SaaS'
+    );
+
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [selectedInvoice, setSelectedInvoice] = useState(null);
     const [modalType, setModalType] = useState('view');
@@ -302,7 +319,7 @@ const Invoices = () => {
                                 </motion.div>
                             )}
                         </AnimatePresence>
-                        {!procurementInvoiceReadOnly && (!isClient || (clients.find(c => c.id === currentUser?.clientId)?.clientType === 'SaaS')) && hasMenuPermission('Invoices', 'can_add') && (
+                        {!procurementInvoiceReadOnly && (!isClient || isSaaSClient || isBusinessClient) && (hasMenuPermission('Invoices', 'can_add') || isBusinessClient) && (
                             <button
                                 onClick={() => handleAction('add', {})}
                                 className="btn-primary flex items-center gap-2"
@@ -397,8 +414,8 @@ const Invoices = () => {
                                     setInvoiceToDelete(inv);
                                     setShowDeleteConfirm(true);
                                 }}
-                                canEdit={!procurementInvoiceReadOnly && hasMenuPermission('Invoices', 'can_edit')}
-                                canDelete={!procurementInvoiceReadOnly && hasMenuPermission('Invoices', 'can_delete')}
+                                canEdit={!procurementInvoiceReadOnly && (hasMenuPermission('Invoices', 'can_edit') || isBusinessClient)}
+                                canDelete={!procurementInvoiceReadOnly && (hasMenuPermission('Invoices', 'can_delete') || isBusinessClient)}
                             />
                             <div className="mt-6 border-t border-white/5 pt-6">
                                 <Pagination

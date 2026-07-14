@@ -71,16 +71,13 @@ const ClientDashboard = () => {
     orders, invoices, settleInvoice, currentUser, clients, inventory = [], deliveries = [],
     chauffeurRequests = [], fetchChauffeurRequests,
     fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats,
-<<<<<<< HEAD
-    events = [], fetchTickets, updateClient, guestRequests = [], luxuryItems = [], fetchLuxuryItems
-=======
     events = [], fetchTickets, updateClient,
+    guestRequests = [], luxuryItems = [], fetchLuxuryItems,
     purchaseOrders = [], fetchPurchaseOrders,
     purchaseRequests = [], fetchPurchaseRequests,
     quotes = [], fetchQuotes,
     warehouses = [], fetchWarehouses,
     fleet = [], fetchFleet,
->>>>>>> 0ca7ad062066e415fbfb186095204b52719385fa
   } = useData();
   const navigate = useNavigate();
 
@@ -93,17 +90,28 @@ const ClientDashboard = () => {
     fetchDashboardStats();
     if (fetchTickets) fetchTickets();
     if (fetchChauffeurRequests) fetchChauffeurRequests();
-<<<<<<< HEAD
     if (fetchLuxuryItems) fetchLuxuryItems();
-  }, [fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchDashboardStats, fetchTickets, fetchChauffeurRequests, fetchLuxuryItems]);
-=======
     if (fetchPurchaseOrders) fetchPurchaseOrders();
     if (fetchPurchaseRequests) fetchPurchaseRequests();
     if (fetchQuotes) fetchQuotes();
     if (fetchWarehouses) fetchWarehouses();
     if (fetchFleet) fetchFleet();
-  }, []);
->>>>>>> 0ca7ad062066e415fbfb186095204b52719385fa
+  }, [
+    fetchOrders,
+    fetchFinance,
+    fetchInventory,
+    fetchClients,
+    fetchDeliveries,
+    fetchDashboardStats,
+    fetchTickets,
+    fetchChauffeurRequests,
+    fetchLuxuryItems,
+    fetchPurchaseOrders,
+    fetchPurchaseRequests,
+    fetchQuotes,
+    fetchWarehouses,
+    fetchFleet
+  ]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('add');
@@ -531,35 +539,24 @@ const ClientDashboard = () => {
             {/* Concierge Active Requests */}
             <SectionCard title="Concierge Active Requests" viewAllPath="/dashboard/client-events" navigate={navigate}>
               <div className="space-y-3">
-<<<<<<< HEAD
                 {clientGuestRequests.slice(0, 2).map((req, i) => (
-=======
-                {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).slice(0, 3).map((event, i) => (
->>>>>>> 0ca7ad062066e415fbfb186095204b52719385fa
                   <div key={i} className="p-4 bg-white/5 border border-border rounded-xl">
                     <p className="text-sm font-black text-white italic">{req.request || req.title || req.name}</p>
                     <p className="text-[10px] text-accent font-black uppercase tracking-widest mt-1">{req.date} - {req.status || 'Pending'}</p>
                   </div>
                 ))}
-<<<<<<< HEAD
                 {clientGuestRequests.length === 0 && (
-                  <div className="p-4 bg-white/[0.02] border border-border rounded-xl opacity-40 text-xs text-center italic py-10">
-                    <p className="text-muted text-[10px] font-black uppercase">No active concierge logs found.</p>
-                  </div>
-=======
-                {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).length === 0 && (
                   <EmptyState text="No active concierge logs found." />
->>>>>>> 0ca7ad062066e415fbfb186095204b52719385fa
                 )}
               </div>
-              <button onClick={() => navigate('/dashboard/client-events')}
-                className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
-                Initiate Request
-              </button>
-            </SectionCard>
+  <button onClick={() => navigate('/dashboard/client-events')}
+    className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
+    Initiate Request
+  </button>
+            </SectionCard >
 
-            {/* Chauffeur Requests */}
-            <SectionCard title="Active Chauffeur Requests" icon={Car} viewAllPath="/dashboard/chauffeur" navigate={navigate}>
+  {/* Chauffeur Requests */ }
+  < SectionCard title = "Active Chauffeur Requests" icon = { Car } viewAllPath = "/dashboard/chauffeur" navigate = { navigate } >
               <div className="space-y-3">
                 {clientChauffeurRequests.slice(0, 3).map((req, i) => (
                   <div key={i} className="p-4 bg-white/5 border border-border rounded-xl">
@@ -579,10 +576,10 @@ const ClientDashboard = () => {
                 className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
                 Manage Protocols
               </button>
-            </SectionCard>
+            </SectionCard >
 
-            {/* Warehouse Network */}
-            <SectionCard title="Warehouse Network" icon={Building2} viewAllPath="/dashboard/warehouses" navigate={navigate}>
+  {/* Warehouse Network */ }
+  < SectionCard title = "Warehouse Network" icon = { Building2 } viewAllPath = "/dashboard/warehouses" navigate = { navigate } >
               <div className="space-y-3">
                 {(warehouses || []).slice(0, 4).map((wh, i) => (
                   <div key={i} className="flex items-center justify-between p-3.5 bg-white/[0.02] border border-white/5 rounded-2xl hover:border-info/30 transition-all">
@@ -606,10 +603,10 @@ const ClientDashboard = () => {
                 className="w-full mt-4 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">
                 Manage Network
               </button>
-            </SectionCard>
+            </SectionCard >
 
-            {/* Private Asset Reserve */}
-            <div className="glass-card p-6 sm:p-8 border-accent/20 bg-accent/[0.02]">
+  {/* Private Asset Reserve */ }
+  < div className = "glass-card p-6 sm:p-8 border-accent/20 bg-accent/[0.02]" >
               <h3 className="text-lg font-black text-white italic uppercase tracking-tighter mb-6 flex items-center gap-2">
                 <Package size={18} className="text-accent" /> Private Asset Reserve
               </h3>
@@ -631,10 +628,10 @@ const ClientDashboard = () => {
                 className="w-full py-3 bg-accent text-black rounded-xl text-[9px] font-black uppercase tracking-[0.2em] shadow-lg shadow-accent/10 hover:scale-[1.02] transition-all">
                 Access Full Manifest
               </button>
-            </div>
+            </div >
 
-            {/* Marketplace Spotlight */}
-            <div className="glass-card p-6 sm:p-8 bg-white/[0.01]">
+  {/* Marketplace Spotlight */ }
+  < div className = "glass-card p-6 sm:p-8 bg-white/[0.01]" >
               <h3 className="text-[10px] font-black text-white uppercase tracking-[0.3em] mb-6 flex items-center gap-2">
                 <ShoppingBag size={14} className="text-info" /> Marketplace Spotlight
               </h3>
@@ -659,10 +656,10 @@ const ClientDashboard = () => {
                 className="w-full py-3 border border-white/10 bg-white/5 text-white rounded-xl text-[9px] font-black uppercase tracking-[0.2em] hover:bg-info hover:text-white hover:border-info transition-all">
                 Open Catalog
               </button>
-            </div>
+            </div >
 
-            {/* Quick Protocols */}
-            <div className="glass-card p-6 sm:p-8">
+  {/* Quick Protocols */ }
+  < div className = "glass-card p-6 sm:p-8" >
               <h3 className="text-lg font-black text-white italic uppercase tracking-tighter mb-6">Quick Protocols</h3>
               <div className="space-y-2">
                 {[
@@ -686,10 +683,10 @@ const ClientDashboard = () => {
                   </button>
                 ))}
               </div>
-            </div>
-          </div>
-        </div>
-      </div>
+            </div >
+          </div >
+        </div >
+      </div >
 
       <OrderModal
         isOpen={isModalOpen}
@@ -738,7 +735,7 @@ const ClientDashboard = () => {
           </div>
         </div>
       </Modal>
-    </div>
+    </div >
   );
 };
 

@@ -84,8 +84,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 const status = String(c.status || '').trim().toLowerCase();
                 if (status !== 'active') return false;
 
-                // Staff roles: show all clients regardless of type
-                if (isStaffRole) return true;
+                // Staff roles & B2B Clients: show all clients regardless of type
+                if (isStaffRole || isBusinessClient) return true;
                 // Customer/non-staff: show only personal/individual accounts
                 const ct = String(c.client_type || c.clientType || '').trim().toLowerCase();
                 const tt = String(c.tenant_type || c.tenantType || '').trim().toLowerCase();
@@ -388,9 +388,9 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             return;
         }
 
-        // Staff roles (including concierge) must select a client explicitly
+        // Staff roles (including concierge) & B2B Clients must select a client explicitly
         const parsedClientId = formData.clientId ? Number(formData.clientId) : null;
-        if (modalType === 'add' && isStaffRole && (!parsedClientId || isNaN(parsedClientId) || parsedClientId <= 0)) {
+        if (modalType === 'add' && (isStaffRole || isBusinessClient) && (!parsedClientId || isNaN(parsedClientId) || parsedClientId <= 0)) {
             swalWarning('Please select a client / customer to proceed.');
             return;
         }
@@ -465,7 +465,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                             </select>
                                         </div>
                                     )}
-                                    {portalRole !== 'client' && portalRole !== 'customer' && (
+                                    {(portalRole !== 'client' && portalRole !== 'customer' || isBusinessClient) && (
                                         <div className={`space-y-1 relative ${modalType === 'add' ? 'col-span-1 md:col-span-2' : ''}`}>
                                             <label className="text-[10px] font-bold text-muted uppercase">
                                                 Client / Customer

@@ -527,8 +527,8 @@ const Invoices = () => {
                                             type="text"
                                             readOnly
                                             className={`w-full bg-background/50 border rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none font-black cursor-not-allowed ${(Number(formData.totalAmount) - Number(formData.paidAmount)) <= 0
-                                                    ? 'border-success/40 text-success'
-                                                    : 'border-danger/40 text-danger'
+                                                ? 'border-success/40 text-success'
+                                                : 'border-danger/40 text-danger'
                                                 }`}
                                             value={`${Math.max(0, Number(formData.totalAmount) - Number(formData.paidAmount)).toLocaleString()}`}
                                         />

@@ -15,6 +15,8 @@ import Modal from '../../components/Modal';
 import { Link } from 'react-router-dom';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import { motion, AnimatePresence } from 'framer-motion';
+import DepartmentWorkflowSection from '../../components/DepartmentWorkflowSection';
+
 
 const OperationsDashboard = () => {
 
@@ -225,6 +227,9 @@ const OperationsDashboard = () => {
                 ))}
               </div>
             </div>
+
+            {/* Department Workflow Tracker */}
+            <DepartmentWorkflowSection departmentKey="operation" departmentLabel="Operations" />
           </motion.div>
         ) : (
           <motion.div

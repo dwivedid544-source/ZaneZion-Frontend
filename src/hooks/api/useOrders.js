@@ -17,6 +17,18 @@ export const useOrders = (page = 1, limit = 10, search = '') => {
   });
 };
 
+export const useDepartmentOrders = (currentDept, passedThrough) => {
+  return useQuery({
+    queryKey: ['orders', 'dept', currentDept, passedThrough],
+    queryFn: async () => {
+      const response = await api.get('/orders', {
+        params: { currentDept, passedThrough, limit: 100 }
+      });
+      return response.data;
+    },
+  });
+};
+
 export const useOrder = (id) => {
   return useQuery({
     queryKey: ['orders', id],

@@ -3,13 +3,13 @@ import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm } from '../.
 import Table from '../../components/Table';
 import { useData } from '../../context/GlobalDataContext';
 import { isoDateSlice, displayOrderStatus } from '../../utils/orderWorkflow';
-import { Search, Plus, PackageCheck, PackageX, FileText, CheckCircle, ShoppingCart, Truck, Warehouse, ArrowRightCircle, RefreshCcw } from 'lucide-react';
+import { Search, Plus, PackageCheck, PackageX, FileText, CheckCircle, ShoppingCart, Truck, Warehouse, ArrowRightCircle, RefreshCcw, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useOrders, useUpdateOrderStatus, useCreateOrder, useUpdateOrder, useDeleteOrder } from '../../hooks/api/useOrders';
 import { useQueryClient } from '@tanstack/react-query';
-
 import OrderModal from '../../components/OrderModal';
 import InvoiceGenerationModal from '../../components/InvoiceGenerationModal';
+import OrderTimeline from '../../components/OrderTimeline';
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
 
 /** Bespoke / concierge-path orders (store custom request or any row with a custom_request_category). */
@@ -39,6 +39,8 @@ const Orders = () => {
 
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
+  const [workflowTab, setWorkflowTab] = useState('all'); // 'all' | 'current' | 'processed'
+  const [timelineOrder, setTimelineOrder] = useState(null); // { id, orderNumber }
 
   const { data: ordersData, isLoading, error } = useOrders(page, 10, searchTerm);
   const orders = ordersData?.data?.orders || [];
@@ -115,7 +117,23 @@ const Orders = () => {
     }
   };
 
-  const currentOrders = orders;
+  const currentOrders = (() => {
+    if (workflowTab === 'all') return orders;
+    const dept = normalizedRole; // e.g. 'logistics', 'procurement', 'concierge'
+    if (workflowTab === 'current') {
+      return orders.filter(o => {
+        const cur = String(o.metadata?.currentDepartment || o.status || '').toLowerCase();
+        return cur === dept;
+      });
+    }
+    if (workflowTab === 'processed') {
+      return orders.filter(o => {
+        const history = Array.isArray(o.metadata?.workflowHistory) ? o.metadata.workflowHistory : [];
+        return history.some(h => String(h.department || '').toLowerCase() === dept);
+      });
+    }
+    return orders;
+  })();
 
   const handleAction = (type, order) => {
     setSelectedOrder(order);
@@ -367,20 +385,27 @@ const Orders = () => {
                 <Plus size={16} /> Create Order
               </button>
             )}
-            {/* <button
-            className="px-6 py-2.5 bg-info border border-info/50 text-white rounded-xl text-xs font-black uppercase tracking-widest hover:bg-info/80 shadow-lg shadow-info/20 flex items-center gap-2"
-            onClick={() => {
-              setSelectedOrderForInvoice(null);
-              setIsInvoiceModalOpen(true);
-            }}
-          >
-            <FileText size={16} /> Create Invoice
-          </button> */}
           </div>
         </div>
 
         <div className="glass-card p-6">
+          {/* Workflow tabs */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/10">
+              {[{key:'all',label:'All Orders'},{key:'current',label:'🟡 Current Work'},{key:'processed',label:'✅ Processed'}].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setWorkflowTab(tab.key)}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                    workflowTab === tab.key
+                      ? 'bg-accent text-white shadow'
+                      : 'text-white/50 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
             <div className="relative max-w-sm w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={18} />
               <input
@@ -414,6 +439,15 @@ const Orders = () => {
               canDelete={hasMenuPermission('Orders', 'can_delete') || isBusinessClient}
               customAction={(item) => canManageOrders ? (
                 <div className="flex items-center gap-1 flex-wrap">
+                   {/* Timeline button — visible to everyone */}
+                   <button
+                     type="button"
+                     onClick={(e) => { e.stopPropagation(); setTimelineOrder({ id: item.id, orderNumber: item.orderNumber }); }}
+                     className="p-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1 border border-white/5"
+                     title="View order timeline / workflow history"
+                   >
+                     <History size={14} /> Timeline
+                   </button>
                   {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) && (
                     <button
                       type="button"
@@ -580,9 +614,14 @@ const Orders = () => {
           navigate('/dashboard/invoices');
         }}
       />
+      <OrderTimeline
+        isOpen={!!timelineOrder}
+        onClose={() => setTimelineOrder(null)}
+        orderId={timelineOrder?.id}
+        orderNumber={timelineOrder?.orderNumber}
+      />
     </div>
   );
 };
 
 export default Orders;
-

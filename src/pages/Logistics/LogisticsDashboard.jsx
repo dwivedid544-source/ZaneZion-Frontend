@@ -16,6 +16,8 @@ import {
 import { useData } from '../../context/GlobalDataContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import Table from '../../components/Table';
+import DepartmentWorkflowSection from '../../components/DepartmentWorkflowSection';
+
 
 const LogisticsDashboard = () => {
   const navigate = useNavigate();
@@ -378,6 +380,9 @@ const LogisticsDashboard = () => {
                   </div>
                 )}
             </div>
+
+            {/* Department Workflow Tracker */}
+            <DepartmentWorkflowSection departmentKey="logistics" departmentLabel="Logistics" />
         </div>
 
         <div className="space-y-6 sm:space-y-8">

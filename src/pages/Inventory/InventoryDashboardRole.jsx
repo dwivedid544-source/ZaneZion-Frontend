@@ -9,6 +9,8 @@ import {
 
 import { useData } from '../../context/GlobalDataContext';
 import { useNavigate } from 'react-router-dom';
+import DepartmentWorkflowSection from '../../components/DepartmentWorkflowSection';
+
 
 /** Parse qty whether API returns number or string like "50 units". */
 function parseQty(value) {
@@ -244,8 +246,9 @@ const InventoryDashboardRole = () => {
               </Link>
             </div>
           )}
-        </div>
       </div>
+
+      <DepartmentWorkflowSection departmentKey="inventory" departmentLabel="Inventory" />
     </div>
   );
 };

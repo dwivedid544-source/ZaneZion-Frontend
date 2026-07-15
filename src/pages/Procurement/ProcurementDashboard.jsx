@@ -10,6 +10,8 @@ import {
 } from 'lucide-react';
 import { useData } from '../../context/GlobalDataContext';
 import { Link } from 'react-router-dom';
+import DepartmentWorkflowSection from '../../components/DepartmentWorkflowSection';
+
 
 const ProcurementDashboard = () => {
   const { purchaseRequests, addPurchaseRequest, updatePurchaseRequest, vendors, quotes, fetchProcurement, fetchVendors } = useData();
@@ -239,6 +241,8 @@ const ProcurementDashboard = () => {
           )}
         />
       </div>
+
+      <DepartmentWorkflowSection departmentKey="procurement" departmentLabel="Procurement" />
 
       <RequestModal
         isOpen={isModalOpen}

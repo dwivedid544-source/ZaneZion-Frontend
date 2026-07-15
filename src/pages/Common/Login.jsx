@@ -30,15 +30,15 @@ const Login = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
 
   const demoCredentials = {
-    'superadmin': { email: 'superadmin@zanezion.com',      password: 'Admin@123' },
-    'admin':      { email: 'admin@zanezion.com',           password: 'password123' },
-    'procurement': { email: 'procurement@zanezion.com',     password: 'password123' },
-    'operations': { email: 'Dog23@gmail.com',              password: 'password123' },
-    'logistics':  { email: 'logistics@zanezion.com',       password: 'password123' },
-    'inventory':  { email: 'inventory@zanezion.com',       password: 'password123' },
-    'concierge':  { email: 'concierge@zanezion.com',       password: 'password123' },
-    'client':     { email: 'testcust@gmail.com',           password: 'password123' },
-    'staff':      { email: 'fieldstaff@zanezion.com',      password: 'password123' },
+    'superadmin': { email: 'superadmin@zanezion.com',      password: '12345678' },
+    'admin':      { email: 'admin@gmail.com',              password: '12345678' },
+    'procurement': { email: 'procurement@gmail.com',        password: '12345678' },
+    'operations': { email: 'operation@gmail.com',          password: '12345678' },
+    'logistics':  { email: 'logistics@gmail.com',          password: '12345678' },
+    'inventory':  { email: 'invontory@gmail.com',          password: '12345678' },
+    'concierge':  { email: 'concierge@gmail.com',          password: '12345678' },
+    'client':     { email: 'business01@gmail.com',         password: 'password123' },
+    'staff':      { email: 'staff@gmail.com',              password: '12345678' },
   };
 
   const roles = [
@@ -168,12 +168,13 @@ const Login = ({ onLogin }) => {
     }
   };
 
-  const handleQuickLogin = (role) => {
+  const handleQuickLogin = async (role) => {
     const credentials = demoCredentials[role];
     if (credentials) {
       setEmail(credentials.email);
       setPassword(credentials.password);
       setError(null);
+      await performLogin(credentials.email, credentials.password);
     } else {
       setError(`Credentials for ${role} not found.`);
     }

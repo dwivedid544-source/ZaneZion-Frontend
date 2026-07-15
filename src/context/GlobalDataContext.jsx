@@ -2496,10 +2496,6 @@ export const GlobalDataProvider = ({ children }) => {
         const adminItems = resAdmin.status === 'fulfilled' && resAdmin.value.data?.success
           ? (Array.isArray(resAdmin.value.data.data) ? resAdmin.value.data.data : [])
           : [];
-<<<<<<< HEAD
-      const mapped = (luxuryData || []).map((item) => ({
-        ...item,
-=======
           
         const clientItems = resClient.status === 'fulfilled' && resClient.value.data?.success
           ? (Array.isArray(resClient.value.data.data) ? resClient.value.data.data : [])
@@ -2516,7 +2512,6 @@ export const GlobalDataProvider = ({ children }) => {
       }
       
       const mapped = (rawData || []).map((item) => ({
->>>>>>> 2b392d3fd3bfc6e0cb81ee437996e7061b347e76
         id: item.id || item.itemId,
         item: item.item_name || item.name || 'Unknown Item',
         owner: item.owner_name || item.owner || 'Unknown Beneficiary',
@@ -2531,11 +2526,7 @@ export const GlobalDataProvider = ({ children }) => {
     } catch (e) {
       console.error("Fetch luxury items failed", e);
     }
-<<<<<<< HEAD
-  }, [filterDataForCurrentUser]);
-=======
   }, [currentUser]);
->>>>>>> 2b392d3fd3bfc6e0cb81ee437996e7061b347e76
 
   const fetchDashboardStats = React.useCallback(async (filter) => {
     try {

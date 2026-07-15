@@ -30,15 +30,15 @@ const Login = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
 
   const demoCredentials = {
-    'superadmin': { email: 'superadmin@zanezion.com',      password: 'Admin@123' },
-    'admin':      { email: 'admin@zanezion.com',           password: 'password123' },
-    'procurement': { email: 'procurement@zanezion.com',     password: 'password123' },
-    'operations': { email: 'Dog23@gmail.com',              password: 'password123' },
-    'logistics':  { email: 'logistics@zanezion.com',       password: 'password123' },
-    'inventory':  { email: 'inventory@zanezion.com',       password: 'password123' },
-    'concierge':  { email: 'concierge@zanezion.com',       password: 'password123' },
-    'client':     { email: 'testcust@gmail.com',           password: 'password123' },
-    'staff':      { email: 'fieldstaff@zanezion.com',      password: 'password123' },
+    'superadmin': { email: 'superadmin@zanezion.com', password: '12345678' },
+    'admin': { email: 'admin@zanezion.com', password: 'password123' },
+    'procurement': { email: 'procurement@zanezion.com', password: 'password123' },
+    'operations': { email: 'Dog23@gmail.com', password: 'password123' },
+    'logistics': { email: 'logistics@zanezion.com', password: 'password123' },
+    'inventory': { email: 'inventory@zanezion.com', password: 'password123' },
+    'concierge': { email: 'concierge@zanezion.com', password: 'password123' },
+    'client': { email: 'testcust@gmail.com', password: 'password123' },
+    'staff': { email: 'fieldstaff@zanezion.com', password: 'password123' },
   };
 
   const roles = [

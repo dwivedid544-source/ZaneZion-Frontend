@@ -962,10 +962,11 @@ export const GlobalDataProvider = ({ children }) => {
             item.manager_id ||
             item.submitted_by;
 
-          // If it belongs to their company OR if they created it
+          // If it belongs to their company OR if they created it OR if it belongs to their tenant
           return (
             (itemCompany && String(itemCompany) === String(myCompanyId)) ||
-            (itemUser && String(itemUser) === String(myUserId))
+            (itemUser && String(itemUser) === String(myUserId)) ||
+            (currentUser.tenantId && (item.tenantId || item.tenant_id) && String(item.tenantId || item.tenant_id) === String(currentUser.tenantId))
           );
         });
       }
@@ -2480,6 +2481,7 @@ export const GlobalDataProvider = ({ children }) => {
           ? res.data
           : [];
       const mapped = (luxuryData || []).map((item) => ({
+        ...item,
         id: item.id || item.itemId,
         item: item.item_name || item.name || 'Unknown Item',
         owner: item.owner_name || item.owner || 'Unknown Beneficiary',
@@ -2487,12 +2489,14 @@ export const GlobalDataProvider = ({ children }) => {
         status: item.status || 'Stored',
         value: item.estimated_value || item.value || item.price || 0,
         notes: item.notes || '',
+        company_id: item.tenantId,
+        companyId: item.tenantId,
       }));
       setLuxuryItems(filterDataForCurrentUser(mapped));
     } catch (e) {
       console.error("Fetch luxury items failed", e);
     }
-  }, []);
+  }, [filterDataForCurrentUser]);
 
   const fetchDashboardStats = React.useCallback(async (filter) => {
     try {
@@ -5739,8 +5743,14 @@ export const GlobalDataProvider = ({ children }) => {
       if (res.data?.success) {
         await fetchLuxuryItems();
       } else {
+        const fallbackCompanyId = currentUser?.company_id || currentUser?.companyId || currentUser?.clientId || currentUser?.client_id || 1;
         setLuxuryItems((prev) => [
-          { ...item, id: res.data?.data?.id || Date.now() },
+          { 
+            ...item, 
+            id: res.data?.data?.id || Date.now(),
+            company_id: fallbackCompanyId,
+            companyId: fallbackCompanyId,
+          },
           ...prev,
         ]);
       }
@@ -5768,8 +5778,13 @@ export const GlobalDataProvider = ({ children }) => {
       if (res.data?.success) {
         await fetchLuxuryItems();
       } else {
+        const fallbackCompanyId = currentUser?.company_id || currentUser?.companyId || currentUser?.clientId || currentUser?.client_id || 1;
         setLuxuryItems((prev) =>
-          prev.map((i) => (i.id === updated.id ? updated : i)),
+          prev.map((i) => (i.id === updated.id ? {
+            ...updated,
+            company_id: fallbackCompanyId,
+            companyId: fallbackCompanyId,
+          } : i)),
         );
       }
       addLog({

@@ -86,6 +86,17 @@ const Quotes = () => {
     } catch (e) {
       parsedRemarks = { leadTime: q.remarks };
     }
+    let displayStatus = q.status || 'Pending';
+    const norm = String(displayStatus).toLowerCase();
+    if (norm === 'approved' || norm === 'accepted') {
+      displayStatus = 'Accepted';
+    } else if (norm === 'rejected') {
+      displayStatus = 'Rejected';
+    } else if (norm === 'expired') {
+      displayStatus = 'Expired';
+    } else {
+      displayStatus = 'Pending';
+    }
     return {
       ...q,
       id: `QUO-${q.id}`,
@@ -96,7 +107,8 @@ const Quotes = () => {
       items: parsedRemarks.items || [],
       leadTime: parsedRemarks.leadTime || '',
       validity_date: parsedRemarks.validity || '',
-      paymentTerms: parsedRemarks.paymentTerms || 'Net 30'
+      paymentTerms: parsedRemarks.paymentTerms || 'Net 30',
+      status: displayStatus
     };
   }) : [];
 
@@ -298,9 +310,13 @@ const Quotes = () => {
           });
           console.log('[REAL_API_SUCCESS] RFQ Updated');
         } else {
+          let targetStatus = formData.status.toLowerCase();
+          if (targetStatus === 'accepted') {
+            targetStatus = 'approved';
+          }
           await updateQuoteMutation.mutateAsync({
             id: parseInt(rawId, 10),
-            data: { status: formData.status.toLowerCase() }
+            data: { status: targetStatus }
           });
           console.log('[REAL_API_SUCCESS] Quotation Updated');
         }
@@ -471,7 +487,7 @@ const Quotes = () => {
             <h1 className="text-3xl font-bold tracking-tight">Institutional Quoting</h1>
             <p className="text-secondary mt-1 text-sm">Manage luxury asset acquisition and vendor competitive analysis.</p>
           </div>
-          {(hasMenuPermission('Quotes', 'can_add') || isBusinessClient) && (
+          {(hasMenuPermission('Quotes', 'can_add') || isBusinessClient || ['client', 'saas_client', 'business_client'].includes(userRole)) && (
             <button className="btn-primary flex items-center gap-2 self-start" onClick={() => handleAction('add', {})}>
               <Plus size={16} /> New Quote Request
             </button>
@@ -546,8 +562,8 @@ const Quotes = () => {
                 onView={(item) => handleAction('view', item)}
                 onEdit={(item) => handleAction('edit', item)}
                 onDelete={(item) => handleAction('delete', item)}
-                canEdit={(!isCustomer && hasMenuPermission('Quotes', 'can_edit')) || isBusinessClient}
-                canDelete={(!isCustomer && hasMenuPermission('Quotes', 'can_delete')) || isBusinessClient}
+                canEdit={(!isCustomer && hasMenuPermission('Quotes', 'can_edit')) || isBusinessClient || ['client', 'saas_client', 'business_client'].includes(userRole)}
+                canDelete={(!isCustomer && hasMenuPermission('Quotes', 'can_delete')) || isBusinessClient || ['client', 'saas_client', 'business_client'].includes(userRole)}
               />
               <div className="mt-6 border-t border-white/5 pt-6">
                 <Pagination

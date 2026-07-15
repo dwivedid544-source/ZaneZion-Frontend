@@ -1,9 +1,9 @@
 import axios from 'axios';
 
 const getBaseUrl = () => {
-  if (window.location.hostname === 'localhost') {
-    return 'http://localhost:8000/api/v1';
-  }
+  // if (window.location.hostname === 'localhost') {
+  //   return 'http://localhost:8000/api/v1';
+  // }
   const envUrl = import.meta.env.VITE_API_URL;
   if (envUrl) {
     return `${envUrl}/v1`;

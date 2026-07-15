@@ -475,6 +475,7 @@ const Deliveries = () => {
       }
     } else if (modalType === 'delete') {
       deleteDeliveryMutation.mutateAsync(selectedDelivery.id)
+        .then(() => swalSuccess("Success", "Delivery deleted successfully"))
         .catch(() => swalError("Error", "Could not delete delivery"));
     }
     setIsModalOpen(false);
@@ -613,7 +614,7 @@ const Deliveries = () => {
               onEdit={(item) => handleAction('edit', item)}
               onDelete={(item) => handleAction('delete', item)}
               canEdit={canAssignDriverUi}
-              canDelete={hasMenuPermission('Deliveries', 'can_delete')}
+              canDelete={hasMenuPermission('Deliveries', 'can_delete') || ['saas_client', 'client', 'business_client'].includes(portalRole)}
               customAction={(item) => {
                 const statusLower = String(item.status || '').toLowerCase();
                 const isDelivered = statusLower === 'completed' || statusLower === 'delivered';

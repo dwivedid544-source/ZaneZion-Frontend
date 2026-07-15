@@ -1572,8 +1572,12 @@ const Deliveries = () => {
               {modalType !== 'view' && (
                 <button
                   onClick={handleSave}
-                  className={`btn-primary ${modalType === 'delete' ? 'bg-danger hover:bg-danger/80 border-danger' : ''}`}
+                  disabled={createDeliveryMutation.isPending || updateDeliveryMutation.isPending || deleteDeliveryMutation.isPending || submitPODMutation.isPending}
+                  className={`btn-primary ${modalType === 'delete' ? 'bg-danger hover:bg-danger/80 border-danger' : ''} disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}
                 >
+                  {(createDeliveryMutation.isPending || updateDeliveryMutation.isPending || deleteDeliveryMutation.isPending || submitPODMutation.isPending) && (
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  )}
                   {modalType === 'delete' ? 'Confirm Termination' : 'Authenticate Dispatch'}
                 </button>
               )}

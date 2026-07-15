@@ -25,8 +25,10 @@ const Topbar = ({ toggleSidebar, role }) => {
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
     };
   }, []);
   const { currentUser, clients, orders, inventory, users, notifications, unreadCount, fetchNotifications, markNotificationRead, markAllNotificationsRead } = useData();

@@ -562,7 +562,6 @@ const Clients = () => {
                 ) : (
                   <>
                     {clientTypeFilter !== 'Business' && <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Plan</th>}
-                    {clientTypeFilter === 'Business' && <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">License</th>}
                     {clientTypeFilter === 'Website' && <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Payment Status</th>}
                     <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Phone</th>
                     <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Source</th>
@@ -622,13 +621,6 @@ const Clients = () => {
                             <span className="text-sm font-bold text-accent">{client.plan || 'N/A'}</span>
                           </td>
                         )}
-                        {clientTypeFilter === 'Business' && (
-                          <td className="p-6">
-                            <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${client.source ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning'}`}>
-                              {client.source ? 'Uploaded' : 'Pending'}
-                            </span>
-                          </td>
-                        )}
                         {clientTypeFilter === 'Website' && (
                         <td className="p-6">
                           <span className={`px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${
@@ -644,8 +636,8 @@ const Clients = () => {
                           <span className="text-sm text-secondary font-medium">{client.phone || 'N/A'}</span>
                         </td>
                         <td className="p-6">
-                          <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${client.source === 'Landing Page' || client.source === 'Website' || client.source === 'Subscriber' || client.clientType === 'Business' ? 'bg-info/20 text-info' : 'bg-white/10 text-white'}`}>
-                            {client.clientType === 'Business' ? 'Website' : (client.source === 'Landing Page' ? 'Website' : client.source || 'Manual')}
+                          <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${client.source === 'Landing Page' || client.source === 'Website' || client.source === 'Subscriber' ? 'bg-info/20 text-info' : 'bg-white/10 text-white'}`}>
+                            {client.source === 'Landing Page' ? 'Website' : (client.source || 'Manual')}
                           </span>
                         </td>
                       </>

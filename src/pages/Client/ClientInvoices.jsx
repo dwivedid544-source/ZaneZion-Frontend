@@ -10,6 +10,7 @@ import {
     X, Wallet, Receipt
 } from 'lucide-react';
 import { useData } from '../../context/GlobalDataContext';
+import { normalizeRole } from '../../utils/authUtils';
 
 const ClientInvoices = () => {
     const { invoices, payments, settleInvoice, currentUser, clients, addInvoice, orders, fetchFinance, fetchClients, fetchOrders } = useData();
@@ -54,6 +55,9 @@ const ClientInvoices = () => {
     const userRole = localStorage.getItem('userRole');
     const isInternalAdmin = userRole === 'superadmin';
 
+    const portalRole = normalizeRole(currentUser?.role);
+    const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
+
     // Identify client record for correct order attribution
     const tenantId = currentUser?.clientId || currentUser?.companyId || currentUser?.company_id;
     const isCustomerRole = (userRole || '').toLowerCase() === 'customer';
@@ -65,7 +69,7 @@ const ClientInvoices = () => {
 
     // Filter invoices to only this client's
     // For customer role: backend already filters by company_id, show all returned invoices
-    const myInvoices = (isInternalAdmin || isCustomerRole)
+    const myInvoices = (isInternalAdmin || isCustomerRole || isBusinessClient)
         ? (invoices || [])
         : (invoices || []).filter(inv =>
             myClient && (inv.clientId === myClient.id || inv.company_id === myClient.id || inv.client === myClient.name)

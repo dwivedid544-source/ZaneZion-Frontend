@@ -18,6 +18,20 @@ import { normalizeRole } from '../../utils/authUtils';
 const Invoices = () => {
     const { orders, deliveries, clients, customerUsers, currentUser, fetchOrders, fetchDeliveries, fetchClients, fetchCustomerUsers, hasMenuPermission } = useData();
 
+    const getOrderDetails = (orderId) => {
+        const order = (orders || []).find(o => String(o.id) === String(orderId));
+        if (!order) return null;
+        let itms = order.items && order.items.length > 0 ? order.items : (order.customItems || []);
+        if (typeof itms === 'string') {
+            try { itms = JSON.parse(itms); } catch { itms = []; }
+        }
+        const orderName = (itms && itms.length > 0)
+            ? (itms[0]?.item?.name || itms[0]?.name || 'Unknown Item') + (itms.length > 1 ? ` (+${itms.length - 1} more)` : '')
+            : (order.product || 'General Item');
+        const orderTypeStr = order.orderType || order.type || 'Custom Order';
+        return { name: orderName, type: orderTypeStr };
+    };
+
     const [page, setPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
@@ -462,9 +476,14 @@ const Invoices = () => {
                                         required
                                     >
                                         <option value="">Select Order...</option>
-                                        {orders.filter(o => !invoices.some(i => String(i.orderId) === String(o.id)) || String(o.id) === String(formData.orderId)).map(o => (
-                                            <option key={o.id} value={o.id}>{o.id} - {o.orderType || o.type || 'Institutional Order'} (${o.total})</option>
-                                        ))}
+                                        {orders.filter(o => !invoices.some(i => String(i.orderId) === String(o.id)) || String(o.id) === String(formData.orderId)).map(o => {
+                                            const details = getOrderDetails(o.id);
+                                            return (
+                                                <option key={o.id} value={o.id}>
+                                                    {o.id} - {details ? `${details.type} - ${details.name}` : (o.orderType || o.type || 'Institutional Order')} (${o.total})
+                                                </option>
+                                            );
+                                        })}
                                     </select>
                                 </div>
                                 <div className="space-y-2">
@@ -614,8 +633,19 @@ const Invoices = () => {
                                 </div>
                                 <div className="flex justify-between items-center py-3 border-t border-white/5">
                                     <div className="flex flex-col">
-                                        <span className="text-sm font-bold text-white">Full Service Procurement — Ref {selectedInvoice.orderId}</span>
-                                        <span className="text-[10px] text-secondary">High-End Logistics & Supply Chain Management</span>
+                                        {(() => {
+                                            const details = getOrderDetails(selectedInvoice.orderId);
+                                            return (
+                                                <>
+                                                    <span className="text-sm font-bold text-white">
+                                                        {details ? `${details.type} — ${details.name}` : `Full Service Procurement — Ref ${selectedInvoice.orderId}`}
+                                                    </span>
+                                                    <span className="text-[10px] text-secondary">
+                                                        {details ? `Ref: ${selectedInvoice.orderId}` : 'High-End Logistics & Supply Chain Management'}
+                                                    </span>
+                                                </>
+                                            );
+                                        })()}
                                     </div>
                                     <span className="text-sm font-bold text-white">${parseFloat(selectedInvoice.totalAmount).toLocaleString()}</span>
                                 </div>
@@ -801,8 +831,19 @@ const Invoices = () => {
                                         <tr className="border-b border-gray-100">
                                             <td className="py-3 px-2">
                                                 <div className="flex flex-col gap-0.5">
-                                                    <p className="font-black text-sm italic tracking-tight uppercase leading-tight">Institutional Procurement — Ref {selectedInvoice.orderId}</p>
-                                                    <p className="text-[7px] text-gray-400 font-bold uppercase tracking-widest italic leading-none">Full Service Supply Chain Management</p>
+                                                    {(() => {
+                                                        const details = getOrderDetails(selectedInvoice.orderId);
+                                                        return (
+                                                            <>
+                                                                <p className="font-black text-sm italic tracking-tight uppercase leading-tight">
+                                                                    {details ? `${details.type} — ${details.name}` : `Institutional Procurement — Ref ${selectedInvoice.orderId}`}
+                                                                </p>
+                                                                <p className="text-[7px] text-gray-400 font-bold uppercase tracking-widest italic leading-none">
+                                                                    {details ? `Ref: ${selectedInvoice.orderId}` : 'Full Service Supply Chain Management'}
+                                                                </p>
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </td>
                                             <td className="text-center py-3 px-2 font-black italic text-xs opacity-40 leading-none">01</td>

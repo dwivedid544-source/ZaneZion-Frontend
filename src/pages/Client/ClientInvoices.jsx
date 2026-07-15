@@ -14,6 +14,25 @@ import { useData } from '../../context/GlobalDataContext';
 const ClientInvoices = () => {
     const { invoices, payments, settleInvoice, currentUser, clients, addInvoice, orders, fetchFinance, fetchClients, fetchOrders } = useData();
 
+    const getOrderName = (orderId) => {
+        const order = (orders || []).find(o => String(o.id) === String(orderId));
+        if (!order) return '';
+        let itms = order.items && order.items.length > 0 ? order.items : (order.customItems || []);
+        if (typeof itms === 'string') {
+            try { itms = JSON.parse(itms); } catch { itms = []; }
+        }
+        if (!itms || itms.length === 0) return order.product || 'General Item';
+        const firstItemName = itms[0]?.item?.name || itms[0]?.name || "Unknown Item";
+        if (itms.length === 1) return firstItemName;
+        return `${firstItemName} (+${itms.length - 1} more)`;
+    };
+
+    const getOrderType = (orderId) => {
+        const order = (orders || []).find(o => String(o.id) === String(orderId));
+        if (!order) return '';
+        return order.orderType || order.type || 'Custom Order';
+    };
+
     useEffect(() => {
         fetchFinance();
         fetchClients();
@@ -538,7 +557,16 @@ const ClientInvoices = () => {
                             </div>
                             <div>
                                 <p className="text-[10px] text-muted font-bold uppercase mb-1">Order Ref</p>
-                                <p className="text-sm font-bold text-accent">{selectedInvoice.orderId || 'GEN-ASY'}</p>
+                                {(() => {
+                                    const oName = getOrderName(selectedInvoice.orderId);
+                                    const oType = getOrderType(selectedInvoice.orderId);
+                                    return (
+                                        <p className="text-sm font-bold text-accent">
+                                            {selectedInvoice.orderId || 'GEN-ASY'}
+                                            {oName ? ` (${oType}: ${oName})` : ''}
+                                        </p>
+                                    );
+                                })()}
                             </div>
                         </div>
 
@@ -699,8 +727,18 @@ const ClientInvoices = () => {
                                 <tbody>
                                     <tr className="border-b border-gray-100">
                                         <td className="py-3 px-2">
-                                            <p className="font-black text-sm italic tracking-tight uppercase">Full Service Logistics Logistics Fulfillment</p>
-                                            <p className="text-[7px] text-gray-400 font-bold uppercase tracking-widest">Ref: {selectedInvoice.orderId || 'NON-COMM-DISPATCH'}</p>
+                                            {(() => {
+                                                const orderId = selectedInvoice.orderId;
+                                                const oName = getOrderName(orderId);
+                                                const oType = getOrderType(orderId);
+                                                const description = oName ? `${oType} — ${oName}` : "Full Service Logistics Fulfillment";
+                                                return (
+                                                    <>
+                                                        <p className="font-black text-sm italic tracking-tight uppercase">{description}</p>
+                                                        <p className="text-[7px] text-gray-400 font-bold uppercase tracking-widest">Ref: {selectedInvoice.orderId || 'NON-COMM-DISPATCH'}</p>
+                                                    </>
+                                                );
+                                            })()}
                                         </td>
                                         <td className="text-right py-3 px-2">
                                             <span className="text-sm font-black tracking-tighter tabular-nums">${parseFloat(selectedInvoice.totalAmount).toLocaleString()}</span>

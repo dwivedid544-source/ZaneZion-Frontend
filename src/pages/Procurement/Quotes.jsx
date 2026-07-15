@@ -78,7 +78,26 @@ const Quotes = () => {
   const { mutateAsync: createPurchaseOrderMutation } = useCreatePurchaseOrder();
 
   // Offline Fallback Mechanism: If real API is empty or fails, merge with context mocks
-  const resolvedRfqs = realRfqs.length > 0 ? realRfqs.map(r => ({ ...r, id: `RFQ-${r.id}`, quote_type: 'vendor_request', vendor_id: r.vendorId, total_amount: 0 })) : [];
+  const resolvedRfqs = realRfqs.length > 0 ? realRfqs.map(r => {
+    let metaObj = {};
+    if (typeof r.metadata === 'string') {
+      try { metaObj = JSON.parse(r.metadata); } catch (e) {}
+    } else if (r.metadata && typeof r.metadata === 'object') {
+      metaObj = r.metadata;
+    }
+    return {
+      ...r,
+      id: `RFQ-${r.id}`,
+      quote_type: 'vendor_request',
+      vendor_id: r.vendorId,
+      total_amount: 0,
+      metadata: metaObj,
+      items: metaObj.items || [],
+      leadTime: metaObj.leadTime || '',
+      validity: metaObj.validity || '',
+      paymentTerms: metaObj.paymentTerms || 'Net 30'
+    };
+  }) : [];
   const resolvedQuotations = realQuotes.length > 0 ? realQuotes.map(q => {
     let parsedRemarks = {};
     try {
@@ -86,6 +105,20 @@ const Quotes = () => {
     } catch (e) {
       parsedRemarks = { leadTime: q.remarks };
     }
+
+    let metaObj = {};
+    if (typeof q.metadata === 'string') {
+      try { metaObj = JSON.parse(q.metadata); } catch (e) {}
+    } else if (q.metadata && typeof q.metadata === 'object') {
+      metaObj = q.metadata;
+    }
+
+    // Resolve items: check metaObj first, then parsedRemarks.items, then check if parsedRemarks is itself an array of items
+    const resolvedItems = metaObj.items || parsedRemarks.items || (Array.isArray(parsedRemarks) ? parsedRemarks : []);
+    const resolvedLeadTime = metaObj.leadTime || parsedRemarks.leadTime || q.leadTime || q.lead_time || '';
+    const resolvedValidity = metaObj.validity || parsedRemarks.validity || q.validity || q.validity_date || '';
+    const resolvedPaymentTerms = metaObj.paymentTerms || parsedRemarks.paymentTerms || q.paymentTerms || q.payment_terms || 'Net 30';
+
     return {
       ...q,
       id: `QUO-${q.id}`,
@@ -93,10 +126,11 @@ const Quotes = () => {
       vendor_id: q.vendorId,
       purchaseRequestId: q.rfq?.purchaseRequestId || q.purchaseRequestId,
       total_amount: q.amount,
-      items: parsedRemarks.items || [],
-      leadTime: parsedRemarks.leadTime || '',
-      validity_date: parsedRemarks.validity || '',
-      paymentTerms: parsedRemarks.paymentTerms || 'Net 30'
+      metadata: metaObj,
+      items: resolvedItems,
+      leadTime: resolvedLeadTime,
+      validity_date: resolvedValidity,
+      paymentTerms: resolvedPaymentTerms
     };
   }) : [];
 
@@ -119,11 +153,7 @@ const Quotes = () => {
     const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
     return cId && uId && cId === uId;
   });
-  const isBusinessClient = portalRole === 'client' && (
-    rawRoleStr.toLowerCase().includes('business') ||
-    currentClient?.clientType === 'Business' ||
-    currentClient?.client_type === 'Business'
-  );
+  const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
 
   const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
   const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole) && !isBusinessClient;
@@ -298,9 +328,11 @@ const Quotes = () => {
           });
           console.log('[REAL_API_SUCCESS] RFQ Updated');
         } else {
+          let nextStatus = formData.status.toLowerCase();
+          if (nextStatus === 'accepted') nextStatus = 'approved';
           await updateQuoteMutation.mutateAsync({
             id: parseInt(rawId, 10),
-            data: { status: formData.status.toLowerCase() }
+            data: { status: nextStatus }
           });
           console.log('[REAL_API_SUCCESS] Quotation Updated');
         }
@@ -665,7 +697,7 @@ const Quotes = () => {
                   )}
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted uppercase">Protocol Status</label>
-                    <select className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} disabled={modalType === 'view'}>
+                    <select className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold" value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })} disabled={modalType === 'view' || isBusinessClient}>
                       <option value="Pending">Pending</option>
                       <option value="Accepted">Accepted</option>
                       <option value="Rejected">Rejected</option>
@@ -798,7 +830,7 @@ const Quotes = () => {
                       <Printer size={16} /> Print Quote
                     </button>
                   )}
-                  {modalType === 'view' && formData.status === 'Active' && (
+                  {modalType === 'view' && ['active', 'pending'].includes(String(formData.status).toLowerCase()) && !isBusinessClient && (
                     <button onClick={handleAccept} className="btn-primary bg-success hover:bg-success/90 border-success">Accept & Generate Order</button>
                   )}
                   {(modalType === 'add' || modalType === 'edit') && <button onClick={handleSave} className="btn-primary">Finalize Procurement Offer</button>}

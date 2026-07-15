@@ -49,18 +49,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     const portalRole = normalizeRole(currentUser?.role || role || '');
     const isPersonalCustomer = portalRole === 'customer';
 
-    const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
-    const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
-    const currentClient = (clients || []).find(c => {
-        const cId = normalizeId(c.id);
-        const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
-        return cId && uId && cId === uId;
-    });
-    const isBusinessClient = portalRole === 'client' && (
-        rawRoleStr.toLowerCase().includes('business') ||
-        currentClient?.clientType === 'Business' ||
-        currentClient?.client_type === 'Business'
-    );
+    const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
 
     const canCreateManualOrder = roleCanCreateInstitutionalOrder(portalRole) || isBusinessClient;
     const canEditOrderStatus = roleCanUpdateOrderStatus(portalRole) || isBusinessClient;

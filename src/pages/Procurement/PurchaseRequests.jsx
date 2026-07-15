@@ -34,9 +34,15 @@ const PurchaseRequests = () => {
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
 
+  const portalRole = normalizeRole(currentUser?.role);
+  const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
+  const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
+  const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole) && !isBusinessClient;
+
   const { data: prData, isLoading, error } = usePurchaseRequests(page, 10, searchTerm);
 
   const purchaseRequests = prData?.purchaseRequests || (mockRequests || []);
+
   const meta = prData ? { totalPages: prData.totalPages, totalItems: prData.total } : { totalPages: 1, totalItems: purchaseRequests.length };
 
   const createPRMutation = useCreatePR();
@@ -47,29 +53,12 @@ const PurchaseRequests = () => {
   const [modalType, setModalType] = useState('view');
   const [selectedRequest, setSelectedRequest] = useState(null);
 
-  const portalRole = normalizeRole(currentUser?.role);
-  const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
-  const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
-  const currentClient = (clients || []).find(c => {
-    const cId = normalizeId(c.id);
-    const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
-    return cId && uId && cId === uId;
-  });
-  const isBusinessClient = portalRole === 'client' && (
-    rawRoleStr.toLowerCase().includes('business') ||
-    currentClient?.clientType === 'Business' ||
-    currentClient?.client_type === 'Business'
-  );
-
-  const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
-  const isCustomer = ['customer', 'saas_client', 'client'].includes(userRole) && !isBusinessClient;
-
   React.useEffect(() => {
     fetchProcurement();
-    // Only fetch users/clients if the role has the required menu permissions
-    if (hasMenuPermission('Personnel', 'can_view') || ['procurement', 'procurement_staff', 'admin', 'super_admin', 'superadmin'].includes(userRole)) {
-      fetchStaff();
-      fetchCustomerUsers({ include_all: 1 });
+    // Only fetch users/clients if the role has the required menu permissions or is business client
+    if (isBusinessClient || hasMenuPermission('Personnel', 'can_view') || ['procurement', 'procurement_staff', 'admin', 'super_admin', 'superadmin'].includes(userRole)) {
+      if (!isBusinessClient && fetchStaff) fetchStaff();
+      fetchCustomerUsers({ include_all: 1, include_client_role: 1 });
     }
     if (hasMenuPermission('Clients', 'can_view') || portalRole === 'client') {
       fetchClients();

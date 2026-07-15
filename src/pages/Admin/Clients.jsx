@@ -624,8 +624,8 @@ const Clients = () => {
                         )}
                         {clientTypeFilter === 'Business' && (
                           <td className="p-6">
-                            <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${client.business_license_url ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning'}`}>
-                              {client.business_license_url ? 'Uploaded' : 'Pending'}
+                            <span className={`px-2 py-1 rounded text-[10px] font-black uppercase tracking-widest ${client.source ? 'bg-success/20 text-success' : 'bg-warning/20 text-warning'}`}>
+                              {client.source ? 'Uploaded' : 'Pending'}
                             </span>
                           </td>
                         )}
@@ -644,8 +644,8 @@ const Clients = () => {
                           <span className="text-sm text-secondary font-medium">{client.phone || 'N/A'}</span>
                         </td>
                         <td className="p-6">
-                          <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${client.source === 'Landing Page' || client.source === 'Website' || client.source === 'Subscriber' ? 'bg-info/20 text-info' : 'bg-white/10 text-white'}`}>
-                            {client.source === 'Landing Page' ? 'Website' : client.source || 'Manual'}
+                          <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${client.source === 'Landing Page' || client.source === 'Website' || client.source === 'Subscriber' || client.clientType === 'Business' ? 'bg-info/20 text-info' : 'bg-white/10 text-white'}`}>
+                            {client.clientType === 'Business' ? 'Website' : (client.source === 'Landing Page' ? 'Website' : client.source || 'Manual')}
                           </span>
                         </td>
                       </>

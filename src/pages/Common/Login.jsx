@@ -168,13 +168,12 @@ const Login = ({ onLogin }) => {
     }
   };
 
-  const handleQuickLogin = async (role) => {
+  const handleQuickLogin = (role) => {
     const credentials = demoCredentials[role];
     if (credentials) {
       setEmail(credentials.email);
       setPassword(credentials.password);
       setError(null);
-      await performLogin(credentials.email, credentials.password);
     } else {
       setError(`Credentials for ${role} not found.`);
     }

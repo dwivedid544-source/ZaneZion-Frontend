@@ -105,7 +105,6 @@ const Quotes = () => {
     } catch (e) {
       parsedRemarks = { leadTime: q.remarks };
     }
-<<<<<<< HEAD
     let displayStatus = q.status || 'Pending';
     const norm = String(displayStatus).toLowerCase();
     if (norm === 'approved' || norm === 'accepted') {
@@ -117,7 +116,6 @@ const Quotes = () => {
     } else {
       displayStatus = 'Pending';
     }
-=======
 
     let metaObj = {};
     if (typeof q.metadata === 'string') {
@@ -132,7 +130,6 @@ const Quotes = () => {
     const resolvedValidity = metaObj.validity || parsedRemarks.validity || q.validity || q.validity_date || '';
     const resolvedPaymentTerms = metaObj.paymentTerms || parsedRemarks.paymentTerms || q.paymentTerms || q.payment_terms || 'Net 30';
 
->>>>>>> 2b392d3fd3bfc6e0cb81ee437996e7061b347e76
     return {
       ...q,
       id: `QUO-${q.id}`,
@@ -140,19 +137,12 @@ const Quotes = () => {
       vendor_id: q.vendorId,
       purchaseRequestId: q.rfq?.purchaseRequestId || q.purchaseRequestId,
       total_amount: q.amount,
-<<<<<<< HEAD
-      items: parsedRemarks.items || [],
-      leadTime: parsedRemarks.leadTime || '',
-      validity_date: parsedRemarks.validity || '',
-      paymentTerms: parsedRemarks.paymentTerms || 'Net 30',
-      status: displayStatus
-=======
       metadata: metaObj,
       items: resolvedItems,
       leadTime: resolvedLeadTime,
       validity_date: resolvedValidity,
-      paymentTerms: resolvedPaymentTerms
->>>>>>> 2b392d3fd3bfc6e0cb81ee437996e7061b347e76
+      paymentTerms: resolvedPaymentTerms,
+      status: displayStatus
     };
   }) : [];
 
@@ -350,7 +340,6 @@ const Quotes = () => {
           });
           console.log('[REAL_API_SUCCESS] RFQ Updated');
         } else {
-<<<<<<< HEAD
           let targetStatus = formData.status.toLowerCase();
           if (targetStatus === 'accepted') {
             targetStatus = 'approved';
@@ -358,13 +347,6 @@ const Quotes = () => {
           await updateQuoteMutation.mutateAsync({
             id: parseInt(rawId, 10),
             data: { status: targetStatus }
-=======
-          let nextStatus = formData.status.toLowerCase();
-          if (nextStatus === 'accepted') nextStatus = 'approved';
-          await updateQuoteMutation.mutateAsync({
-            id: parseInt(rawId, 10),
-            data: { status: nextStatus }
->>>>>>> 2b392d3fd3bfc6e0cb81ee437996e7061b347e76
           });
           console.log('[REAL_API_SUCCESS] Quotation Updated');
         }

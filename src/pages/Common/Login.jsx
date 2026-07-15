@@ -30,7 +30,7 @@ const Login = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
 
   const demoCredentials = {
-    'superadmin': { email: 'superadmin@zanezion.com',      password: 'password123' },
+    'superadmin': { email: 'superadmin@zanezion.com',      password: 'Admin@123' },
     'admin':      { email: 'admin@zanezion.com',           password: 'password123' },
     'procurement': { email: 'procurement@zanezion.com',     password: 'password123' },
     'operations': { email: 'Dog23@gmail.com',              password: 'password123' },

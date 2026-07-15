@@ -71,11 +71,7 @@ const Orders = () => {
     const uId = normalizeId(currentUser?.clientId || currentUser?.companyId || currentUser?.company_id);
     return cId && uId && cId === uId;
   });
-  const isBusinessClient = portalRole === 'client' && (
-    rawRoleStr.toLowerCase().includes('business') ||
-    currentClient?.clientType === 'Business' ||
-    currentClient?.client_type === 'Business'
-  );
+  const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
 
   const canManageOrders = ['superadmin', 'admin', 'operations', 'procurement', 'inventory', 'logistics', 'concierge', 'saas_client'].includes(normalizedRole) || isBusinessClient;
 
@@ -237,6 +233,33 @@ const Orders = () => {
       accessor: "id",
       render: (row) => {
         const orderStatusNorm = String(row?.status || '').toLowerCase();
+        const rowOrderNum = Number(String(row?.id ?? '').replace(/\D/g, '')) || null;
+        const delivery = (deliveries || []).find((d) => {
+          const deliveryOrderNum =
+            Number(d?.order_id_raw) ||
+            Number(String(d?.orderId ?? '').replace(/\D/g, '')) ||
+            null;
+          return rowOrderNum != null && deliveryOrderNum != null && rowOrderNum === deliveryOrderNum;
+        });
+
+        if (delivery) {
+          return (
+            <div className="flex flex-col gap-1">
+              <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${delivery.status === 'Completed' || delivery.status === 'Delivered' ? 'bg-success/20 text-success' :
+                delivery.status === 'In Transit' ? 'bg-info/20 text-info' :
+                delivery.status === 'Pending' || delivery.status === 'Pending Pickup' ? 'bg-warning/20 text-warning' : 'bg-muted/20 text-muted'
+                }`}>
+                {delivery.status === 'Pending Pickup' ? 'Awaiting Pickup' : delivery.status}
+              </span>
+              {(delivery.status === 'Completed' || delivery.status === 'Delivered') && delivery.deliveryDate && (
+                <span className="text-[9px] font-black text-muted uppercase tracking-tighter">
+                  {new Date(delivery.deliveryDate).toLocaleDateString()}
+                </span>
+              )}
+            </div>
+          );
+        }
+
         if (['created', 'admin_review', 'pending_review'].includes(orderStatusNorm)) {
           return (
             <div className="flex flex-col gap-1">
@@ -264,27 +287,57 @@ const Orders = () => {
             </div>
           );
         }
-        const rowOrderNum = Number(String(row?.id ?? '').replace(/\D/g, '')) || null;
-        const delivery = (deliveries || []).find((d) => {
-          const deliveryOrderNum =
-            Number(d?.order_id_raw) ||
-            Number(String(d?.orderId ?? '').replace(/\D/g, '')) ||
-            null;
-          return rowOrderNum != null && deliveryOrderNum != null && rowOrderNum === deliveryOrderNum;
-        });
+        if (orderStatusNorm === 'operation') {
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase bg-info/20 text-info border border-info/25">
+                In Operations
+              </span>
+            </div>
+          );
+        }
+        if (orderStatusNorm === 'procurement') {
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase bg-warning/20 text-warning border border-warning/25">
+                In Procurement
+              </span>
+            </div>
+          );
+        }
+        if (orderStatusNorm === 'inventory') {
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase bg-accent/20 text-accent border border-accent/25">
+                In Storage
+              </span>
+            </div>
+          );
+        }
+        if (orderStatusNorm === 'completed') {
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase bg-success/20 text-success border border-success/25">
+                Completed
+              </span>
+            </div>
+          );
+        }
+        if (orderStatusNorm === 'cancelled') {
+          return (
+            <div className="flex flex-col gap-1">
+              <span className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase bg-danger/20 text-danger border border-danger/25">
+                Cancelled
+              </span>
+            </div>
+          );
+        }
+
         return (
           <div className="flex flex-col gap-1">
-            <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${delivery?.status === 'Completed' || delivery?.status === 'Delivered' ? 'bg-success/20 text-success' :
-              delivery?.status === 'In Transit' ? 'bg-info/20 text-info' :
-                delivery?.status === 'Pending' || delivery?.status === 'Pending Pickup' ? 'bg-warning/20 text-warning' : 'bg-muted/20 text-muted'
-              }`}>
-              {delivery ? (delivery.status === 'Pending Pickup' ? 'Awaiting Pickup' : delivery.status) : 'N/A'}
+            <span className="px-2 py-1 rounded-lg text-[10px] font-bold uppercase bg-muted/20 text-muted border border-white/5">
+              N/A
             </span>
-            {(delivery?.status === 'Completed' || delivery?.status === 'Delivered') && delivery?.deliveryDate && (
-              <span className="text-[9px] font-black text-muted uppercase tracking-tighter">
-                {new Date(delivery.deliveryDate).toLocaleDateString()}
-              </span>
-            )}
           </div>
         );
       }

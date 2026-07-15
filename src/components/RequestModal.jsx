@@ -11,7 +11,8 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
   const rawRole = currentUser?.role;
   const roleStr = typeof rawRole === 'object' ? (rawRole?.name || '') : String(rawRole || '');
   const userRole = roleStr.toLowerCase().replace(/\s+/g, '_');
-  const isAdmin = ['admin', 'super_admin', 'procurement', 'procurement_staff', 'operations', 'saas_client', 'client', 'business_client'].includes(userRole);
+  const isRealAdmin = ['admin', 'super_admin', 'superadmin', 'procurement', 'procurement_staff', 'operations'].includes(userRole);
+  const isAdmin = isRealAdmin || ['client', 'business_client', 'saas_client'].includes(userRole);
   const canViewDepartments = hasMenuPermission('Departments', 'can_view') || ['admin', 'super_admin', 'saas_client', 'customer'].includes(userRole);
 
   const { data: deptData } = useDepartments(1, 100, '', { enabled: canViewDepartments });
@@ -369,7 +370,7 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
           </div>
           <div className="space-y-1">
             <label className="text-[10px] font-bold text-muted uppercase">Status</label>
-            {!isAdmin ? (
+            {!isRealAdmin ? (
               <div className="w-full bg-background/50 border border-border rounded-lg px-4 py-2.5 text-sm font-bold text-white flex items-center">
                 <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-black tracking-widest ${
                   String(formData.status).toLowerCase() === 'completed' || String(formData.status).toLowerCase() === 'approved'
@@ -468,7 +469,7 @@ const RequestModal = ({ isOpen, onClose, onSave, selectedRequest, modalType = 'a
             {isView ? 'Close Review' : 'Cancel'}
           </button>
           
-          {isView && isAdmin && formData.status === 'Pending' && (
+          {isView && isRealAdmin && ['pending', 'submitted', 'draft'].includes(String(formData.status).toLowerCase()) && (
             <>
               <button 
                 type="button" 

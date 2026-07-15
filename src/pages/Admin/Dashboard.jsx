@@ -353,9 +353,11 @@ const Dashboard = () => {
                     </div>
                   </div>
                 </div>
-                <button onClick={() => navigate('/dashboard/inventory')} className="w-full py-3.5 md:py-4 mt-6 text-[9px] md:text-[10px] font-black text-accent uppercase tracking-widest border border-accent/20 rounded-2xl hover:bg-accent/5 transition-all">
-                  Audit All Warehouses
-                </button>
+                {!isSuperAdmin && (
+                  <button onClick={() => navigate('/dashboard/inventory')} className="w-full py-3.5 md:py-4 mt-6 text-[9px] md:text-[10px] font-black text-accent uppercase tracking-widest border border-accent/20 rounded-2xl hover:bg-accent/5 transition-all">
+                    Audit All Warehouses
+                  </button>
+                )}
               </div>
             )}
 
@@ -398,20 +400,23 @@ const Dashboard = () => {
                     <span className="text-lg font-bold text-white">{stats.activeProjects}</span>
                   </div>
                 </div>
-                <button onClick={() => navigate('/dashboard/projects')} className="w-full py-3.5 md:py-4 mt-6 text-[9px] md:text-[10px] font-black text-primary uppercase tracking-widest bg-primary/5 hover:bg-primary hover:text-black rounded-2xl transition-all border border-primary/20">
-                  Manage Operations
-                </button>
+                {!isSuperAdmin && (
+                  <button onClick={() => navigate('/dashboard/projects')} className="w-full py-3.5 md:py-4 mt-6 text-[9px] md:text-[10px] font-black text-primary uppercase tracking-widest bg-primary/5 hover:bg-primary hover:text-black rounded-2xl transition-all border border-primary/20">
+                    Manage Operations
+                  </button>
+                )}
               </div>
             )}
           </div>
         </div>
 
         {/* Operational Intelligence Feed */}
-        <div className="glass-card p-5 md:p-8 border-white/5 relative overflow-hidden flex flex-col h-full lg:min-h-[600px]">
-          <div className="absolute top-0 right-0 w-32 h-32 bg-accent opacity-[0.02] blur-[80px]" />
-          <h3 className="text-xl md:text-2xl font-bold tracking-tight mb-6 md:mb-8 text-white">System Activity Log</h3>
-          <div className="flex-1 space-y-6 md:space-y-8 overflow-y-auto custom-scrollbar pr-2 md:pr-4 max-h-[400px] lg:max-h-none">
-            {(logs || []).length === 0 ? (
+        <div className="glass-card border-white/5 relative overflow-hidden min-h-[500px] lg:min-h-0">
+          <div className="flex flex-col h-full w-full p-5 md:p-8 lg:absolute lg:inset-0">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-accent opacity-[0.02] blur-[80px] pointer-events-none" />
+            <h3 className="text-xl md:text-2xl font-bold tracking-tight mb-6 md:mb-8 text-white shrink-0">System Activity Log</h3>
+            <div className="flex-1 space-y-6 md:space-y-8 overflow-y-auto custom-scrollbar pr-2 md:pr-4 min-h-0">
+              {(logs || []).length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">
                 <Activity size={32} className="text-muted/30 mb-3" />
                 <p className="text-xs text-muted/50 font-bold uppercase tracking-widest">No activity yet</p>
@@ -437,11 +442,12 @@ const Dashboard = () => {
                 </div>
               </div>
             ))}
-          </div>
-          <div className="pt-6 mt-auto border-t border-white/5">
-            <button onClick={() => navigate('/dashboard/audits')} className="w-full py-4 text-[10px] font-black text-muted uppercase tracking-widest hover:text-white transition-all flex items-center justify-center gap-2">
-              View Full Activity Archive <ArrowRight size={14} />
-            </button>
+            </div>
+            <div className="pt-6 mt-auto border-t border-white/5 shrink-0">
+              <button onClick={() => navigate('/dashboard/audits')} className="w-full py-4 text-[10px] font-black text-muted uppercase tracking-widest hover:text-white transition-all flex items-center justify-center gap-2">
+                View Full Activity Archive <ArrowRight size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>

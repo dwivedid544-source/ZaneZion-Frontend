@@ -107,7 +107,7 @@ export const useUpdateQuotation = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }) => {
-      const res = await api.put(`/quotations/${id}`, data);
+      const res = await api.put(`/quotations/${id}/status`, data);
       return res.data;
     },
     onSuccess: () => {

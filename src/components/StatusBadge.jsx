@@ -9,6 +9,7 @@ const StatusBadge = ({ status, className }) => {
       case 'active':
       case 'stable':
       case 'approved':
+      case 'accepted':
       case 'assigned':
       case 'paid':
         return 'bg-success/10 text-success border-success/20';
@@ -50,6 +51,7 @@ const StatusBadge = ({ status, className }) => {
       case 'inactive':
       case 'cancelled':
       case 'rejected':
+      case 'expired':
       case 'overdue':
         return 'bg-danger/10 text-danger border-danger/20';
       case 'received':

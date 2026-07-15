@@ -30,7 +30,7 @@ const Clients = () => {
   const [clientTypeFilter, setClientTypeFilter] = useState(isAdminRole ? 'Customers' : 'SaaS'); // 'SaaS' | 'Personal' | 'Customers'
   const itemsPerPage = 10;
 
-  const activeClientType = isAdminRole ? 'Personal' : (clientTypeFilter === 'Website' ? undefined : (clientTypeFilter === 'Personal' ? 'Personal' : (clientTypeFilter === 'SaaS' ? 'SaaS' : undefined)));
+  const activeClientType = isAdminRole ? 'Personal' : (clientTypeFilter === 'Website' ? undefined : (['SaaS', 'Business', 'Personal'].includes(clientTypeFilter) ? clientTypeFilter : undefined));
   
   const { data: clientsData, isLoading: isLoadingClients } = useClients(currentPage, itemsPerPage, debounceSearch, activeClientType);
   const rawClientsData = clientsData?.data || [];

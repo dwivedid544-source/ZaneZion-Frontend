@@ -22,6 +22,7 @@ const Missions = () => {
   const [modalType, setModalType] = useState('view');
   const [selectedMission, setSelectedMission] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   
   const [assignData, setAssignData] = useState({
     driverId: '',
@@ -79,8 +80,13 @@ const Missions = () => {
   };
 
   const handleDelete = async () => {
-    await deleteMission(selectedMission.id);
-    setIsModalOpen(false);
+    setIsDeleting(true);
+    try {
+      await deleteMission(selectedMission.id);
+    } finally {
+      setIsDeleting(false);
+      setIsModalOpen(false);
+    }
   };
 
   const filteredMissions = missions.filter(m => 
@@ -263,8 +269,14 @@ const Missions = () => {
                 </p>
               </div>
               <div className="flex gap-3 justify-end pt-4">
-                 <button onClick={() => setIsModalOpen(false)} className="btn-secondary">Close Protocol</button>
-                 <button onClick={handleDelete} className="px-6 py-2 bg-danger text-white rounded-lg font-bold">Scrap Mission</button>
+                 <button onClick={() => setIsModalOpen(false)} className="btn-secondary" disabled={isDeleting}>Close Protocol</button>
+                 <button 
+                   onClick={handleDelete} 
+                   disabled={isDeleting}
+                   className={`px-6 py-2 text-white rounded-lg font-bold transition-all ${isDeleting ? 'bg-danger/50 cursor-not-allowed' : 'bg-danger hover:bg-danger/80'}`}
+                 >
+                   {isDeleting ? 'Scrapping...' : 'Scrap Mission'}
+                 </button>
               </div>
           </div>
         ) : selectedMission && modalType === 'assign' ? (

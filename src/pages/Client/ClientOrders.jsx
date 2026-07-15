@@ -16,6 +16,7 @@ const ClientOrders = () => {
     const userRole = localStorage.getItem('userRole') || 'client';
     const portalRole = normalizeRole(currentUser?.role || userRole);
     const canStaffCreateOrderHere = roleCanCreateInstitutionalOrder(portalRole);
+    const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
 
     React.useEffect(() => {
         fetchOrders();

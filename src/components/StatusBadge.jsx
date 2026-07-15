@@ -61,13 +61,15 @@ const StatusBadge = ({ status, className }) => {
     }
   };
 
+  const displayVal = String(status || '').toLowerCase() === 'approved' ? 'Accepted' : String(status || '').replace(/_/g, ' ');
+
   return (
     <span className={twMerge(
       'px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border whitespace-nowrap inline-flex items-center justify-center',
       getStatusStyles(status),
       className
     )}>
-      {String(status || '').replace(/_/g, ' ')}
+      {displayVal}
     </span>
   );
 };

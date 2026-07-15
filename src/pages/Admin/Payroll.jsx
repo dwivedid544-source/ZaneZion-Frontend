@@ -31,7 +31,7 @@ const Payroll = () => {
         try {
             setLoading(true);
             const res = await api.get(`/finance/payroll?t=${Date.now()}`);
-            if(res.data && res.data.success) {
+            if (res.data && res.data.success) {
                 setPayHistory(res.data.data);
             }
         } catch (err) {
@@ -82,8 +82,8 @@ const Payroll = () => {
         setModalType(type);
         if (row) {
             // Map backend snake_case to frontend camelCase for the form
-            setFormData({ 
-                ...row, 
+            setFormData({
+                ...row,
                 baseSalary: row.base_salary || row.baseSalary || 0,
                 bonus: row.bonus || 0,
                 nibDeduction: row.nib_deduction || row.nibDeduction || 0,
@@ -131,7 +131,7 @@ const Payroll = () => {
         }
 
         const netSettlement = (parseFloat(formData.baseSalary) || 0) + (parseFloat(formData.bonus) || 0) - (parseFloat(formData.nibDeduction) || 0) - (parseFloat(formData.medicalDeduction) || 0) - (parseFloat(formData.pensionDeduction) || 0) - (parseFloat(formData.savingsDeduction) || 0) - (parseFloat(formData.birthdayClub) || 0);
-        
+
         const reqData = {
             user_id: formData.empId,
             base_salary: formData.baseSalary || 0,
@@ -149,18 +149,18 @@ const Payroll = () => {
         };
 
         try {
-             if (modalType === 'add') {
-                 await api.post('/finance/payroll', reqData);
-                 swalSuccess('Success', 'Payout created successfully.');
-                 if(addLog) addLog({ action: 'Payroll Disbursed', detail: `Settlement generated for ${formData.name}`, type: 'system' });
-             } else if (modalType === 'edit' && formData.id) {
-                 await api.put(`/finance/payroll/${formData.id}`, reqData);
-                 swalSuccess('Success', 'Payout updated successfully.');
-                 if(addLog) addLog({ action: 'Payroll Record Modified', detail: `Updated settlement for ${formData.name}`, type: 'system' });
-             }
-             
-             await fetchPayroll();
-             setIsModalOpen(false);
+            if (modalType === 'add') {
+                await api.post('/finance/payroll', reqData);
+                swalSuccess('Success', 'Payout created successfully.');
+                if (addLog) addLog({ action: 'Payroll Disbursed', detail: `Settlement generated for ${formData.name}`, type: 'system' });
+            } else if (modalType === 'edit' && formData.id) {
+                await api.put(`/finance/payroll/${formData.id}`, reqData);
+                swalSuccess('Success', 'Payout updated successfully.');
+                if (addLog) addLog({ action: 'Payroll Record Modified', detail: `Updated settlement for ${formData.name}`, type: 'system' });
+            }
+
+            await fetchPayroll();
+            setIsModalOpen(false);
         } catch (err) {
             console.error("Failed to submit payroll:", err);
             swalError("Error", err?.response?.data?.message || err?.message || "Failed to process payroll record.");
@@ -171,14 +171,14 @@ const Payroll = () => {
     const confirmDelete = async () => {
         if (!itemToDelete) return;
         try {
-             await api.delete(`/finance/payroll/${itemToDelete.id}`);
-             await fetchPayroll();
-             if(addLog) addLog({ action: 'Payroll Record Deleted', detail: `Settlement record removed.`, type: 'alert' });
+            await api.delete(`/finance/payroll/${itemToDelete.id}`);
+            await fetchPayroll();
+            if (addLog) addLog({ action: 'Payroll Record Deleted', detail: `Settlement record removed.`, type: 'alert' });
         } catch (error) {
-             console.error("Failed to delete payroll record", error);
+            console.error("Failed to delete payroll record", error);
         } finally {
-             setIsDeleteModalOpen(false);
-             setItemToDelete(null);
+            setIsDeleteModalOpen(false);
+            setItemToDelete(null);
         }
     };
 
@@ -198,12 +198,12 @@ const Payroll = () => {
                     >
                         <History size={16} /> {showHistory ? 'View Pending' : 'View History'}
                     </button>
-                    {(hasMenuPermission('Payroll', 'can_add') || 
-                      hasMenuPermission('Pay & Records', 'can_add')) && (
-                        <button className="btn-primary flex items-center gap-2" onClick={() => handleAction('add')}>
-                            <Plus size={16} /> New Payout
-                        </button>
-                    )}
+                    {(hasMenuPermission('Payroll', 'can_add') ||
+                        hasMenuPermission('Pay & Records', 'can_add')) && (
+                            <button className="btn-primary flex items-center gap-2" onClick={() => handleAction('add')}>
+                                <Plus size={16} /> New Payout
+                            </button>
+                        )}
                 </div>
             </div>
 
@@ -269,10 +269,10 @@ const Payroll = () => {
                                     onChange={(e) => {
                                         const user = users.find(u => String(u.id) === String(e.target.value));
                                         if (user) {
-                                            setFormData({ 
-                                                ...formData, 
-                                                empId: user.id, 
-                                                name: user.name 
+                                            setFormData({
+                                                ...formData,
+                                                empId: user.id,
+                                                name: user.name
                                             });
                                         }
                                     }}

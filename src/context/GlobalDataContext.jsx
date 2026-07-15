@@ -2474,14 +2474,49 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchLuxuryItems = React.useCallback(async () => {
     try {
-      const res = await api.get("/concierge/luxury-items");
-      const luxuryData = res.data?.success
-        ? (Array.isArray(res.data.data) ? res.data.data : [])
-        : Array.isArray(res.data)
-          ? res.data
+      const role = normalizeRole(currentUser?.role);
+      const isInternal = ['super_admin', 'superadmin', 'admin', 'operations', 'logistics', 'procurement', 'concierge', 'staff'].includes(role);
+      
+      let rawData = [];
+      if (isInternal) {
+        // Admin gets all items (backend now allows bypass for ADMIN role)
+        const res = await api.get("/concierge/luxury-items");
+        rawData = res.data?.success
+          ? (Array.isArray(res.data.data) ? res.data.data : [])
+          : Array.isArray(res.data)
+            ? res.data
+            : [];
+      } else {
+        // Client gets admin's items + client's own items
+        const [resAdmin, resClient] = await Promise.allSettled([
+          api.get("/concierge/luxury-items?tenantId=1"),
+          api.get("/concierge/luxury-items")
+        ]);
+        
+        const adminItems = resAdmin.status === 'fulfilled' && resAdmin.value.data?.success
+          ? (Array.isArray(resAdmin.value.data.data) ? resAdmin.value.data.data : [])
           : [];
+<<<<<<< HEAD
       const mapped = (luxuryData || []).map((item) => ({
         ...item,
+=======
+          
+        const clientItems = resClient.status === 'fulfilled' && resClient.value.data?.success
+          ? (Array.isArray(resClient.value.data.data) ? resClient.value.data.data : [])
+          : [];
+          
+        const combined = [...adminItems, ...clientItems];
+        const seen = new Set();
+        rawData = combined.filter((itm) => {
+          const id = itm.id || itm.itemId;
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
+      }
+      
+      const mapped = (rawData || []).map((item) => ({
+>>>>>>> 2b392d3fd3bfc6e0cb81ee437996e7061b347e76
         id: item.id || item.itemId,
         item: item.item_name || item.name || 'Unknown Item',
         owner: item.owner_name || item.owner || 'Unknown Beneficiary',
@@ -2492,11 +2527,15 @@ export const GlobalDataProvider = ({ children }) => {
         company_id: item.tenantId,
         companyId: item.tenantId,
       }));
-      setLuxuryItems(filterDataForCurrentUser(mapped));
+      setLuxuryItems(mapped);
     } catch (e) {
       console.error("Fetch luxury items failed", e);
     }
+<<<<<<< HEAD
   }, [filterDataForCurrentUser]);
+=======
+  }, [currentUser]);
+>>>>>>> 2b392d3fd3bfc6e0cb81ee437996e7061b347e76
 
   const fetchDashboardStats = React.useCallback(async (filter) => {
     try {

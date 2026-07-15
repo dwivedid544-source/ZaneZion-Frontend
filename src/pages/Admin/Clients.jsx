@@ -453,11 +453,11 @@ const Clients = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black tracking-tighter text-white italic uppercase">
-            {isAdminRole ? 'Customers' : (clientTypeFilter === 'SaaS' ? 'SaaS Clients' : (clientTypeFilter === 'Personal' ? 'Normal Clients' : 'Website Signups'))}
+            {isAdminRole ? 'Customers' : (clientTypeFilter === 'SaaS' ? 'SaaS Clients' : (clientTypeFilter === 'Personal' ? 'Normal Clients' : (clientTypeFilter === 'Business' ? 'Business Clients' : 'Website Signups')))}
           </h1>
           <p className="text-secondary text-xs mt-1 font-black uppercase tracking-[0.2em] opacity-70 italic">
             {isAdminRole ? 'Manage your customers' : (clientTypeFilter === 'SaaS' ? 'Manage your registered SaaS clients' :
-             clientTypeFilter === 'Personal' ? 'Manage your personal/normal clients' : 'Review and approve incoming portal requests')}
+             clientTypeFilter === 'Personal' ? 'Manage your personal/normal clients' : (clientTypeFilter === 'Business' ? 'Manage your business accounts' : 'Review and approve incoming portal requests'))}
           </p>
         </div>
         <div className="flex gap-3 items-center">
@@ -470,7 +470,7 @@ const Clients = () => {
           {!isAdminRole && clientTypeFilter !== 'Website' && (
             <button onClick={handleAdd} className="btn-primary group flex items-center gap-3 px-8 shadow-xl shadow-accent/20">
               <Plus size={18} className="group-hover:rotate-90 transition-transform duration-300" />
-              <span>Add {clientTypeFilter === 'Personal' ? 'Normal' : 'SaaS'} Client</span>
+              <span>Add {clientTypeFilter === 'Personal' ? 'Normal' : (clientTypeFilter === 'Business' ? 'Business' : 'SaaS')} Client</span>
             </button>
           )}
           {isAdminRole && (
@@ -487,6 +487,7 @@ const Clients = () => {
         <div className="flex gap-2">
           {[
             { label: 'SaaS Clients', value: 'SaaS' },
+            { label: 'Business Clients', value: 'Business' },
             { label: 'Normal Clients', value: 'Personal' },
           ].map(tab => (
             <button

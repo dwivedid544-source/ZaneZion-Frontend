@@ -443,7 +443,7 @@ const Orders = () => {
               }}
               customAction={(item) => canManageOrders ? (
                 <div className="flex items-center gap-1 flex-wrap">
-                  {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) &&
+                  {(['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) || isBusinessClient) &&
                     String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'delivered' && (
                     <button
                       type="button"

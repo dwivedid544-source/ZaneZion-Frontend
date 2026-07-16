@@ -1035,9 +1035,11 @@ const Deliveries = () => {
                       type="text"
                       value={formData.orderId}
                       onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
-                      className="w-full bg-background/50 border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold text-muted cursor-not-allowed"
-                      disabled={true}
-                      placeholder="ORD-XXXX"
+                      className={`w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold ${
+                        modalType === 'add' ? 'text-white' : 'text-muted bg-background/50 cursor-not-allowed'
+                      }`}
+                      disabled={modalType !== 'add'}
+                      placeholder="e.g. 254 or ORD-2026-254"
                     />
                   </div>
                   <div className="space-y-1">

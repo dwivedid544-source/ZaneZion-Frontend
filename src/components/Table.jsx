@@ -99,7 +99,7 @@ const Table = ({ columns, data, actions, onView, onEdit, onDelete, canEdit = tru
                           <Eye size={16} />
                         </button>
                       )}
-                      {onEdit && canEdit && (
+                      {onEdit && (typeof canEdit === 'function' ? canEdit(row) : canEdit) && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); onEdit(row); }}
@@ -109,7 +109,7 @@ const Table = ({ columns, data, actions, onView, onEdit, onDelete, canEdit = tru
                           <Edit2 size={16} />
                         </button>
                       )}
-                      {onDelete && canDelete && (
+                      {onDelete && (typeof canDelete === 'function' ? canDelete(row) : canDelete) && (
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); onDelete(row); }}
@@ -201,7 +201,7 @@ const Table = ({ columns, data, actions, onView, onEdit, onDelete, canEdit = tru
                       <Eye size={14} className="text-accent" /> View
                     </button>
                   )}
-                  {onEdit && canEdit && (
+                  {onEdit && (typeof canEdit === 'function' ? canEdit(row) : canEdit) && (
                     <button
                       onClick={() => onEdit(row)}
                       className="flex-1 py-3 bg-accent/5 rounded-xl text-[9px] font-black uppercase tracking-[0.2em] text-accent hover:bg-accent/15 transition-all flex items-center justify-center gap-2 border border-accent/20 active:scale-[0.97]"
@@ -209,7 +209,7 @@ const Table = ({ columns, data, actions, onView, onEdit, onDelete, canEdit = tru
                       <Edit2 size={14} /> Update
                     </button>
                   )}
-                  {onDelete && canDelete && (
+                  {onDelete && (typeof canDelete === 'function' ? canDelete(row) : canDelete) && (
                     <button
                       onClick={() => onDelete(row)}
                       className="p-3 bg-danger/5 rounded-xl text-danger hover:bg-danger/15 transition-all flex items-center justify-center border border-danger/20 active:scale-[0.97]"

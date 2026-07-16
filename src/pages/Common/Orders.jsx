@@ -118,21 +118,19 @@ const Orders = () => {
   };
 
   const currentOrders = (() => {
-    if (workflowTab === 'all') return orders;
-    const dept = normalizedRole; // e.g. 'logistics', 'procurement', 'concierge'
-    if (workflowTab === 'current') {
+    const activeOrders = orders.filter(o => {
+      const status = String(o.status || '').toLowerCase();
+      return status !== 'completed' && status !== 'delivered';
+    });
+
+    if (workflowTab === 'history') {
       return orders.filter(o => {
-        const cur = String(o.metadata?.currentDepartment || o.status || '').toLowerCase();
-        return cur === dept;
+        const status = String(o.status || '').toLowerCase();
+        return status === 'completed' || status === 'delivered';
       });
     }
-    if (workflowTab === 'processed') {
-      return orders.filter(o => {
-        const history = Array.isArray(o.metadata?.workflowHistory) ? o.metadata.workflowHistory : [];
-        return history.some(h => String(h.department || '').toLowerCase() === dept);
-      });
-    }
-    return orders;
+
+    return activeOrders;
   })();
 
   const handleAction = (type, order) => {
@@ -392,7 +390,7 @@ const Orders = () => {
           {/* Workflow tabs */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/10">
-              {[{key:'all',label:'All Orders'},{key:'current',label:'🟡 Current Work'},{key:'processed',label:'✅ Processed'}].map(tab => (
+              {[{key:'all',label:'All Orders'},{key:'history',label:'Record / History'}].map(tab => (
                 <button
                   key={tab.key}
                   onClick={() => setWorkflowTab(tab.key)}
@@ -435,20 +433,18 @@ const Orders = () => {
               onView={(item) => handleAction('view', item)}
               onEdit={(item) => handleAction('edit', item)}
               onDelete={(item) => handleDelete(item.id)}
-              canEdit={hasMenuPermission('Orders', 'can_edit') || isBusinessClient}
-              canDelete={hasMenuPermission('Orders', 'can_delete') || isBusinessClient}
+              canEdit={(row) => {
+                const status = String(row?.status || '').toLowerCase();
+                return (status !== 'completed' && status !== 'delivered') && (hasMenuPermission('Orders', 'can_edit') || isBusinessClient);
+              }}
+              canDelete={(row) => {
+                const status = String(row?.status || '').toLowerCase();
+                return (status !== 'completed' && status !== 'delivered') && (hasMenuPermission('Orders', 'can_delete') || isBusinessClient);
+              }}
               customAction={(item) => canManageOrders ? (
                 <div className="flex items-center gap-1 flex-wrap">
-                   {/* Timeline button — visible to everyone */}
-                   <button
-                     type="button"
-                     onClick={(e) => { e.stopPropagation(); setTimelineOrder({ id: item.id, orderNumber: item.orderNumber }); }}
-                     className="p-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1 border border-white/5"
-                     title="View order timeline / workflow history"
-                   >
-                     <History size={14} /> Timeline
-                   </button>
-                  {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) && (
+                  {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) &&
+                    String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'delivered' && (
                     <button
                       type="button"
                       onClick={(e) => {

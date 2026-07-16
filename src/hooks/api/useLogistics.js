@@ -26,6 +26,7 @@ export const useCreateDelivery = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 };
@@ -39,6 +40,7 @@ export const useCancelDelivery = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 };
@@ -52,6 +54,7 @@ export const useDeleteDelivery = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 };
@@ -65,6 +68,7 @@ export const useUpdateDelivery = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 };
@@ -123,6 +127,7 @@ export const useSubmitPOD = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['missions'] });
       queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
     },
   });
 };

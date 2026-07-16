@@ -150,6 +150,9 @@ const Users = () => {
   const filteredUsers = users.filter(u => {
     const rName = (typeof u?.role === 'object' ? u.role?.name || '' : u?.role || '').toLowerCase();
     const isClientOrSaaS = roleNormalized === 'client' || roleNormalized === 'saas_client';
+    if (isClientOrSaaS && ['superadmin', 'admin'].includes(rName)) {
+      return false;
+    }
     if (['customer', 'saas_client', 'business_client', 'client'].includes(rName)) {
       return false;
     }

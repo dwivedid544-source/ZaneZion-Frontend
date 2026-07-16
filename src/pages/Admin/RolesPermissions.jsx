@@ -188,20 +188,7 @@ const RolesPermissions = () => {
                     <h1 className="text-3xl font-black tracking-tighter text-white italic uppercase mb-1 flex items-center gap-3">
                         <Shield className="text-accent" /> Security Hub & RBAC
                     </h1>
-                    <p className="text-secondary text-xs font-black uppercase tracking-[0.2em] opacity-70">Define access protocols · Menu & Action level controls.</p>
-                </div>
-                <div className="flex items-center gap-3">
-                    {successMsg && (
-                        <span className="text-success text-xs font-bold uppercase tracking-widest animate-pulse">{successMsg}</span>
-                    )}
-                    <button
-                        className="btn-primary flex items-center gap-2 h-12 px-8 disabled:opacity-50"
-                        onClick={handleSavePermissions}
-                        disabled={saving}
-                    >
-                        {saving ? <RefreshCcw className="animate-spin" size={16} /> : <Save size={16} />}
-                        {saving ? 'DEPLOYING...' : 'SAVE PROTOCOLS'}
-                    </button>
+                    <p className="text-secondary text-xs font-black uppercase tracking-[0.2em] opacity-70">Institutional access protocols are view-only.</p>
                 </div>
             </div>
 
@@ -210,12 +197,6 @@ const RolesPermissions = () => {
                 <div className="lg:col-span-1 space-y-4">
                     <div className="flex items-center justify-between border-l-2 border-accent pl-3">
                         <p className="text-xs font-black text-white uppercase tracking-widest">Institutional Roles</p>
-                        <button 
-                            onClick={() => setIsCreateModalOpen(true)}
-                            className="bg-accent/10 text-accent hover:bg-accent hover:text-black p-1 rounded transition-all"
-                        >
-                            <Plus size={16} />
-                        </button>
                     </div>
                     <div className="glass-card p-2 space-y-1">
                         {roles.map(role => (
@@ -231,14 +212,6 @@ const RolesPermissions = () => {
                                     <span className="uppercase text-xs tracking-widest">{role.name.replace(/_/g, ' ')}</span>
                                     {selectedRole?.id === role.id ? <Lock size={14} className="text-black" /> : null}
                                 </button>
-                                {role.name !== 'superadmin' && role.name !== 'admin' && (
-                                    <button 
-                                        onClick={(e) => { e.stopPropagation(); handleDeleteRole(role.id); }}
-                                        className="absolute right-10 top-1/2 -translate-y-1/2 text-danger opacity-0 group-hover:opacity-100 p-2 hover:bg-danger/20 rounded"
-                                    >
-                                        <Trash2 size={14} />
-                                    </button>
-                                )}
                             </div>
                         ))}
                     </div>
@@ -263,15 +236,15 @@ const RolesPermissions = () => {
                                                 </div>
                                             </th>
                                         ))}
-                                        <th className="px-4 py-4 text-center">
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-secondary">All</span>
-                                        </th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {menus.map(menu => {
+                                    {menus.filter(menu => {
+                                        // Only show rows where the role has AT LEAST ONE permission
                                         const perms = permissionMatrix[menu.id] || {};
-                                        const allEnabled = ACTION_COLS.every(a => perms[a.key]);
+                                        return perms.can_view || perms.can_add || perms.can_edit || perms.can_delete;
+                                    }).map(menu => {
+                                        const perms = permissionMatrix[menu.id] || {};
                                         return (
                                             <tr key={menu.id} className="border-b border-white/5 hover:bg-white/[0.02] transition-colors">
                                                 <td className="px-6 py-3">
@@ -280,108 +253,46 @@ const RolesPermissions = () => {
                                                 </td>
                                                 {ACTION_COLS.map(col => (
                                                     <td key={col.key} className="px-4 py-3 text-center">
-                                                        <button
-                                                            onClick={() => handleToggle(menu.id, col.key)}
-                                                            className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-all mx-auto ${
+                                                        <div
+                                                            className={`w-7 h-7 rounded-lg flex items-center justify-center mx-auto ${
                                                                 perms[col.key]
-                                                                    ? 'bg-accent border-accent text-black shadow-lg shadow-accent/20'
-                                                                    : 'border-white/10 text-muted hover:border-white/20 hover:bg-white/5'
+                                                                    ? 'bg-accent/20 text-accent'
+                                                                    : 'text-white/10'
                                                             }`}
                                                         >
-                                                            {perms[col.key] ? <Check size={14} /> : <X size={10} className="opacity-30" />}
-                                                        </button>
+                                                            {perms[col.key] ? <Check size={14} /> : <X size={10} />}
+                                                        </div>
                                                     </td>
                                                 ))}
-                                                <td className="px-4 py-3 text-center">
-                                                    <button
-                                                        onClick={() => handleToggleAll(menu.id)}
-                                                        className={`w-7 h-7 rounded-lg flex items-center justify-center border transition-all mx-auto ${
-                                                            allEnabled
-                                                                ? 'bg-success/20 border-success/40 text-success'
-                                                                : 'border-white/10 text-muted hover:border-white/20'
-                                                        }`}
-                                                    >
-                                                        <Zap size={12} />
-                                                    </button>
-                                                </td>
                                             </tr>
                                         );
                                     })}
+                                    
+                                    {/* Empty state if no permissions */}
+                                    {menus.filter(menu => {
+                                        const perms = permissionMatrix[menu.id] || {};
+                                        return perms.can_view || perms.can_add || perms.can_edit || perms.can_delete;
+                                    }).length === 0 && (
+                                        <tr>
+                                            <td colSpan={5} className="px-6 py-8 text-center text-secondary text-xs uppercase tracking-widest">
+                                                No specific access protocols defined for this role.
+                                            </td>
+                                        </tr>
+                                    )}
                                 </tbody>
                             </table>
                         </div>
                     </div>
 
-                    <div className="p-6 rounded-2xl bg-danger/5 border border-danger/20 flex gap-4">
-                        <ShieldAlert className="text-danger shrink-0" size={24} />
+                    <div className="p-6 rounded-2xl bg-black/40 border border-white/5 flex gap-4">
+                        <Lock className="text-secondary shrink-0" size={24} />
                         <div>
-                            <p className="text-[10px] font-black text-danger uppercase tracking-widest mb-1">Critical Security Alert</p>
-                            <p className="text-[9px] text-danger/70 leading-relaxed uppercase">Modifying these matrices immediately alters the access protocols for all assigned personnel. Users must re-login to see updated menus.</p>
+                            <p className="text-[10px] font-black text-secondary uppercase tracking-widest mb-1">View Only Protocol</p>
+                            <p className="text-[9px] text-muted leading-relaxed uppercase">Role permissions are globally enforced by the system. Any modifications require a core system update.</p>
                         </div>
                     </div>
                 </div>
             </div>
-
-            {/* Create Role Modal */}
-            <AnimatePresence>
-                {isCreateModalOpen && (
-                    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="glass-card w-full max-w-md p-6 relative"
-                        >
-                            <button 
-                                onClick={() => setIsCreateModalOpen(false)}
-                                className="absolute top-4 right-4 text-secondary hover:text-white"
-                            >
-                                <X size={20} />
-                            </button>
-                            <h2 className="text-xl font-black text-white uppercase tracking-widest mb-6 border-l-4 border-accent pl-3">Create Role</h2>
-                            
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="text-[10px] font-bold text-muted uppercase tracking-widest mb-1 block">Role Name</label>
-                                    <input 
-                                        type="text" 
-                                        value={newRoleName}
-                                        onChange={(e) => setNewRoleName(e.target.value)}
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white text-sm focus:border-accent focus:outline-none transition-colors"
-                                        placeholder="e.g. Receptionist"
-                                    />
-                                </div>
-                                <div>
-                                    <label className="text-[10px] font-bold text-muted uppercase tracking-widest mb-1 block">Description</label>
-                                    <input 
-                                        type="text" 
-                                        value={newRoleDesc}
-                                        onChange={(e) => setNewRoleDesc(e.target.value)}
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white text-sm focus:border-accent focus:outline-none transition-colors"
-                                        placeholder="Brief description"
-                                    />
-                                </div>
-                            </div>
-                            
-                            <div className="flex gap-3 mt-8">
-                                <button 
-                                    onClick={() => setIsCreateModalOpen(false)}
-                                    className="flex-1 py-3 bg-white/5 hover:bg-white/10 rounded-xl text-xs font-bold uppercase tracking-widest text-white transition-colors"
-                                >
-                                    Cancel
-                                </button>
-                                <button 
-                                    onClick={handleCreateRole}
-                                    disabled={!newRoleName}
-                                    className="flex-1 py-3 bg-accent hover:bg-accent-hover rounded-xl text-xs font-bold uppercase tracking-widest text-black transition-colors disabled:opacity-50"
-                                >
-                                    Create
-                                </button>
-                            </div>
-                        </motion.div>
-                    </div>
-                )}
-            </AnimatePresence>
         </div>
     );
 };

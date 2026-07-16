@@ -97,8 +97,13 @@ const Deliveries = () => {
       });
     });
     (customerUsers || []).forEach((u) => {
-      const role = String(u.role || '').toLowerCase();
-      const isCustomer = role === 'customer';
+      // role can be an object { name: "ADMIN" } or a string — normalize it
+      const rawRole = typeof u.role === 'object' && u.role !== null ? u.role.name : u.role;
+      const role = String(rawRole || '').toUpperCase().replace(/\s+/g, '_');
+      // Only include actual client/customer roles
+      const clientRoles = ['CUSTOMER', 'INDIVIDUAL_CLIENT', 'BUSINESS_CLIENT', 'SAAS_CLIENT', 'CLIENT'];
+      if (!clientRoles.includes(role)) return;
+      const isCustomer = ['CUSTOMER', 'INDIVIDUAL_CLIENT'].includes(role);
       add({
         id: u.id,
         value: `${isCustomer ? 'user' : 'company'}_${u.id}`,
@@ -371,7 +376,9 @@ const Deliveries = () => {
       };
 
       if (!finalData.pickupLocation) {
-        swalError('Validation Error', 'Please select a pickup location (Warehouse)');
+        swalError('Validation Error', finalData.missionType === 'Chauffeur'
+          ? 'Please enter a Pickup Area (e.g. Lobby, Airport Terminal, Hotel Entrance)'
+          : 'Please select a pickup location (Warehouse)');
         return;
       }
 
@@ -985,7 +992,12 @@ const Deliveries = () => {
                       {['Delivery', 'Chauffeur'].map(type => (
                         <button
                           key={type}
-                          onClick={() => setFormData({ ...formData, missionType: type })}
+                          onClick={() => {
+                            const defaultPickup = type === 'Chauffeur'
+                              ? ''
+                              : ((warehouses || []).length > 0 ? warehouses[0].name : '');
+                            setFormData({ ...formData, missionType: type, pickupLocation: defaultPickup });
+                          }}
                           className={`flex-1 py-3 rounded-xl border text-[10px] font-black uppercase tracking-widest transition-all ${formData.missionType === type ? 'bg-accent border-accent text-primary' : 'bg-white/5 border-border text-muted hover:border-accent/40'}`}
                           disabled={modalType === 'view'}
                         >
@@ -1028,6 +1040,9 @@ const Deliveries = () => {
                       disabled={modalType === 'view'}
                     >
                       <option value="">Link Client...</option>
+                      {clientOptions.length === 0 && (
+                        <option value="" disabled>No Clients Available</option>
+                      )}
                       {clientOptions.map(client => (
                         <option key={client.value} value={client.value}>{client.label}</option>
                       ))}

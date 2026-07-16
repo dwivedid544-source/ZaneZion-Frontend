@@ -450,7 +450,7 @@ const Orders = () => {
                       onClick={(e) => {
                         e.stopPropagation();
                         const oid = item.id;
-                        const orderRef = oid != null ? `ORD-${String(oid).padStart(3, '0')}` : '';
+                        const orderRef = item.orderNumber || String(oid);
                         navigate('/dashboard/deliveries', {
                           state: {
                             prefillOrderId: oid,

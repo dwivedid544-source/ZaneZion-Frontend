@@ -63,7 +63,7 @@ const Inventory = () => {
       companyName: c.business_name || c.companyName || c.name,
     }));
   }, [clients]);
-  
+
   const { data: itemsData, isLoading, error } = useItems(page, 10, searchTerm);
   const realInventoryItems = Array.isArray(itemsData) ? itemsData : (itemsData?.items || itemsData?.data || []);
   const realInventory = realInventoryItems.map(i => {
@@ -83,7 +83,7 @@ const Inventory = () => {
       inventoryType: i.clientId ? 'Client' : 'Marketplace'
     };
   });
-  
+
   // Offline Resilience Fallback (only fallback if API is not loaded or has failed)
   const rawInventory = (itemsData && !error) ? realInventory : mockInventory;
   const inventory = rawInventory.map(item => {
@@ -344,7 +344,7 @@ const Inventory = () => {
     try {
       if (modalType === 'entry') {
         let wid = formData.warehouseId ?? formData.warehouse_id;
-        
+
         // Fix state desync: If wid is missing but the UI shows a warehouse name, find the ID automatically
         if (!wid && formData.warehouse && warehouses && warehouses.length > 0) {
           const matchedWarehouse = warehouses.find(w => w.name === formData.warehouse);
@@ -388,31 +388,31 @@ const Inventory = () => {
           return;
         }
 
-          let res;
-          try {
-            const apiPayload = {
-              name: formData.item.trim(),
-              categoryId: catId,
-              unitId: uId,
-              description: formData.description || '',
-              inventoryType: formData.inventoryType === 'Marketplace' ? 'MARKETPLACE' : 'INTERNAL',
-              clientId: (formData.inventoryType === 'Client' && isCustomer && myClient) ? myClient.id : (parseInt(formData.clientId) || null),
-              qty: Number(formData.qty) || 0,
-              price: Number(formData.price) || 0,
-              warehouseId: wid,
-            };
-            const apiRes = await realApi.post('/items', apiPayload);
-            console.log('[REAL_API_SUCCESS] Item created successfully via real API');
-            res = { ok: true, data: apiRes.data };
-            await queryClient.invalidateQueries({ queryKey: ['items'] });
-          } catch (e) {
-            console.warn('[REAL_API_FAILED] Item creation via real API failed', e);
-            res = { ok: false, error: 'Failed to create item' };
-          }
-          if (!res?.ok) {
-            swalError('Save failed', res?.error || 'Stock entry could not be saved.');
-            return;
-          }
+        let res;
+        try {
+          const apiPayload = {
+            name: formData.item.trim(),
+            categoryId: catId,
+            unitId: uId,
+            description: formData.description || '',
+            inventoryType: formData.inventoryType === 'Marketplace' ? 'MARKETPLACE' : 'INTERNAL',
+            clientId: (formData.inventoryType === 'Client' && isCustomer && myClient) ? myClient.id : (parseInt(formData.clientId) || null),
+            qty: Number(formData.qty) || 0,
+            price: Number(formData.price) || 0,
+            warehouseId: wid,
+          };
+          const apiRes = await realApi.post('/items', apiPayload);
+          console.log('[REAL_API_SUCCESS] Item created successfully via real API');
+          res = { ok: true, data: apiRes.data };
+          await queryClient.invalidateQueries({ queryKey: ['items'] });
+        } catch (e) {
+          console.warn('[REAL_API_FAILED] Item creation via real API failed', e);
+          res = { ok: false, error: 'Failed to create item' };
+        }
+        if (!res?.ok) {
+          swalError('Save failed', res?.error || 'Stock entry could not be saved.');
+          return;
+        }
       } else if (modalType === 'issue') {
         if (!String(formData.clientId || '').trim()) {
           swalWarning('Select customer', 'Please select a customer from the search list so stock issue links to customer ID.');
@@ -629,7 +629,7 @@ const Inventory = () => {
       swalSuccess('Received', 'Asset instantly secured in warehouse ledger.');
       // Update PR status locally if possible
       if (pr.id && window.updatePurchaseRequest) {
-          window.updatePurchaseRequest(pr.id, { status: 'Received' });
+        window.updatePurchaseRequest(pr.id, { status: 'Received' });
       }
     } catch (e) {
       console.warn('Real API failed', e);
@@ -650,7 +650,7 @@ const Inventory = () => {
       console.log('Stock deducted');
       queryClient.invalidateQueries({ queryKey: ['items'] });
       queryClient.invalidateQueries({ queryKey: ['stock'] });
-    } catch(e) {
+    } catch (e) {
       console.warn('Stock adjust failed on real API', e);
     }
     await issueStock({ ...stockItem, qty: item.qty });
@@ -882,11 +882,10 @@ const Inventory = () => {
                     <tr key={log.id} className="text-xs group hover:bg-white/[0.01]">
                       <td className="py-4 font-mono font-bold text-accent px-2">{log.id}</td>
                       <td className="py-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                          log.type === 'STOCK_ENTRY' ? 'bg-success/10 text-success' :
-                          log.type === 'ASSET_LOSS' ? 'bg-danger/10 text-danger' :
-                          log.type === 'STOCK_ISSUE' ? 'bg-blue-500/10 text-blue-400' : 'bg-warning/10 text-warning'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${log.type === 'STOCK_ENTRY' ? 'bg-success/10 text-success' :
+                            log.type === 'ASSET_LOSS' ? 'bg-danger/10 text-danger' :
+                              log.type === 'STOCK_ISSUE' ? 'bg-blue-500/10 text-blue-400' : 'bg-warning/10 text-warning'
+                          }`}>
                           {log.type}
                         </span>
                       </td>
@@ -909,10 +908,9 @@ const Inventory = () => {
                 <div key={log.id} className="bg-white/[0.03] border border-white/10 rounded-2xl p-4 space-y-3">
                   <div className="flex justify-between items-center">
                     <span className="text-[10px] font-mono font-bold text-accent">{log.id}</span>
-                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${
-                      log.type === 'STOCK_ENTRY' ? 'bg-success/10 text-success' :
-                      log.type === 'STOCK_ISSUE' ? 'bg-blue-500/10 text-blue-400' : 'bg-warning/10 text-warning'
-                    }`}>
+                    <span className={`px-2 py-0.5 rounded-full text-[8px] font-bold uppercase ${log.type === 'STOCK_ENTRY' ? 'bg-success/10 text-success' :
+                        log.type === 'STOCK_ISSUE' ? 'bg-blue-500/10 text-blue-400' : 'bg-warning/10 text-warning'
+                      }`}>
                       {log.type}
                     </span>
                   </div>
@@ -963,11 +961,10 @@ const Inventory = () => {
                           </span>
                         </td>
                         <td className="py-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${
-                            log.status === 'Closed' ? 'bg-success/10 text-success' :
-                            log.status === 'Confirmed' ? 'bg-orange-500/10 text-orange-400' :
-                            log.status === 'Under Investigation' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-white/10 text-white'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold uppercase ${log.status === 'Closed' ? 'bg-success/10 text-success' :
+                              log.status === 'Confirmed' ? 'bg-orange-500/10 text-orange-400' :
+                                log.status === 'Under Investigation' ? 'bg-yellow-500/10 text-yellow-400' : 'bg-white/10 text-white'
+                            }`}>
                             {log.status}
                           </span>
                         </td>
@@ -1153,7 +1150,7 @@ const Inventory = () => {
                       <span className="text-warning">{item.status}</span>
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={() => handleInstantRestock(item)}
                     className="p-2 bg-accent/10 hover:bg-accent/30 text-accent rounded-lg transition-all"
                     title="Instantly generate restock PR"
@@ -1174,7 +1171,7 @@ const Inventory = () => {
                 const whInventory = inventory.filter(i => i.location === wh.name);
                 const occupancy = wh.capacity > 0 ? (whInventory.length / wh.capacity) * 100 : 0;
                 const capacityValue = Math.min(100, occupancy || (whInventory.length / 50 * 100)); // fallback logic
-                
+
                 return (
                   <div key={idx}>
                     <div className="flex justify-between text-[10px] font-black uppercase tracking-widest text-muted mb-2">
@@ -1298,32 +1295,32 @@ const Inventory = () => {
                 />
               </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-muted uppercase tracking-widest">Category</label>
-                  <select
-                    className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white appearance-none cursor-pointer"
-                    value={formData.categoryId || ''}
-                    onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
-                  >
-                    <option value="">Select Category</option>
-                    {apiCategories.map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-muted uppercase tracking-widest">Unit</label>
-                  <select
-                    className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white appearance-none cursor-pointer"
-                    value={formData.unitId || ''}
-                    onChange={(e) => setFormData({ ...formData, unitId: e.target.value })}
-                  >
-                    <option value="">Select Unit</option>
-                    {apiUnits.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name} ({u.shortName})</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Category</label>
+                <select
+                  className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white appearance-none cursor-pointer"
+                  value={formData.categoryId || ''}
+                  onChange={(e) => setFormData({ ...formData, categoryId: e.target.value })}
+                >
+                  <option value="">Select Category</option>
+                  {apiCategories.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Unit</label>
+                <select
+                  className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white appearance-none cursor-pointer"
+                  value={formData.unitId || ''}
+                  onChange={(e) => setFormData({ ...formData, unitId: e.target.value })}
+                >
+                  <option value="">Select Unit</option>
+                  {apiUnits.map((u) => (
+                    <option key={u.id} value={u.id}>{u.name} ({u.shortName})</option>
+                  ))}
+                </select>
+              </div>
 
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-muted uppercase tracking-widest">Quantity</label>
@@ -1930,10 +1927,10 @@ const Inventory = () => {
                 className={`btn-primary ${modalType === 'delete' ? 'bg-danger hover:bg-danger/80 border-danger' : ''}`}
               >
                 {isSaving ? 'Saving...' :
-                modalType === 'entry' ? 'Verify & Inbound' :
-                  modalType === 'issue' ? 'Verify & Dispatch' :
-                    modalType === 'loss' ? 'Record Asset Loss' :
-                      modalType === 'delete' ? 'Confirm Decommission' : 'Commit Stock Data'}
+                  modalType === 'entry' ? 'Verify & Inbound' :
+                    modalType === 'issue' ? 'Verify & Dispatch' :
+                      modalType === 'loss' ? 'Record Asset Loss' :
+                        modalType === 'delete' ? 'Confirm Decommission' : 'Commit Stock Data'}
               </button>
             )}
           </div>

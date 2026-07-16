@@ -63,17 +63,29 @@ const Projects = () => {
     });
 
     (customerUsers || []).forEach((u) => {
-      const role = String(u.role || '').toLowerCase();
-      const isCustomer = role === 'customer';
+      const roleName = String(u.role?.name || u.role || '').toLowerCase();
+      const isCustomerRole = ['customer', 'client', 'business_client', 'saas_client'].some(r => roleName.includes(r));
+      if (!isCustomerRole) return; // Skip Admins, Logistics, Operations, etc.
+
+      // Try to find a matching Client record by email
+      const matchedClient = (clients || []).find(c => String(c.email || '').toLowerCase() === String(u.email || '').toLowerCase());
+      const clientRecordId = matchedClient?.id || u.customer_id || u.client_id || u.company_id || u.companyId;
+
+      // Only include if they have a valid Client table record to prevent Axios Error 400
+      if (!clientRecordId) return;
+
+      const isCompany = !roleName.includes('customer');
+      const prefix = isCompany ? 'company' : 'customer';
+
       add({
         id: u.id,
-        value: `${isCustomer ? 'user' : 'company'}_${u.id}`,
+        value: `${prefix}_${clientRecordId}`,
         label: u.name || u.business_name || u.company_name || u.email || `Client ${u.id}`,
         email: u.email || '',
-        source: isCustomer ? 'user' : 'company',
-        companyId: u.company_id || u.companyId || (currentUser?.company_id || currentUser?.companyId || ''),
-        customerId: u.customer_id || u.client_id || '',
-        clientUserId: isCustomer ? u.id : ''
+        source: isCompany ? 'company' : 'customer',
+        companyId: isCompany ? clientRecordId : '',
+        customerId: !isCompany ? clientRecordId : '',
+        clientUserId: u.id
       });
     });
 

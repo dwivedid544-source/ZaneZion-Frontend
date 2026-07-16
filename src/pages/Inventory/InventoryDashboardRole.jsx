@@ -246,6 +246,7 @@ const InventoryDashboardRole = () => {
               </Link>
             </div>
           )}
+        </div>
       </div>
 
       <DepartmentWorkflowSection departmentKey="inventory" departmentLabel="Inventory" />

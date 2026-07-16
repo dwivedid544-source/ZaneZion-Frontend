@@ -170,8 +170,8 @@ const Chauffeur = () => {
     /** Admin, concierge, or logistics may approve / assign drivers (client: tenant staff booking on behalf). */
     const isAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'client', 'saas_client', 'business_client'].includes(userRole);
     const isCustomer = ['customer'].includes(userRole);
-    const isClientAdmin = ['client', 'saas_client', 'business_client'].includes(userRole);
-    const isStaffAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin'].includes(userRole);
+    const isClientAdmin = ['client', 'business_client'].includes(userRole);
+    const isStaffAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'saas_client'].includes(userRole);
     const isFeeLocked = isCustomer || (isClientAdmin && (!editingRequest || editingRequest?.userId === currentUser?.id));
 
     /** Admin-configured base price (Settings → system), fallback to env default */

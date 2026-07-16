@@ -443,14 +443,14 @@ const Orders = () => {
               }}
               customAction={(item) => canManageOrders ? (
                 <div className="flex items-center gap-1 flex-wrap">
-                  {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) &&
+                  {(['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) || isBusinessClient) &&
                     String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'delivered' && (
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         const oid = item.id;
-                        const orderRef = oid != null ? `ORD-${String(oid).padStart(3, '0')}` : '';
+                        const orderRef = item.orderNumber || String(oid);
                         navigate('/dashboard/deliveries', {
                           state: {
                             prefillOrderId: oid,

@@ -1202,6 +1202,7 @@ export const GlobalDataProvider = ({ children }) => {
           "/users/customers?include_all=1&include_client_role=1",
         );
         const list = res.data?.success ? res.data.data || [] : [];
+        const roleKey = normalizeRole(currentUser?.role);
         return list
           .filter((u) => {
             const role = normalizeRole(u?.role);
@@ -1212,6 +1213,10 @@ export const GlobalDataProvider = ({ children }) => {
               u?.clientType ??
               role,
             );
+            const isClientOrSaaS = roleKey === "client" || roleKey === "saas_client";
+            if (isClientOrSaaS && (role === "client" || role === "saas_client" || ["business", "saas"].includes(String(acct || "").toLowerCase()))) {
+              return false;
+            }
             return (
               ["client", "customer", "saas_client"].includes(role) ||
               ["business", "personal", "saas"].includes(
@@ -1279,9 +1284,16 @@ export const GlobalDataProvider = ({ children }) => {
         const arr = normalizeClientsResponseBody(raw);
         const mapped = arr.map(mapClientFromApi).filter(Boolean);
         if (mapped.length > 0) {
-          const filteredMapped = mapped.filter((c) =>
-            clientMatchesTypeFilter(c, options.client_type),
-          );
+          const isClientOrSaaS = roleKey === "client" || roleKey === "saas_client";
+          const filteredMapped = mapped
+            .filter((c) => clientMatchesTypeFilter(c, options.client_type))
+            .filter((c) => {
+              if (isClientOrSaaS) {
+                const typeLower = String(c.client_type || c.clientType || '').toLowerCase();
+                return typeLower === 'personal' || typeLower === 'customer';
+              }
+              return true;
+            });
           if (filteredMapped.length > 0) {
             setClients(filteredMapped);
           } else {

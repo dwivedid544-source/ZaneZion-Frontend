@@ -209,7 +209,7 @@ const Deliveries = () => {
 
     if (st.prefillOrderId != null) {
       const oid = st.prefillOrderId;
-      const orderRef = st.orderId || `ORD-${String(oid).padStart(3, '0')}`;
+      const orderRef = st.orderId || String(oid);
       handleAction('add', {
         orderId: orderRef,
         items: Array.isArray(st.items) ? st.items : [],
@@ -299,7 +299,7 @@ const Deliveries = () => {
       missionType: 'Delivery',
       passengerInfo: { name: '', count: 1, phone: '' },
       packageDetails: { weight: '', dimensions: '', type: 'General' },
-      orderId: `ORD-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
+      orderId: '',
       clientId: '',
       client: '',
       companyId: '',
@@ -322,7 +322,7 @@ const Deliveries = () => {
       delivery_fee: 0,
       pod: { signature: null, image: null, actualTime: null },
       ...(del && !del.id ? {
-        orderId: del.orderId || `ORD-${new Date().getFullYear()}-${String(Math.floor(1000 + Math.random() * 9000))}`,
+        orderId: del.orderId || '',
         clientId: del.clientId || del.client_id || del.customer_id || '',
         client: del.client || del.clientName || '',
         customerId: del.customerId || del.customer_id || del.client_id || '',
@@ -405,16 +405,9 @@ const Deliveries = () => {
         };
       });
 
-      // Resolve orderId: the auto-generated "ORD-YYYY-XXXX" string should be
-      // sent as-is (not stripped to digits) so the backend can look it up by orderNumber.
+      // Resolve orderId: The backend can accept either a numeric ID or the string order reference (like ORD-272).
       const rawOrderId = finalData.orderId ? String(finalData.orderId).trim() : null;
-      const numericOrderId = rawOrderId ? Number(rawOrderId.replace(/\D/g, '')) : null;
-      // Use numeric id only when it is a pure integer reference (≤ 8 digits typical DB id).
-      // When the string is an auto-generated ref like "ORD-2025-1234", send null so the
-      // backend falls through to the ad-hoc order creation path.
-      const resolvedOrderId = (rawOrderId && /^\d+$/.test(rawOrderId) && numericOrderId > 0)
-        ? numericOrderId
-        : null;
+      const resolvedOrderId = rawOrderId;
 
       // Create Delivery via backend
       createDeliveryMutation.mutateAsync({
@@ -1035,9 +1028,11 @@ const Deliveries = () => {
                       type="text"
                       value={formData.orderId}
                       onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
-                      className="w-full bg-background/50 border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold text-muted cursor-not-allowed"
-                      disabled={true}
-                      placeholder="ORD-XXXX"
+                      className={`w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold ${
+                        modalType === 'add' ? 'text-white' : 'text-muted bg-background/50 cursor-not-allowed'
+                      }`}
+                      disabled={modalType !== 'add'}
+                      placeholder="e.g. 254 or ORD-2026-254"
                     />
                   </div>
                   <div className="space-y-1">

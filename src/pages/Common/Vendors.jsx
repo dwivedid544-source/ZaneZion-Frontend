@@ -11,7 +11,7 @@ import realApi from '../../services/api/setupAxios';
 const Vendors = () => {
   const { vendors: mockVendors, addVendor: mockAddVendor, updateVendor: mockUpdateVendor, deleteVendor: mockDeleteVendor, addOrder, fetchVendors, hasMenuPermission, currentUser } = useData();
   const [realVendors, setRealVendors] = useState([]);
-  const isVendorAdmin = ['superadmin', 'admin', 'procurement'].includes(normalizeRole(currentUser?.role));
+  const isVendorAdmin = ['superadmin', 'admin', 'procurement', 'saas_client'].includes(normalizeRole(currentUser?.role));
 
   React.useEffect(() => {
     const refreshData = async () => {
@@ -263,7 +263,7 @@ const Vendors = () => {
             </p>
           )}
           {!isVendorAdmin && (
-            <p className="text-[10px] font-bold text-warning mt-2 uppercase tracking-widest">New vendors you add stay hidden until HQ sets them to Active.</p>
+            <p className="text-[10px] font-bold text-warning mt-2 uppercase tracking-widest">New vendors default to 'Pending Approval' and must be activated before use.</p>
           )}
         </div>
         <div className="flex gap-3">
@@ -298,7 +298,7 @@ const Vendors = () => {
           canEdit={hasMenuPermission('Vendors', 'can_edit')}
           canDelete={hasMenuPermission('Vendors', 'can_delete')}
           customAction={(row) => (
-            ['superadmin'].includes(normalizeRole(currentUser?.role)) && String(row.status || '').toLowerCase() === 'inactive' ? (
+            isVendorAdmin && String(row.status || '').toLowerCase() === 'inactive' ? (
               <button
                 type="button"
                 className="px-2 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider bg-success/15 text-success border border-success/30 hover:bg-success hover:text-black"
@@ -537,7 +537,7 @@ const Vendors = () => {
                       className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
                       disabled={modalType === 'view'}
                     >
-                      <option value="active" disabled={normalizeRole(currentUser?.role) !== 'superadmin'}>Active</option>
+                      <option value="active" disabled={!isVendorAdmin}>Active</option>
                       <option value="inactive">Pending Approval</option>
                       <option value="blacklisted">Blocked</option>
                     </select>

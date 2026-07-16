@@ -2487,28 +2487,38 @@ export const GlobalDataProvider = ({ children }) => {
             ? res.data
             : [];
       } else {
-        // Client gets admin's items + client's own items
-        const [resAdmin, resClient] = await Promise.allSettled([
-          api.get("/concierge/luxury-items?tenantId=1"),
-          api.get("/concierge/luxury-items")
-        ]);
-        
-        const adminItems = resAdmin.status === 'fulfilled' && resAdmin.value.data?.success
-          ? (Array.isArray(resAdmin.value.data.data) ? resAdmin.value.data.data : [])
-          : [];
+        const isSaaSTenant = currentUser?.tenantId && Number(currentUser.tenantId) !== 1;
+        if (isSaaSTenant) {
+          const res = await api.get("/concierge/luxury-items");
+          rawData = res.data?.success
+            ? (Array.isArray(res.data.data) ? res.data.data : [])
+            : Array.isArray(res.data)
+              ? res.data
+              : [];
+        } else {
+          // Client gets admin's items + client's own items
+          const [resAdmin, resClient] = await Promise.allSettled([
+            api.get("/concierge/luxury-items?tenantId=1"),
+            api.get("/concierge/luxury-items")
+          ]);
           
-        const clientItems = resClient.status === 'fulfilled' && resClient.value.data?.success
-          ? (Array.isArray(resClient.value.data.data) ? resClient.value.data.data : [])
-          : [];
-          
-        const combined = [...adminItems, ...clientItems];
-        const seen = new Set();
-        rawData = combined.filter((itm) => {
-          const id = itm.id || itm.itemId;
-          if (seen.has(id)) return false;
-          seen.add(id);
-          return true;
-        });
+          const adminItems = resAdmin.status === 'fulfilled' && resAdmin.value.data?.success
+            ? (Array.isArray(resAdmin.value.data.data) ? resAdmin.value.data.data : [])
+            : [];
+            
+          const clientItems = resClient.status === 'fulfilled' && resClient.value.data?.success
+            ? (Array.isArray(resClient.value.data.data) ? resClient.value.data.data : [])
+            : [];
+            
+          const combined = [...adminItems, ...clientItems];
+          const seen = new Set();
+          rawData = combined.filter((itm) => {
+            const id = itm.id || itm.itemId;
+            if (seen.has(id)) return false;
+            seen.add(id);
+            return true;
+          });
+        }
       }
       
       const mapped = (rawData || []).map((item) => ({

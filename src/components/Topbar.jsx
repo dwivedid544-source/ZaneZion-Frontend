@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Search, Bell, Menu, User, LogOut, ChevronDown, Package, Users, Briefcase, Box, CheckCheck, ShoppingCart, Truck, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../context/GlobalDataContext';
@@ -12,6 +12,25 @@ const Topbar = ({ toggleSidebar, role }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const navigate = useNavigate();
+  const notifRef = useRef(null);
+  const profileRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (notifRef.current && !notifRef.current.contains(event.target)) {
+        setIsNotifOpen(false);
+      }
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setIsProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, []);
   const { currentUser, clients, orders, inventory, users, notifications, unreadCount, fetchNotifications, markNotificationRead, markAllNotificationsRead } = useData();
   const userRole = normalizeRole(role || 'superadmin');
 
@@ -120,7 +139,7 @@ const Topbar = ({ toggleSidebar, role }) => {
       {/* Right: Clock (operational roles) + Notifications + Profile */}
       <div className="flex items-center gap-1 flex-shrink-0">
         <StaffClockBar role={role} />
-        <div className="relative">
+        <div className="relative" ref={notifRef}>
           <button
             onClick={() => { setIsNotifOpen(!isNotifOpen); if (!isNotifOpen) fetchNotifications(); }}
             className="relative p-2 text-secondary hover:text-accent hover:bg-white/5 rounded-xl transition-all"
@@ -136,7 +155,6 @@ const Topbar = ({ toggleSidebar, role }) => {
           <AnimatePresence>
             {isNotifOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsNotifOpen(false)} />
                 <motion.div
                   initial={{ opacity: 0, y: 8, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -207,7 +225,7 @@ const Topbar = ({ toggleSidebar, role }) => {
 
         <div className="w-px h-6 bg-border mx-2 hidden sm:block"></div>
 
-        <div className="relative">
+        <div className="relative" ref={profileRef}>
           <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
             className="flex items-center gap-2.5 px-2 py-1.5 rounded-xl hover:bg-white/5 transition-all"
@@ -225,7 +243,6 @@ const Topbar = ({ toggleSidebar, role }) => {
           <AnimatePresence>
             {isProfileOpen && (
               <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsProfileOpen(false)} />
                 <motion.div
                   initial={{ opacity: 0, y: 8, scale: 0.96 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}

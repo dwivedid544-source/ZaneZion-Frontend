@@ -25,7 +25,8 @@ const Dashboard = () => {
     fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet,
     fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs,
     deliveries, projects, dashboardStats, currentUser,
-    hasMenuPermission
+    hasMenuPermission,
+    clients, fetchClients
   } = useData();
   const isSuperAdmin = ['super_admin', 'superadmin', 'super admin'].includes(normalizeRole(currentUser?.role));
   const isB2BClient = normalizeRole(currentUser?.role) === 'client';
@@ -43,17 +44,31 @@ const Dashboard = () => {
         fetchDeliveries(),
         fetchProjects(),
         fetchDashboardStats(revenueFilter),
-        fetchDashboardLogs()
+        fetchDashboardLogs(),
+        ...(fetchClients ? [fetchClients()] : [])
       ]);
     };
     loadDashboard();
-  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs]);
+  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs, fetchClients]);
 
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const [modalType, setModalType] = useState('view');
   const [selectedOrder, setSelectedOrder] = useState(null);
+
+  const clientData = useMemo(() => {
+    const tenantId = currentUser?.clientId || currentUser?.companyId || currentUser?.company_id;
+    return (clients || []).find(c =>
+      c.id === tenantId ||
+      c.email === currentUser?.email ||
+      c.name === currentUser?.name
+    ) || currentUser;
+  }, [clients, currentUser]);
+
+  const clientCompanyName = useMemo(() => {
+    return clientData?.companyName || clientData?.business_name || clientData?.name || 'Client';
+  }, [clientData]);
 
   const handleAction = (type, order) => {
     setSelectedOrder(order);
@@ -168,12 +183,12 @@ const Dashboard = () => {
             <LayoutDashboard size={40} className="text-accent relative z-10 group-hover:scale-110 transition-transform hidden md:block" />
           </div>
           <div className="overflow-hidden">
-            <h1 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold tracking-tight text-white truncate">
-              ZANEZION DASHBOARD
+            <h1 className="text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-bold tracking-tight text-white truncate uppercase">
+              {isB2BClient ? `${clientCompanyName} Dashboard` : 'ZANEZION DASHBOARD'}
             </h1>
             <div className="flex items-center gap-2 md:gap-3 mt-1">
               <p className="text-secondary text-[10px] md:text-[11px] uppercase font-bold tracking-widest opacity-70 truncate">
-                Central Operations Command
+                {isB2BClient ? 'Tenant Operations Command' : 'Central Operations Command'}
               </p>
               <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse shrink-0" />
               <span className="text-[10px] md:text-[11px] text-success font-bold uppercase tracking-widest shrink-0">System Live</span>
@@ -248,9 +263,9 @@ const Dashboard = () => {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           { label: 'Total Warehouse Assets', value: `$${(stats.inventoryValue / 1000).toFixed(1)}K`, icon: Package, color: 'text-accent', trend: stats.lowStockItems > 0 ? `${stats.lowStockItems} Low Stock` : 'Optimal', detail: 'Asset Valuation', show: hasMenuPermission('Inventory', 'can_view') || hasMenuPermission('StockHub', 'can_view') },
-          { label: 'Global Revenue flow', value: `$${(stats.relevantRevenue / 1000).toFixed(1)}K`, icon: DollarSign, color: 'text-success', trend: stats.revenueTrend, detail: `${revenueFilter} Settlements`, show: hasMenuPermission('Invoices', 'can_view') || hasMenuPermission('Payments', 'can_view') },
+          { label: isB2BClient ? 'Revenue Flow' : 'Global Revenue flow', value: `$${(stats.relevantRevenue / 1000).toFixed(1)}K`, icon: DollarSign, color: 'text-success', trend: stats.revenueTrend, detail: `${revenueFilter} Settlements`, show: hasMenuPermission('Invoices', 'can_view') || hasMenuPermission('Payments', 'can_view') },
           { label: 'Active Operations', value: stats.openOrders, icon: ShoppingCart, color: 'text-info', trend: stats.ordersTrend, detail: 'Mission Pipeline', show: hasMenuPermission('Orders', 'can_view') },
-          { label: 'Global Personnel', value: stats.totalUsers, icon: Users, color: 'text-primary', trend: stats.onlineStaff > 0 ? `${stats.onlineStaff} Online` : 'Active', detail: 'Total HQ Staff', show: hasMenuPermission('Staff Management', 'can_view') || hasMenuPermission('HQ Personnel', 'can_view') },
+          { label: isB2BClient ? 'Total Personnel' : 'Global Personnel', value: stats.totalUsers, icon: Users, color: 'text-primary', trend: stats.onlineStaff > 0 ? `${stats.onlineStaff} Online` : 'Active', detail: isB2BClient ? 'Active Team Members' : 'Total HQ Staff', show: hasMenuPermission('Staff Management', 'can_view') || hasMenuPermission('HQ Personnel', 'can_view') },
           { label: 'Chauffeur Requests', value: stats.activeChauffeurs, icon: Truck, color: 'text-accent', trend: stats.activeChauffeurs > 0 ? 'Active' : 'None', detail: 'Pending Rides', show: hasMenuPermission('Chauffeur', 'can_view') || hasMenuPermission('Chauffeur Protocol', 'can_view') },
           { label: 'Active Events', value: stats.activeEvents, icon: Calendar, color: 'text-info', trend: stats.activeEvents > 0 ? 'Scheduled' : 'None', detail: 'Concierge Events', show: hasMenuPermission('Events', 'can_view') },
           { label: 'Open Support Cases', value: stats.openTickets, icon: AlertTriangle, color: 'text-warning', trend: stats.openTickets > 0 ? 'Need Attention' : 'All Clear', detail: 'Support Tickets', show: hasMenuPermission('Support', 'can_view') }
@@ -282,7 +297,9 @@ const Dashboard = () => {
                     <Activity size={24} className="hidden md:block" />
                   </div>
                   <div>
-                    <h3 className="text-xl md:text-2xl font-bold tracking-tight">Institutional Revenue</h3>
+                    <h3 className="text-xl md:text-2xl font-bold tracking-tight">
+                      {isB2BClient ? 'Corporate Revenue' : 'Institutional Revenue'}
+                    </h3>
                     <p className="text-[10px] text-muted font-medium uppercase tracking-widest mt-1">Real-time financial flow monitoring.</p>
                   </div>
                 </div>

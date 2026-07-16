@@ -4,7 +4,7 @@ import Modal from '../../components/Modal';
 import OrderModal from '../../components/OrderModal';
 import { useData } from '../../context/GlobalDataContext';
 import { Store, Search, Star, Phone, Mail, Plus, ShieldCheck, CheckCircle } from 'lucide-react';
-import { swalSuccess } from '../../utils/swal';
+import { swalSuccess, swalWarning } from '../../utils/swal';
 import { normalizeRole } from '../../utils/authUtils';
 import realApi from '../../services/api/setupAxios';
 
@@ -172,19 +172,18 @@ const Vendors = () => {
   };
 
   const handleDelete = async () => {
+    setIsSaving(true);
     try {
-      try {
-        await realApi.delete(`/vendors/${selectedVendor.id}`);
-        console.log('[REAL_API_SUCCESS] Vendor deleted successfully via real API');
-        await refreshVendorsList();
-      } catch(e) {
-        console.warn('[REAL_API_FAILED] Vendor deletion via real API failed', e);
-        swalWarning('Error', 'Failed to delete vendor.');
-      }
+      await realApi.delete(`/vendors/${selectedVendor.id}`);
+      console.log('[REAL_API_SUCCESS] Vendor deleted successfully via real API');
+      await refreshVendorsList();
       setIsModalOpen(false);
       swalSuccess('Deleted', 'Vendor has been removed successfully.');
-    } catch (e) {
-      window.alert(vendorSaveErrorMessage(e));
+    } catch(e) {
+      console.warn('[REAL_API_FAILED] Vendor deletion via real API failed', e);
+      swalWarning('Error', 'Failed to delete vendor.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -411,7 +410,9 @@ const Vendors = () => {
               <p className="text-secondary">Are you sure you want to remove <span className="text-primary font-bold">{selectedVendor?.name}</span> from the approved vendor list?</p>
               <div className="flex gap-3 justify-end pt-4">
                 <button onClick={() => setIsModalOpen(false)} className="btn-secondary">Cancel</button>
-                <button onClick={handleDelete} className="px-6 py-2 bg-danger text-white rounded-lg font-bold">Remove Vendor</button>
+                <button onClick={handleDelete} disabled={isSaving} className={`px-6 py-2 bg-danger text-white rounded-lg font-bold ${isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:bg-danger/80'}`}>
+                  {isSaving ? 'Removing...' : 'Remove Vendor'}
+                </button>
               </div>
             </div>
           ) : (

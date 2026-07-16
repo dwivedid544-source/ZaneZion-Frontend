@@ -1,9 +1,18 @@
 import axios from 'axios';
 
+const getBaseUrl = () => {
+  // if (window.location.hostname === 'localhost') {
+  //   return 'http://localhost:8000/api/v1';
+  // }
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl) {
+    return `${envUrl}/v1`;
+  }
+  return 'https://zanezion-backend-production.up.railway.app/api/v1';
+};
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL 
-    ? `${import.meta.env.VITE_API_URL}/v1` 
-    : 'https://zanezion-backend-production.up.railway.app/api/v1',
+  baseURL: getBaseUrl(),
 });
 
 // Request Interceptor: Add Token

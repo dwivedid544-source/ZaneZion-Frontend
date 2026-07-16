@@ -369,24 +369,34 @@ const Deliveries = () => {
         assigned_driver: finalData.assigned_driver || null,
         clientId: finalData.clientId || ''
       };
+
+      if (!finalData.pickupLocation) {
+        swalError('Validation Error', 'Please select a pickup location (Warehouse)');
+        return;
+      }
+
+      const resolvedClientId =
+        (finalData.clientId && Number(String(finalData.clientId).replace(/\D/g, ''))) ||
+        (currentUser?.clientId ? Number(currentUser.clientId) : null) ||
+        (currentUser?.company_id ? Number(currentUser.company_id) : null) ||
+        null;
+
+      if (!resolvedClientId) {
+        swalError('Validation Error', 'Please select a Linked Client for this mission.');
+        return;
+      }
+
       const matchedWarehouse = (warehouses || []).find(w => w.name === finalData.pickupLocation);
       const itemsWithRealIds = finalData.items.map(item => {
         const matchedItem = (dbItems || []).find(i => 
           String(i.name || '').trim().toLowerCase() === String(item.name || '').trim().toLowerCase()
         );
         return {
-          orderItemId: item.orderItemId || item.id || null,
-          itemId: matchedItem ? matchedItem.id : (item.itemId || item.id || 1),
-          quantity: item.qty || item.quantity || 1
+          orderItemId: (item.orderItemId || item.id) ? Number(item.orderItemId || item.id) : null,
+          itemId: matchedItem ? Number(matchedItem.id) : Number(item.itemId || item.id || 1),
+          quantity: Number(item.qty || item.quantity || 1)
         };
       });
-      // Resolve clientId: SaaS Clients may not pick one from the form dropdown,
-      // so fall back to the logged-in user's own client association.
-      const resolvedClientId =
-        (finalData.clientId && Number(String(finalData.clientId).replace(/\D/g, ''))) ||
-        (currentUser?.clientId ? Number(currentUser.clientId) : null) ||
-        (currentUser?.company_id ? Number(currentUser.company_id) : null) ||
-        null;
 
       // Resolve orderId: the auto-generated "ORD-YYYY-XXXX" string should be
       // sent as-is (not stripped to digits) so the backend can look it up by orderNumber.
@@ -475,6 +485,7 @@ const Deliveries = () => {
       }
     } else if (modalType === 'delete') {
       deleteDeliveryMutation.mutateAsync(selectedDelivery.id)
+        .then(() => swalSuccess("Success", "Delivery deleted successfully"))
         .catch(() => swalError("Error", "Could not delete delivery"));
     }
     setIsModalOpen(false);
@@ -613,7 +624,7 @@ const Deliveries = () => {
               onEdit={(item) => handleAction('edit', item)}
               onDelete={(item) => handleAction('delete', item)}
               canEdit={canAssignDriverUi}
-              canDelete={hasMenuPermission('Deliveries', 'can_delete')}
+              canDelete={hasMenuPermission('Deliveries', 'can_delete') || ['saas_client', 'client', 'business_client'].includes(portalRole)}
               customAction={(item) => {
                 const statusLower = String(item.status || '').toLowerCase();
                 const isDelivered = statusLower === 'completed' || statusLower === 'delivered';
@@ -1571,8 +1582,12 @@ const Deliveries = () => {
               {modalType !== 'view' && (
                 <button
                   onClick={handleSave}
-                  className={`btn-primary ${modalType === 'delete' ? 'bg-danger hover:bg-danger/80 border-danger' : ''}`}
+                  disabled={createDeliveryMutation.isPending || updateDeliveryMutation.isPending || deleteDeliveryMutation.isPending || submitPODMutation.isPending}
+                  className={`btn-primary ${modalType === 'delete' ? 'bg-danger hover:bg-danger/80 border-danger' : ''} disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2`}
                 >
+                  {(createDeliveryMutation.isPending || updateDeliveryMutation.isPending || deleteDeliveryMutation.isPending || submitPODMutation.isPending) && (
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  )}
                   {modalType === 'delete' ? 'Confirm Termination' : 'Authenticate Dispatch'}
                 </button>
               )}

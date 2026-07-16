@@ -266,11 +266,11 @@ const Chauffeur = () => {
             chauffeurFee: normalizedFee,
             chauffeur_fee: normalizedFee,
             chauffeur_fee_mode: CHAUFFEUR_BILLING_MODE,
-            driverName: isStaffAdmin ? (formData.get('driverName') || null) : null,
+            driverName: isStaffAdmin ? (formData.get('driverNameSelect') ? (users || []).find(u => String(u.id) === formData.get('driverNameSelect'))?.fullName || (users || []).find(u => String(u.id) === formData.get('driverNameSelect'))?.name : formData.get('driverName')) : null,
             plateNumber: isStaffAdmin ? (formData.get('plateNumber') || null) : null,
-            driver_user_id: isStaffAdmin ? (formData.get('driverUserId') ? Number(formData.get('driverUserId')) : (editingRequest?.driver_user_id || editingRequest?.driverId || null)) : (editingRequest?.driver_user_id || editingRequest?.driverId || null),
+            driver_user_id: isStaffAdmin ? (formData.get('driverNameSelect') ? Number(formData.get('driverNameSelect')) : (formData.get('driverUserId') ? Number(formData.get('driverUserId')) : (editingRequest?.driver_user_id || editingRequest?.driverId || null))) : (editingRequest?.driver_user_id || editingRequest?.driverId || null),
             passenger_info: isStaffAdmin ? (() => {
-                const driverUserIdVal = formData.get('driverUserId');
+                const driverUserIdVal = formData.get('driverNameSelect') || formData.get('driverUserId');
                 const photo = (users || []).find(u => String(u.id) === String(driverUserIdVal))?.profile_pic_url || null;
                 return {
                     ...(editingRequest?._passengerInfo || {}),
@@ -281,7 +281,7 @@ const Chauffeur = () => {
             })() : (editingRequest?.passenger_info || editingRequest?._passengerInfo || null),
             status: isClientAdmin
                 ? (editingRequest?.status || 'pending')
-                : (isStaffAdmin ? (formData.get('driverName') ? 'assigned' : 'pending') : (editingRequest?.status || 'pending')),
+                : (isStaffAdmin ? (formData.get('driverNameSelect') || formData.get('driverName') ? (editingRequest?.status === 'pending' || !editingRequest?.status ? 'assigned' : editingRequest.status) : (editingRequest?.status || 'pending')) : (editingRequest?.status || 'pending')),
             orderType: 'CHAUFFEUR',
             missionType: 'CHAUFFEUR'
         };

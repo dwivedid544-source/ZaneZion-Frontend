@@ -88,6 +88,14 @@ const CHAUFFEUR_BILLING_MODE = String(import.meta.env?.VITE_CHAUFFEUR_BILLING_MO
     ? 'included'
     : 'separate';
 
+const getPeriodFrom24h = (timeStr) => {
+    if (!timeStr) return '';
+    const parts = timeStr.split(':');
+    const hour = parseInt(parts[0], 10);
+    if (isNaN(hour)) return '';
+    return hour >= 12 ? 'PM' : 'AM';
+};
+
 const Chauffeur = () => {
     const {
         currentUser,
@@ -150,10 +158,13 @@ const Chauffeur = () => {
 
     const [modalType, setModalType] = useState('create'); // create, edit, view
     const [serviceType, setServiceType] = useState('One Way');
-    const [chauffeurQuote, setChauffeurQuote] = useState(CHAUFFEUR_BASE_FEE_USD);
+    const [chauffeurQuote, setChauffeurQuote] = useState(0);
     const [hasLuggage, setHasLuggage] = useState(false);
     const [hasStops, setHasStops] = useState(false);
     const [amenities, setAmenities] = useState([]);
+
+    const [pickupTimeInput, setPickupTimeInput] = useState('12:00');
+    const [returnTimeInput, setReturnTimeInput] = useState('12:00');
 
     const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
     /** Admin, concierge, or logistics may approve / assign drivers (client: tenant staff booking on behalf). */
@@ -173,13 +184,13 @@ const Chauffeur = () => {
 
     const displayFee = (row) => {
         const amount = Number(row?.chauffeurFee ?? row?.chauffeur_fee ?? row?.total_amount ?? 0);
-        return Number.isFinite(amount) && amount > 0 ? amount : defaultChauffeurFee;
+        return Number.isFinite(amount) ? amount : 0;
     };
 
     /** Price shown / submitted for retail customers (cannot self-edit) */
     const customerLockedFee = editingRequest
-        ? (Number(editingRequest.chauffeurFee ?? editingRequest.chauffeur_fee ?? editingRequest.total_amount) || defaultChauffeurFee)
-        : defaultChauffeurFee;
+        ? (Number(editingRequest.chauffeurFee ?? editingRequest.chauffeur_fee ?? editingRequest.total_amount) ?? 0)
+        : 0;
 
     const mergePassengerPayload = (req, patch = {}) => ({
         passengers: req.numberOfPassengers ?? 1,
@@ -288,11 +299,13 @@ const Chauffeur = () => {
     const resetForm = () => {
         setEditingRequest(null);
         setServiceType('One Way');
-        setChauffeurQuote(defaultChauffeurFee);
+        setChauffeurQuote(0);
         setHasLuggage(false);
         setHasStops(false);
         setAmenities([]);
         setModalType('create');
+        setPickupTimeInput('12:00');
+        setReturnTimeInput('12:00');
     };
 
     const openModal = (type, req = null) => {
@@ -301,11 +314,13 @@ const Chauffeur = () => {
             setEditingRequest(req);
             setServiceType(req.serviceType);
             setChauffeurQuote(
-                Number(req.chauffeurFee ?? req.chauffeur_fee ?? req.total_amount ?? defaultChauffeurFee) || defaultChauffeurFee
+                Number(req.chauffeurFee ?? req.chauffeur_fee ?? req.total_amount ?? 0) || 0
             );
             setHasLuggage(req.luggage === 'Yes');
             setHasStops(req.stops === 'Yes');
             setAmenities(req.amenities || []);
+            setPickupTimeInput(req.pickupTime || '12:00');
+            setReturnTimeInput(req.returnTime || '12:00');
         } else {
             resetForm();
         }
@@ -439,7 +454,11 @@ const Chauffeur = () => {
                             actions={true}
                             onView={(row) => openModal('view', row)}
                             onEdit={(row) => openModal('edit', row)}
-                            onDelete={(row) => deleteMutation.mutate(row.id)}
+                            onDelete={async (row) => {
+                                if ((await swalConfirm('Delete Chauffeur Protocol', 'Are you sure you want to delete this chauffeur protocol?')).isConfirmed) {
+                                    deleteMutation.mutate(row.id);
+                                }
+                            }}
                             canEdit={hasMenuPermission('Chauffeur', 'can_edit')}
                             canDelete={hasMenuPermission('Chauffeur', 'can_delete')}
                         />
@@ -875,7 +894,23 @@ const Chauffeur = () => {
                                                 </div>
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Pickup Time</label>
-                                                    <input type="time" name="pickupTime" defaultValue={editingRequest?.pickupTime} required className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                    <div className="relative">
+                                                        <input
+                                                            type="time"
+                                                            name="pickupTime"
+                                                            value={pickupTimeInput}
+                                                            onChange={(e) => setPickupTimeInput(e.target.value)}
+                                                            required
+                                                            className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
+                                                        />
+                                                        <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                                                            {pickupTimeInput && (
+                                                                <span className="text-[10px] font-black uppercase tracking-wider text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded">
+                                                                    {getPeriodFrom24h(pickupTimeInput)}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
                                                 <div className="space-y-2">
                                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Passengers</label>
@@ -948,7 +983,23 @@ const Chauffeur = () => {
                                                         </div>
                                                         <div className="space-y-2">
                                                             <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1 italic">Return Time</label>
-                                                            <input type="time" name="returnTime" defaultValue={editingRequest?.returnTime} required className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                            <div className="relative">
+                                                                <input
+                                                                    type="time"
+                                                                    name="returnTime"
+                                                                    value={returnTimeInput}
+                                                                    onChange={(e) => setReturnTimeInput(e.target.value)}
+                                                                    required
+                                                                    className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
+                                                                />
+                                                                <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                                                                    {returnTimeInput && (
+                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded">
+                                                                            {getPeriodFrom24h(returnTimeInput)}
+                                                                        </span>
+                                                                    )}
+                                                                </div>
+                                                            </div>
                                                         </div>
                                                     </div>
                                                 </motion.div>

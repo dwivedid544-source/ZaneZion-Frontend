@@ -37,7 +37,8 @@ const menuItems = {
   ],
   procurement: [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
-    { icon: ShoppingCart, label: 'Purchase Requests', path: '/dashboard/purchase-requests' },
+    { icon: ShoppingCart, label: 'Orders', path: '/dashboard/orders' },
+    { icon: ClipboardList, label: 'Purchase Requests', path: '/dashboard/purchase-requests' },
     { icon: Store, label: 'Vendors', path: '/dashboard/vendors' },
     { icon: Box, label: 'Quotes', path: '/dashboard/quotes' },
     { icon: FileText, label: 'Purchase Orders', path: '/dashboard/purchase-orders' },
@@ -48,6 +49,7 @@ const menuItems = {
   ],
   logistics: [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+    { icon: ShoppingCart, label: 'Orders', path: '/dashboard/orders' },
     { icon: Navigation, label: 'Active Missions', path: '/dashboard/missions' },
     { icon: Truck, label: 'Deliveries', path: '/dashboard/deliveries' },
     { icon: Truck, label: 'Fleet', path: '/dashboard/fleet' },
@@ -60,6 +62,7 @@ const menuItems = {
   ],
   inventory: [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
+    { icon: ShoppingCart, label: 'Orders', path: '/dashboard/orders' },
     { icon: Package, label: 'StockHub', path: '/dashboard/inventory' },
     { icon: Store, label: 'Warehouse', path: '/dashboard/warehouses' },
     { icon: AlertCircle, label: 'Alerts', path: '/dashboard/inventory-alerts' },

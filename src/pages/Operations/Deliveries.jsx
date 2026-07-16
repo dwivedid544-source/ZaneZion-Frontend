@@ -427,7 +427,12 @@ const Deliveries = () => {
         routeDistance: finalData.route_distance ? Number(finalData.route_distance) : undefined,
         staffPayRate: finalData.staff_pay_rate ? Number(finalData.staff_pay_rate) : undefined,
         deliveryFee: finalData.delivery_fee ? Number(finalData.delivery_fee) : undefined,
-      }).catch(() => swalError("Error", "Could not create delivery"));
+      })
+      .then(() => {
+        swalSuccess("Success", "Mission deployed successfully");
+        setIsModalOpen(false);
+      })
+      .catch(() => swalError("Error", "Could not create delivery"));
     } else if (modalType === 'edit') {
       const manifestMeta = {
         manifestItems: finalData.items,
@@ -467,7 +472,12 @@ const Deliveries = () => {
             receiverSignature: finalData.pod?.signature || '',
             remarks: finalData.pod?.notes || 'Delivered'
           }
-        }).catch(() => swalError("Error", "Could not submit POD"));
+        })
+        .then(() => {
+          swalSuccess("Success", "POD submitted successfully");
+          setIsModalOpen(false);
+        })
+        .catch(() => swalError("Error", "Could not submit POD"));
       } else {
         // Standard update of form fields
         updateDeliveryMutation.mutateAsync({ id: finalData.id, data: updatePayload })
@@ -478,17 +488,30 @@ const Deliveries = () => {
                 deliveryId: finalData.id,
                 assignedEmployeeId: finalData.assigned_driver,
                 vehicleId: 1
-              }).catch(() => console.error("Driver assigned but mission already exists or failed"));
+              })
+              .then(() => {
+                swalSuccess("Success", "Delivery updated and driver assigned successfully");
+                setIsModalOpen(false);
+              })
+              .catch(() => {
+                swalSuccess("Success", "Delivery updated successfully");
+                setIsModalOpen(false);
+              });
+            } else {
+              swalSuccess("Success", "Delivery updated successfully");
+              setIsModalOpen(false);
             }
           })
           .catch(() => swalError("Error", "Could not update delivery"));
       }
     } else if (modalType === 'delete') {
       deleteDeliveryMutation.mutateAsync(selectedDelivery.id)
-        .then(() => swalSuccess("Success", "Delivery deleted successfully"))
+        .then(() => {
+          swalSuccess("Success", "Delivery deleted successfully");
+          setIsModalOpen(false);
+        })
         .catch(() => swalError("Error", "Could not delete delivery"));
     }
-    setIsModalOpen(false);
   };
 
   const columns = [

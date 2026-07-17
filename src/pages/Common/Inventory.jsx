@@ -805,7 +805,7 @@ const Inventory = () => {
               <h3 className="text-sm font-bold text-white uppercase tracking-widest">Warehouse Ledger</h3>
               {isAdmin && (
                 <div className="flex bg-black/40 rounded-xl p-1 border border-white/5 w-full sm:w-auto overflow-x-auto whitespace-nowrap hide-scrollbar">
-                  {['Marketplace', 'Business', 'SaaS'].map((tab) => (
+                  {['Marketplace', 'Business' /*, 'SaaS' */].map((tab) => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
@@ -1254,7 +1254,7 @@ const Inventory = () => {
                     />
                     Business Inventory
                   </label>
-                  <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                  {/* <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
                     <input
                       type="radio"
                       name="inventoryType"
@@ -1264,7 +1264,7 @@ const Inventory = () => {
                       className="accent-accent"
                     />
                     SaaS Inventory
-                  </label>
+                  </label> */}
                 </div>
               </div>
 

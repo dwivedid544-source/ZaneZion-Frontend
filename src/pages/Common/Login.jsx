@@ -30,15 +30,15 @@ const Login = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
 
   const demoCredentials = {
-    'superadmin': { email: 'superadmin@zanezion.com',      password: '12345678' },
-    'admin':      { email: 'admin@gmail.com',              password: '12345678' },
-    'procurement': { email: 'procurement@gmail.com',        password: '12345678' },
-    'operations': { email: 'operation@gmail.com',          password: '12345678' },
-    'logistics':  { email: 'logistics@gmail.com',          password: '12345678' },
-    'inventory':  { email: 'invontory@gmail.com',          password: '12345678' },
-    'concierge':  { email: 'concierge@gmail.com',          password: '12345678' },
-    'client':     { email: 'business01@gmail.com',         password: 'password123' },
-    'staff':      { email: 'staff@gmail.com',              password: '12345678' },
+    'superadmin': { email: 'superadmin@zanezion.com', password: '12345678' },
+    'admin': { email: 'admin@gmail.com', password: '12345678' },
+    'procurement': { email: 'procurement@gmail.com', password: '12345678' },
+    'operations': { email: 'operation@gmail.com', password: '12345678' },
+    'logistics': { email: 'logistics@gmail.com', password: '12345678' },
+    'inventory': { email: 'invontory@gmail.com', password: '12345678' },
+    'concierge': { email: 'concierge@gmail.com', password: '12345678' },
+    'client': { email: 'business01@gmail.com', password: 'password123' },
+    'staff': { email: 'staff@gmail.com', password: '12345678' },
   };
 
   const roles = [
@@ -441,7 +441,7 @@ const Login = ({ onLogin }) => {
               New user?{' '}
               <Link to="/signup" className="text-accent underline decoration-accent/20 underline-offset-4 hover:text-white transition-colors">Create account</Link>
               <span className="mx-2 text-white/20">•</span>
-              <Link to="/staff-signup" className="text-muted hover:text-white transition-colors">Staff signup</Link>
+
             </p>
           </div>
         </div>

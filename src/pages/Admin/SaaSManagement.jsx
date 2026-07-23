@@ -142,7 +142,8 @@ const SaaSManagement = () => {
         if (modalType === 'plan') {
             const planData = {
                 ...formData,
-                features: formData.features.split('\n').filter(f => f.trim() !== '')
+                planType: formData.planType || planCategoryFilter || 'SaaS',
+                features: (typeof formData.features === 'string' ? formData.features : '').split('\n').filter(f => f.trim() !== '')
             };
 
             if (editingPlan) {
@@ -365,10 +366,10 @@ const SaaSManagement = () => {
                                             <Trash2 size={12} />
                                         </button>
                                     </div>
-                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                    <div className="flex items-center gap-2 mb-2 flex-wrap pr-20">
                                         <span className="text-[10px] font-black text-accent uppercase tracking-[0.2em]">{plan.tier}</span>
                                         <span className="px-2 py-0.5 bg-accent/10 border border-accent/20 text-accent text-[9px] font-bold rounded-md uppercase">
-                                            {planCategoryFilter === 'Personal' ? '👤 Personal' : '🏢 SaaS'}
+                                            {(plan.planType || planCategoryFilter) === 'Personal' ? '👤 Personal' : '🏢 SaaS'}
                                         </span>
                                     </div>
                                     <h3 className="text-xl font-black text-white italic mb-4">{plan.name}</h3>

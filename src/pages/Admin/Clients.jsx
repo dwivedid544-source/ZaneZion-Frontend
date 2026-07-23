@@ -31,6 +31,48 @@ const Clients = () => {
       return type === 'saas' || type === 'business' || !type.includes('personal');
     });
   }, [accessPlans]);
+
+  const personalPlans = React.useMemo(() => {
+    if (!Array.isArray(accessPlans)) return [];
+    return accessPlans.filter(p => {
+      const type = String(p.planType || p.category || '').toLowerCase();
+      return type === 'personal';
+    });
+  }, [accessPlans]);
+
+  const getClientPlanDisplay = React.useCallback((client) => {
+    const clientType = (client.client_type || client.clientType || '').toLowerCase();
+    const isPersonal = clientType === 'personal';
+    const planName = client.plan;
+
+    if (isPersonal) {
+      // Personal client: show "Free" unless they have an actual membership
+      if (!planName || planName.toLowerCase() === 'free') return 'Free';
+      // Try to match against personal membership plans
+      const match = personalPlans.find(
+        p => p.name.toLowerCase() === String(planName).toLowerCase() ||
+             p.tier?.toLowerCase() === String(planName).toLowerCase()
+      );
+      if (match) return match.name;
+      // Check if they have concierge membership
+      if (client.concierge_member || client.conciergeMembership || client.is_upgraded) {
+        const firstPersonal = personalPlans[0];
+        return firstPersonal ? firstPersonal.name : planName;
+      }
+      return 'Free';
+    }
+
+    // SaaS / Business client
+    if (!planName) return saasBusinessPlans[0]?.name || 'N/A';
+    const exactMatch = saasBusinessPlans.find(
+      p => p.name.toLowerCase() === String(planName).toLowerCase() ||
+           p.tier?.toLowerCase() === String(planName).toLowerCase()
+    );
+    if (exactMatch) return exactMatch.name;
+
+    // If no match found in live plans, it's a legacy/stale name → show first live plan
+    return saasBusinessPlans[0]?.name || planName;
+  }, [saasBusinessPlans, personalPlans]);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [debounceSearch, setDebounceSearch] = useState('');
@@ -41,9 +83,21 @@ const Clients = () => {
   const activeClientType = isAdminRole ? 'Personal' : (clientTypeFilter === 'Website' ? undefined : (['SaaS', 'Business', 'Personal'].includes(clientTypeFilter) ? clientTypeFilter : undefined));
   
   const { data: clientsData, isLoading: isLoadingClients } = useClients(currentPage, itemsPerPage, debounceSearch, activeClientType);
-  const rawClientsData = clientsData?.data || [];
-  const clientsList = Array.isArray(rawClientsData) ? rawClientsData : (rawClientsData.clients || rawClientsData.data || []);
-  const meta = clientsData?.meta || { totalItems: 0, totalPages: 1 };
+
+  const clientsList = React.useMemo(() => {
+    if (!clientsData) return [];
+    if (Array.isArray(clientsData)) return clientsData;
+    if (Array.isArray(clientsData.data)) return clientsData.data;
+    if (Array.isArray(clientsData.data?.clients)) return clientsData.data.clients;
+    if (Array.isArray(clientsData.clients)) return clientsData.clients;
+    if (Array.isArray(clientsData.items)) return clientsData.items;
+    return [];
+  }, [clientsData]);
+
+  const totalFromBackend = React.useMemo(() => {
+    if (!clientsData) return 0;
+    return clientsData.data?.total ?? clientsData.total ?? clientsData.meta?.totalItems ?? 0;
+  }, [clientsData]);
   
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
@@ -209,13 +263,12 @@ const Clients = () => {
   })();
 
   const filteredClients = allClients.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
-  const currentItems = filteredClients.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
+  const currentItems = clientTypeFilter === 'Website'
+    ? filteredClients.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
+    : filteredClients;
 
   // Stats
-  const totalClients = allClients.length;
+  const totalClients = clientTypeFilter === 'Website' ? allClients.length : (totalFromBackend || allClients.length);
   const activeClients = allClients.filter(c => (c.status || '').toLowerCase() === 'active').length;
   const pendingClients = allClients.filter(c => (c.status || '').toLowerCase() === 'pending').length;
   const inactiveClients = allClients.filter(c => ['inactive', 'deactivated'].includes((c.status || '').toLowerCase())).length;
@@ -247,7 +300,7 @@ const Clients = () => {
       clientType: client.clientType || client.client_type || 'SaaS',
       companyName: client.companyName || client.company_name || client.business_name || '',
       logo: client.logoUrl || client.logo || client.logo_url || '',
-      plan: client.plan || 'Starter',
+      plan: client.plan || (saasBusinessPlans[0]?.name || 'Standard'),
       billingCycle: client.billingCycle || client.billing_cycle || 'Monthly',
       paymentMethod: client.paymentMethod || client.payment_method || 'Wire Transfer',
       contact: client.contactPerson || client.contact || client.contact_person || '',
@@ -631,7 +684,7 @@ const Clients = () => {
                       <>
                         {clientTypeFilter !== 'Business' && (
                           <td className="p-6">
-                            <span className="text-sm font-bold text-accent">{client.plan || 'N/A'}</span>
+                            <span className="text-sm font-bold text-accent">{getClientPlanDisplay(client)}</span>
                           </td>
                         )}
                         {clientTypeFilter === 'Website' && (
@@ -732,11 +785,11 @@ const Clients = () => {
             </tbody>
           </table>
         </div>
-        {filteredClients.length > itemsPerPage && (
+        {totalClients > itemsPerPage && (
           <BootstrapPagination
             activePage={currentPage}
             itemsCountPerPage={itemsPerPage}
-            totalItemsCount={filteredClients.length}
+            totalItemsCount={totalClients}
             onChange={(page) => setCurrentPage(page)}
           />
         )}
@@ -806,7 +859,7 @@ const Clients = () => {
                           </span>
                           {!isAdminRole && (
                             <span className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-accent/20 text-accent">
-                              {selectedClient.plan || 'Starter'}
+                              {getClientPlanDisplay(selectedClient)}
                             </span>
                           )}
                         </div>

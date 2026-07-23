@@ -1651,7 +1651,7 @@ export const GlobalDataProvider = ({ children }) => {
           id: row.id,
           name: row.name,
           tier: tier,
-          planType: row.planType || row.category || 'SaaS',
+          planType: featureObj?.planType || row.planType || row.category || (String(row.name || '').toLowerCase().includes('personal') ? 'Personal' : 'SaaS'),
           price: `$${priceNum.toLocaleString(undefined, { minimumFractionDigits: priceNum % 1 ? 2 : 0, maximumFractionDigits: 2 })}`,
           period: isAnnual ? "per year" : "per month",
           yearlyPrice: `$${yearlyPriceNum.toLocaleString(undefined, { minimumFractionDigits: yearlyPriceNum % 1 ? 2 : 0, maximumFractionDigits: 2 })}`,

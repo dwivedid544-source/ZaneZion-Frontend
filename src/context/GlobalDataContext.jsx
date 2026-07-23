@@ -1647,7 +1647,7 @@ export const GlobalDataProvider = ({ children }) => {
           max_orders: row.maxOrders || row.max_orders,
           status: row.isActive ? "Active" : row.status || "Inactive",
         };
-      });
+      }).filter(p => p && !String(p.name || '').toLowerCase().includes('gold') && !String(p.tier || '').toLowerCase().includes('gold'));
       setAccessPlans(mapped);
     } catch (e) {
       console.error("Fetch access plans failed", e);
@@ -3132,6 +3132,7 @@ export const GlobalDataProvider = ({ children }) => {
   };
 
   const deletePlan = async (id) => {
+    setAccessPlans((prev) => prev.filter((p) => String(p.id) !== String(id)));
     try {
       await api.delete(`/plans/${id}`);
       addLog({

@@ -84,6 +84,7 @@ const SaaSManagement = () => {
                 yearlyPrice: '',
                 description: '',
                 features: '',
+                planType: 'SaaS',
                 commitment: 'Monthly or Yearly subscription.'
             });
         }
@@ -591,6 +592,18 @@ const SaaSManagement = () => {
                 <form onSubmit={handleSave} className="space-y-4">
                     {modalType === 'plan' ? (
                         <>
+                            <div className="space-y-1">
+                                <label className="text-[10px] font-black uppercase tracking-widest text-accent">Plan Category / Target Audience</label>
+                                <select
+                                    value={formData.planType || 'SaaS'}
+                                    onChange={(e) => setFormData({ ...formData, planType: e.target.value })}
+                                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-accent outline-none text-white"
+                                >
+                                    <option value="SaaS" className="bg-sidebar text-white">🏢 SaaS / Business Subscription</option>
+                                    <option value="Personal" className="bg-sidebar text-white">👤 Personal / Concierge Membership</option>
+                                </select>
+                            </div>
+
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1">
                                     <label className="text-[10px] font-black uppercase tracking-widest text-secondary">Plan Name</label>

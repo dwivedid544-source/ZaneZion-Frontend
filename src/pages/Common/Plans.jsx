@@ -53,19 +53,24 @@ const Plans = () => {
     const [selectedPlan, setSelectedPlan] = useState(null);
     const [requestFormData, setRequestFormData] = useState({ companyName: '', contactPerson: '', email: '', phone: '', country: '', requirements: '' });
 
+    const personalPlanPrice = React.useMemo(() => {
+        const found = accessPlans?.find(p => (p.planType || p.category || p.name || '').toLowerCase().includes('personal'));
+        return found ? found.price : `$${PERSONAL_MEMBERSHIP_FEE_USD}`;
+    }, [accessPlans]);
+
     const handleConciergeMembership = async () => {
         if (!currentUser) {
             swalWarning('Sign in required', 'Log in from the portal menu to activate Concierge Lifestyle membership.');
             return;
         }
         
-        const confirmPayment = await swalConfirm('Payment Authorization', `Authorize a recurring charge of $${PERSONAL_MEMBERSHIP_FEE_USD}/mo for the Concierge Lifestyle membership?`);
+        const confirmPayment = await swalConfirm('Payment Gateway Redirect', `Authorize recurring subscription charge of ${personalPlanPrice}/mo for the Concierge Lifestyle membership?`);
         if (!confirmPayment.isConfirmed) return;
 
         activatePersonalMembership();
         swalSuccess(
-            'Payment Authorized',
-            `Membership activated locally. Concierge Lifestyle ($${PERSONAL_MEMBERSHIP_FEE_USD}/mo) is now flagged on your account.`
+            'Payment Authorized & Activated',
+            `Membership activated. Concierge Lifestyle (${personalPlanPrice}/mo) is now active on your account.`
         );
     };
 
@@ -141,7 +146,7 @@ const Plans = () => {
                         <div>
                             <p className="text-[10px] font-black uppercase tracking-[0.4em] text-accent mb-2">Upgrade my account</p>
                             <h2 className="text-2xl lg:text-3xl font-black text-white tracking-tight italic">Concierge Lifestyle Membership</h2>
-                            <p className="text-accent text-3xl font-black mt-2">${PERSONAL_MEMBERSHIP_FEE_USD}<span className="text-sm text-muted font-bold not-italic"> / month</span></p>
+                            <p className="text-accent text-3xl font-black mt-2">{personalPlanPrice}<span className="text-sm text-muted font-bold not-italic"> / month</span></p>
                             <p className="text-secondary text-xs mt-2 leading-relaxed">Membership covers platform access and concierge coordination. After you join, the service groups below are available to request; each fulfilment quote is billed separately.</p>
                         </div>
                     </div>

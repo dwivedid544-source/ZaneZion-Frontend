@@ -31,6 +31,26 @@ const SaaSManagement = () => {
     const [companySearch, setCompanySearch] = useState('');
     const [companyPagination, setCompanyPagination] = useState(null);
     const [activeTab, setActiveTab] = useState('plans');
+    const [planCategoryFilter, setPlanCategoryFilter] = useState('SaaS'); // 'SaaS' | 'Personal'
+
+    const saasPlans = React.useMemo(() => {
+        if (!Array.isArray(accessPlans)) return [];
+        return accessPlans.filter(p => {
+            const type = String(p.planType || p.category || 'SaaS').toLowerCase();
+            return type === 'saas' || type === 'business' || type !== 'personal';
+        });
+    }, [accessPlans]);
+
+    const personalPlans = React.useMemo(() => {
+        if (!Array.isArray(accessPlans)) return [];
+        return accessPlans.filter(p => {
+            const type = String(p.planType || p.category || 'SaaS').toLowerCase();
+            return type === 'personal';
+        });
+    }, [accessPlans]);
+
+    const currentCategoryPlans = planCategoryFilter === 'Personal' ? personalPlans : saasPlans;
+
     const [selectedCompany, setSelectedCompany] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalType, setModalType] = useState('plan'); // 'plan' or 'entity'
@@ -45,6 +65,7 @@ const SaaSManagement = () => {
         yearlyPrice: '',
         description: '',
         features: '',
+        planType: 'SaaS',
         commitment: 'Monthly or Yearly subscription.',
         // Entity fields
         location: '',
@@ -84,7 +105,7 @@ const SaaSManagement = () => {
                 yearlyPrice: '',
                 description: '',
                 features: '',
-                planType: 'SaaS',
+                planType: planCategoryFilter || 'SaaS',
                 commitment: 'Monthly or Yearly subscription.'
             });
         }
@@ -287,7 +308,10 @@ const SaaSManagement = () => {
             {activeTab === 'plans' && (
                 <div className="space-y-8">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                        <h2 className="text-xl font-bold text-white italic">Protocol Matrix</h2>
+                        <div>
+                            <h2 className="text-xl font-bold text-white italic">Protocol Matrix</h2>
+                            <p className="text-[10px] text-secondary uppercase font-black tracking-widest mt-1 opacity-60">Manage SaaS Business subscriptions & Concierge memberships separately.</p>
+                        </div>
                         <button
                             onClick={() => handleOpenModal()}
                             className="w-full sm:w-auto btn-primary py-3 px-6 text-[10px] font-black uppercase tracking-widest flex items-center justify-center gap-2"
@@ -295,56 +319,104 @@ const SaaSManagement = () => {
                             <Plus size={14} /> Design New Protocol
                         </button>
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-                        {accessPlans.map(plan => (
-                            <div key={plan.id} className="glass-card p-6 border-accent/10 relative overflow-hidden group hover:border-accent/40 transition-all">
-                                <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
-                                    <Shield size={64} className="text-accent" />
-                                </div>
-                                <div className="absolute top-4 right-4 flex gap-2 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+
+                    {/* Category Switcher Sub-Tabs */}
+                    <div className="flex items-center gap-2 p-1.5 bg-white/5 border border-white/10 rounded-2xl w-fit">
+                        <button
+                            onClick={() => setPlanCategoryFilter('SaaS')}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                                planCategoryFilter === 'SaaS'
+                                    ? 'bg-accent text-black shadow-lg shadow-accent/20'
+                                    : 'text-secondary hover:text-white hover:bg-white/5'
+                            }`}
+                        >
+                            🏢 SaaS / Business Tiers ({saasPlans.length})
+                        </button>
+                        <button
+                            onClick={() => setPlanCategoryFilter('Personal')}
+                            className={`px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${
+                                planCategoryFilter === 'Personal'
+                                    ? 'bg-accent text-black shadow-lg shadow-accent/20'
+                                    : 'text-secondary hover:text-white hover:bg-white/5'
+                            }`}
+                        >
+                            👤 Personal Concierge Memberships ({personalPlans.length})
+                        </button>
+                    </div>
+
+                    {currentCategoryPlans.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+                            {currentCategoryPlans.map(plan => (
+                                <div key={plan.id} className="glass-card p-6 border-accent/10 relative overflow-hidden group hover:border-accent/40 transition-all">
+                                    <div className="absolute top-0 right-0 p-3 opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none">
+                                        <Shield size={64} className="text-accent" />
+                                    </div>
+                                    <div className="absolute top-4 right-4 flex gap-2 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                            onClick={() => handleOpenModal(plan)}
+                                            className="p-2 bg-white/5 hover:bg-accent hover:text-black rounded-xl transition-all border border-white/5"
+                                        >
+                                            <Edit2 size={12} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDelete(plan.id)}
+                                            className="p-2 bg-white/5 hover:bg-danger hover:text-white rounded-xl transition-all border border-white/5"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                    </div>
+                                    <div className="flex items-center justify-between gap-2 mb-2">
+                                        <span className="text-[10px] font-black text-accent uppercase tracking-[0.2em]">{plan.tier}</span>
+                                        <span className="px-2 py-0.5 bg-accent/10 border border-accent/20 text-accent text-[9px] font-bold rounded-md uppercase">
+                                            {planCategoryFilter === 'Personal' ? '👤 Personal' : '🏢 SaaS'}
+                                        </span>
+                                    </div>
+                                    <h3 className="text-xl font-black text-white italic mb-4">{plan.name}</h3>
+                                    <div className="flex items-baseline gap-2 mb-6">
+                                        <span className="text-3xl font-black text-white italic font-heading tracking-tighter">{plan.price}</span>
+                                        <span className="text-[10px] text-muted uppercase font-black tracking-widest">/ Month</span>
+                                    </div>
+                                    <div className="space-y-3 mb-8">
+                                        {(Array.isArray(plan.features) ? plan.features : (() => { try { return JSON.parse(plan.features || '[]'); } catch { return []; } })()).slice(0, 4).map((f, i) => (
+                                            <div key={i} className="flex items-center gap-2">
+                                                <CheckCircle2 size={14} className="text-accent shrink-0" />
+                                                <span className="text-xs text-secondary font-medium italic">{f}</span>
+                                            </div>
+                                        ))}
+                                    </div>
                                     <button
                                         onClick={() => handleOpenModal(plan)}
-                                        className="p-2 bg-white/5 hover:bg-accent hover:text-black rounded-xl transition-all border border-white/5"
+                                        className="w-full py-3 bg-accent/5 border border-accent/20 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] text-accent hover:bg-accent hover:text-black transition-all"
                                     >
-                                        <Edit2 size={12} />
-                                    </button>
-                                    <button
-                                        onClick={() => handleDelete(plan.id)}
-                                        className="p-2 bg-white/5 hover:bg-danger hover:text-white rounded-xl transition-all border border-white/5"
-                                    >
-                                        <Trash2 size={12} />
+                                        Modify Protocol
                                     </button>
                                 </div>
-                                <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em] mb-1">{plan.tier}</p>
-                                <h3 className="text-xl font-black text-white italic mb-4">{plan.name}</h3>
-                                <div className="flex items-baseline gap-2 mb-6">
-                                    <span className="text-3xl font-black text-white italic font-heading tracking-tighter">{plan.price}</span>
-                                    <span className="text-[10px] text-muted uppercase font-black tracking-widest">/ Month</span>
-                                </div>
-                                <div className="space-y-3 mb-8">
-                                    {(Array.isArray(plan.features) ? plan.features : (() => { try { return JSON.parse(plan.features || '[]'); } catch { return []; } })()).slice(0, 4).map((f, i) => (
-                                        <div key={i} className="flex items-center gap-2">
-                                            <CheckCircle2 size={14} className="text-accent shrink-0" />
-                                            <span className="text-xs text-secondary font-medium italic">{f}</span>
-                                        </div>
-                                    ))}
-                                </div>
-                                <button
-                                    onClick={() => handleOpenModal(plan)}
-                                    className="w-full py-3 bg-accent/5 border border-accent/20 rounded-xl text-[10px] font-black uppercase tracking-[0.2em] text-accent hover:bg-accent hover:text-black transition-all"
-                                >
-                                    Modify Protocol
-                                </button>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="glass-card p-12 text-center border-white/5">
+                            <Shield size={48} className="mx-auto text-muted mb-4 opacity-40" />
+                            <h4 className="text-lg font-bold text-white mb-2">
+                                No {planCategoryFilter === 'Personal' ? 'Personal Concierge Memberships' : 'SaaS / Business Subscriptions'} Created Yet
+                            </h4>
+                            <p className="text-xs text-secondary max-w-md mx-auto mb-6">
+                                Click "Design New Protocol" above to create custom {planCategoryFilter === 'Personal' ? 'Personal Membership' : 'SaaS Business Subscription'} tiers.
+                            </p>
+                            <button
+                                onClick={() => handleOpenModal()}
+                                className="btn-primary py-2.5 px-6 text-[10px] font-black uppercase tracking-widest inline-flex items-center gap-2"
+                            >
+                                <Plus size={14} /> Design New Protocol
+                            </button>
+                        </div>
+                    )}
 
                     <div className="glass-card p-4 sm:p-6 border-white/5">
                         <h3 className="text-lg font-bold mb-6 text-white flex items-center gap-3 italic">
-                            <CreditCard className="text-accent" size={20} /> Advanced Registry
+                            <CreditCard className="text-accent" size={20} /> Advanced Registry ({planCategoryFilter})
                         </h3>
                         <div className="overflow-x-auto -mx-4 sm:mx-0">
-                            <Table columns={planColumns} data={accessPlans} />
+                            <Table columns={planColumns} data={currentCategoryPlans} />
                         </div>
                     </div>
                 </div>

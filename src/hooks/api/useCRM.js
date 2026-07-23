@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
 // --- Clients ---
 export const useClients = (page = 1, limit = 10, search = '', clientType = '') => {
@@ -22,7 +23,7 @@ export const useCreateClient = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      notifyStateChanged(queryClient, ['clients', 'users', 'dashboardStats']);
     }
   });
 };
@@ -35,7 +36,7 @@ export const useUpdateClient = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      notifyStateChanged(queryClient, ['clients', 'users', 'dashboardStats']);
     }
   });
 };
@@ -48,7 +49,7 @@ export const useDeleteClient = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients'] });
+      notifyStateChanged(queryClient, ['clients', 'users', 'dashboardStats']);
     }
   });
 };
@@ -74,10 +75,7 @@ export const useCreateUser = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['users'] });
-      }, 500);
+      notifyStateChanged(queryClient, ['users', 'clients', 'dashboardStats']);
     }
   });
 };
@@ -90,10 +88,7 @@ export const useUpdateUser = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['users'] });
-      }, 500);
+      notifyStateChanged(queryClient, ['users', 'clients', 'dashboardStats']);
     }
   });
 };
@@ -106,10 +101,8 @@ export const useDeleteUser = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setTimeout(() => {
-        queryClient.invalidateQueries({ queryKey: ['users'] });
-      }, 500);
+      notifyStateChanged(queryClient, ['users', 'clients', 'dashboardStats']);
     }
   });
 };
+

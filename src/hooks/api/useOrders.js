@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
 // -----------------------------
 // Orders Hooks
@@ -48,7 +49,7 @@ export const useCreateOrder = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['orders', 'deliveries', 'dashboardStats']);
     },
   });
 };
@@ -61,8 +62,7 @@ export const useUpdateOrderStatus = () => {
       return response.data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders', variables.id] });
+      notifyStateChanged(queryClient, ['orders', ['orders', variables.id], 'deliveries', 'dashboardStats']);
     },
   });
 };
@@ -75,8 +75,7 @@ export const useUpdateOrder = () => {
       return response.data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      queryClient.invalidateQueries({ queryKey: ['orders', variables.id] });
+      notifyStateChanged(queryClient, ['orders', ['orders', variables.id], 'deliveries', 'dashboardStats']);
     },
   });
 };
@@ -89,7 +88,7 @@ export const useDeleteOrder = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['orders', 'deliveries', 'dashboardStats']);
     },
   });
 };
@@ -118,8 +117,7 @@ export const useCreateDelivery = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['deliveries', 'orders', 'dashboardStats']);
     },
   });
 };
@@ -132,7 +130,7 @@ export const useAssignDelivery = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      notifyStateChanged(queryClient, ['deliveries', 'orders', 'dashboardStats']);
     },
   });
 };
@@ -145,8 +143,7 @@ export const useUpdateDeliveryStatus = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['deliveries', 'orders', 'dashboardStats']);
     },
   });
 };
@@ -164,8 +161,8 @@ export const useCreateProofOfDelivery = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['deliveries', 'orders', 'dashboardStats']);
     },
   });
 };
+

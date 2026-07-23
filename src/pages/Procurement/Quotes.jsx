@@ -428,7 +428,7 @@ const Quotes = () => {
   };
 
   const columns = [
-    { header: "Institutional ID", accessor: "id", render: (row) => <span className="font-mono font-bold text-accent">{row.id}</span> },
+    { header: "Client ID", accessor: "id", render: (row) => <span className="font-mono font-bold text-accent">{row.id}</span> },
     {
       header: "Supply Partner",
       accessor: "vendor_name",

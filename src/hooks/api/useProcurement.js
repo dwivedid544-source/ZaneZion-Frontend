@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
 // Purchase Requests (PR)
 export const usePurchaseRequests = (page = 1, limit = 10, search = '') => {
@@ -19,7 +20,7 @@ export const useCreatePR = () => {
       const res = await api.post('/purchase-requests', data);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['purchaseRequests'])
+    onSuccess: () => notifyStateChanged(queryClient, ['purchaseRequests', 'dashboardStats'])
   });
 };
 
@@ -30,7 +31,7 @@ export const useUpdatePR = () => {
       const res = await api.put(`/purchase-requests/${id}`, data);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['purchaseRequests'])
+    onSuccess: () => notifyStateChanged(queryClient, ['purchaseRequests', 'dashboardStats'])
   });
 };
 
@@ -41,7 +42,7 @@ export const useDeletePR = () => {
       const res = await api.delete(`/purchase-requests/${id}`);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['purchaseRequests'])
+    onSuccess: () => notifyStateChanged(queryClient, ['purchaseRequests', 'dashboardStats'])
   });
 };
 
@@ -63,7 +64,7 @@ export const useCreateRFQ = () => {
       const res = await api.post('/rfqs', data);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['rfqs'])
+    onSuccess: () => notifyStateChanged(queryClient, ['rfqs', 'quotes', 'dashboardStats'])
   });
 };
 
@@ -74,7 +75,7 @@ export const useUpdateRFQ = () => {
       const res = await api.put(`/rfqs/${id}/status`, data);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['rfqs'])
+    onSuccess: () => notifyStateChanged(queryClient, ['rfqs', 'quotes', 'dashboardStats'])
   });
 };
 
@@ -85,7 +86,7 @@ export const useDeleteRFQ = () => {
       const res = await api.delete(`/rfqs/${id}`);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['rfqs'])
+    onSuccess: () => notifyStateChanged(queryClient, ['rfqs', 'quotes', 'dashboardStats'])
   });
 };
 
@@ -97,8 +98,7 @@ export const useCreateQuotation = () => {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['quotations']);
-      queryClient.invalidateQueries(['quotes']);
+      notifyStateChanged(queryClient, ['quotations', 'quotes', 'dashboardStats']);
     }
   });
 };
@@ -111,8 +111,7 @@ export const useUpdateQuotation = () => {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['quotations']);
-      queryClient.invalidateQueries(['quotes']);
+      notifyStateChanged(queryClient, ['quotations', 'quotes', 'dashboardStats']);
     }
   });
 };
@@ -125,8 +124,7 @@ export const useDeleteQuotation = () => {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['quotations']);
-      queryClient.invalidateQueries(['quotes']);
+      notifyStateChanged(queryClient, ['quotations', 'quotes', 'dashboardStats']);
     }
   });
 };
@@ -170,7 +168,7 @@ export const useCreatePurchaseOrder = () => {
       const res = await api.post('/purchase-orders', data);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['purchaseOrders'])
+    onSuccess: () => notifyStateChanged(queryClient, ['purchaseOrders', 'orders', 'dashboardStats'])
   });
 };
 
@@ -181,7 +179,7 @@ export const useUpdatePurchaseOrder = () => {
       const res = await api.put(`/purchase-orders/${id}`, data);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['purchaseOrders'])
+    onSuccess: () => notifyStateChanged(queryClient, ['purchaseOrders', 'orders', 'dashboardStats'])
   });
 };
 
@@ -192,6 +190,7 @@ export const useDeletePurchaseOrder = () => {
       const res = await api.delete(`/purchase-orders/${id}`);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries(['purchaseOrders'])
+    onSuccess: () => notifyStateChanged(queryClient, ['purchaseOrders', 'orders', 'dashboardStats'])
   });
 };
+

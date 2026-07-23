@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied } from '../../utils/swal';
+import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied, swalLoading, swalClose } from '../../utils/swal';
 import {
     Car, Calendar, Clock, MapPin, Navigation,
     Plus, X, CheckCircle, Info, ArrowRight,
@@ -108,6 +108,9 @@ const Chauffeur = () => {
         fetchSystemSettings,
         fleet,
         fetchFleet,
+        syncGlobalState,
+        addChauffeurRequest,
+        updateChauffeurRequest: updateChauffeurRequestCtx,
     } = useData();
     const [editingRequest, setEditingRequest] = useState(null);
     useEffect(() => {
@@ -155,6 +158,7 @@ const Chauffeur = () => {
     }, [chauffeurRequests, editingRequest?.id]);
 
     const [showModal, setShowModal] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     const [modalType, setModalType] = useState('create'); // create, edit, view
     const [serviceType, setServiceType] = useState('One Way');
@@ -198,8 +202,8 @@ const Chauffeur = () => {
         amenities: req.amenities || [],
         chauffeurFee: Number(req.chauffeurFee ?? req.chauffeur_fee ?? 0) || 0,
         chauffeur_fee: Number(req.chauffeurFee ?? req.chauffeur_fee ?? 0) || 0,
-        chauffeur_fee_mode: req.chauffeur_fee_mode || CHAUFFEUR_BILLING_MODE,
-        serviceType: req.serviceType,
+        chauffeur_fee_mode: req.chauffeur_fee_mode || 'separate',
+        serviceType: req.serviceType || 'One Way',
         returnDate: req.returnDate || null,
         returnTime: req.returnTime || null,
         numberOfDays: req.numberOfDays || null,
@@ -207,8 +211,12 @@ const Chauffeur = () => {
         stopLocations: req.stopLocations || null,
         bags: req.bags || 0,
         clientName: req.clientName || null,
-        ...(req._passengerInfo && typeof req._passengerInfo === 'object' ? req._passengerInfo : {}),
-        ...patch,
+        driverName: patch.driverName !== undefined ? patch.driverName : (req.driverName || null),
+        plateNumber: patch.plateNumber !== undefined ? patch.plateNumber : (req.plateNumber || null),
+        driver_user_id: patch.driver_user_id !== undefined ? patch.driver_user_id : (req.driver_user_id || req.driverId || null),
+        driverPhotoUrl: patch.driverPhotoUrl !== undefined ? patch.driverPhotoUrl : (req.driverPhotoUrl || null),
+        adminApproved: patch.adminApproved !== undefined ? patch.adminApproved : (req.adminApproved || false),
+        chauffeur_status: patch.chauffeur_status || req.chauffeur_status || req.status || 'pending',
     });
 
     const chauffeurStatusKey = (s) => String(s || '').toLowerCase().replace(/\s+/g, '_');
@@ -229,6 +237,8 @@ const Chauffeur = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (isSubmitting) return;
+
         const formData = new FormData(e.target);
 
         // For staff admin: resolve selected client from dropdown
@@ -286,14 +296,44 @@ const Chauffeur = () => {
             missionType: 'CHAUFFEUR'
         };
 
-        if (editingRequest) {
-            updateMutation.mutate({ id: editingRequest.id, data: { ...editingRequest, ...request } });
-        } else {
-            createMutation.mutate(request);
-        }
+        swalLoading("Booking Chauffeur", "Booking your chauffeur, please wait...");
+        setIsSubmitting(true);
 
-        setShowModal(false);
-        resetForm();
+        if (editingRequest) {
+            updateMutation.mutate({ id: editingRequest.id, data: { ...editingRequest, ...request } }, {
+                onSuccess: async () => {
+                    if (syncGlobalState) await syncGlobalState();
+                    swalClose();
+                    setIsSubmitting(false);
+                    setShowModal(false);
+                    resetForm();
+                    swalSuccess("Protocol Updated", "Chauffeur booking details updated successfully.");
+                },
+                onError: (err) => {
+                    swalClose();
+                    setIsSubmitting(false);
+                    const msg = err.response?.data?.message || err.message || "Failed to update chauffeur booking.";
+                    swalError("Update Failed", msg);
+                }
+            });
+        } else {
+            createMutation.mutate(request, {
+                onSuccess: async () => {
+                    if (syncGlobalState) await syncGlobalState();
+                    swalClose();
+                    setIsSubmitting(false);
+                    setShowModal(false);
+                    resetForm();
+                    swalSuccess("Booking Confirmed", "Your chauffeur service has been booked successfully.");
+                },
+                onError: (err) => {
+                    swalClose();
+                    setIsSubmitting(false);
+                    const msg = err.response?.data?.message || err.message || "Failed to book chauffeur service.";
+                    swalError("Booking Failed", msg);
+                }
+            });
+        }
     };
 
     const resetForm = () => {
@@ -1155,11 +1195,20 @@ const Chauffeur = () => {
                                     </div>
 
                                     <div className="p-5 sm:p-8 border-t border-white/5 flex items-center justify-end gap-4 shrink-0 bg-sidebar z-10 mt-auto">
-                                        <button type="button" onClick={() => setShowModal(false)} className="text-muted text-[10px] font-black uppercase tracking-widest hover:text-white transition-all px-4">Abort</button>
+                                        <button type="button" disabled={isSubmitting} onClick={() => setShowModal(false)} className="text-muted text-[10px] font-black uppercase tracking-widest hover:text-white transition-all px-4 disabled:opacity-50">Abort</button>
                                         {modalType !== 'view' && (
-                                            <button type="submit" className="btn-primary flex items-center gap-2 sm:gap-3 px-6 sm:px-12 py-4 sm:py-5 shadow-2xl shadow-accent/20 text-xs sm:text-sm">
-                                                <CheckCircle size={18} className="sm:w-5 sm:h-5" />
-                                                <span>{editingRequest ? 'Update Protocol' : 'Confirm Protocol'}</span>
+                                            <button type="submit" disabled={isSubmitting} className="btn-primary flex items-center gap-2 sm:gap-3 px-6 sm:px-12 py-4 sm:py-5 shadow-2xl shadow-accent/20 text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed">
+                                                {isSubmitting ? (
+                                                    <>
+                                                        <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-spin" />
+                                                        <span>Booking, please wait...</span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle size={18} className="sm:w-5 sm:h-5" />
+                                                        <span>{editingRequest ? 'Update Protocol' : 'Confirm Protocol'}</span>
+                                                    </>
+                                                )}
                                             </button>
                                         )}
                                     </div>

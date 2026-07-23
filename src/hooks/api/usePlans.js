@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
 // --- Plans ---
 export const usePlans = (page = 1, limit = 10, search = '') => {
@@ -22,7 +23,7 @@ export const useCreatePlan = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plans'] });
+      notifyStateChanged(queryClient, ['plans', 'subscriptions', 'dashboardStats']);
     }
   });
 };
@@ -35,7 +36,7 @@ export const useUpdatePlan = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['plans'] });
+      notifyStateChanged(queryClient, ['plans', 'subscriptions', 'dashboardStats']);
     }
   });
 };
@@ -52,3 +53,4 @@ export const useSubscriptions = (page = 1, limit = 10, search = '') => {
     }
   });
 };
+

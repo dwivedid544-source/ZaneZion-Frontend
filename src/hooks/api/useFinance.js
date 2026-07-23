@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
 // -----------------------------
 // Invoices Hooks
@@ -36,7 +37,7 @@ export const useCreateInvoice = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      notifyStateChanged(queryClient, ['invoices', 'dashboardStats']);
     },
   });
 };
@@ -49,8 +50,7 @@ export const useUpdateInvoiceStatus = () => {
       return response.data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices', variables.id] });
+      notifyStateChanged(queryClient, ['invoices', ['invoices', variables.id], 'dashboardStats']);
     },
   });
 };
@@ -63,8 +63,7 @@ export const useUpdateInvoice = () => {
       return response.data;
     },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices', variables.id] });
+      notifyStateChanged(queryClient, ['invoices', ['invoices', variables.id], 'dashboardStats']);
     },
   });
 };
@@ -77,7 +76,7 @@ export const useDeleteInvoice = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      notifyStateChanged(queryClient, ['invoices', 'dashboardStats']);
     },
   });
 };
@@ -106,8 +105,7 @@ export const useCreatePayment = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['payments'] });
-      queryClient.invalidateQueries({ queryKey: ['invoices'] });
+      notifyStateChanged(queryClient, ['payments', 'invoices', 'dashboardStats']);
     },
   });
 };
@@ -122,3 +120,4 @@ export const useReceipt = (id) => {
     enabled: !!id,
   });
 };
+

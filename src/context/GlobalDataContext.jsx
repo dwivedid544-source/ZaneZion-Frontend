@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import api from "../services/api/setupAxios.js";
 import { io } from "socket.io-client";
 import {
@@ -590,15 +591,29 @@ function mapOrderDisplayTotal(o, parsedItemsArr) {
       ? v
       : parseFloat(String(v).replace(/,/g, ""));
   };
+
+  const meta = typeof o?.metadata === "string"
+    ? (() => { try { return JSON.parse(o.metadata); } catch { return {}; } })()
+    : (o?.metadata || {});
+
   const candidates = [
-    o.total_amount,
-    o.totalAmount,
-    o.amount,
-    o.total,
-    o.grand_total,
-    o.grandTotal,
-    o.order_total,
-    o.orderTotal,
+    o?.total_amount,
+    o?.totalAmount,
+    o?.amount,
+    o?.total,
+    o?.grand_total,
+    o?.grandTotal,
+    o?.order_total,
+    o?.orderTotal,
+    o?.chauffeurFee,
+    o?.chauffeur_fee,
+    meta.chauffeurFee,
+    meta.chauffeur_fee,
+    meta.total_amount,
+    meta.totalAmount,
+    meta.customItems?.[0]?.chauffeurFee,
+    meta.customItems?.[0]?.chauffeur_fee,
+    meta.customItems?.[0]?.total_amount,
   ];
   for (const c of candidates) {
     const n = toNum(c);
@@ -608,7 +623,7 @@ function mapOrderDisplayTotal(o, parsedItemsArr) {
   let sum = 0;
   for (const line of lines) {
     const lineTot = toNum(
-      line.total ?? line.line_total ?? line.lineTotal ?? line.subtotal,
+      line.total ?? line.line_total ?? line.lineTotal ?? line.subtotal ?? line.chauffeurFee ?? line.chauffeur_fee,
     );
     if (Number.isFinite(lineTot) && lineTot > 0) {
       sum += lineTot;
@@ -616,12 +631,12 @@ function mapOrderDisplayTotal(o, parsedItemsArr) {
     }
     const q = toNum(line.qty ?? line.quantity ?? 1);
     const p = toNum(
-      line.price ?? line.unit_price ?? line.unitPrice ?? line.amount ?? 0,
+      line.price ?? line.unit_price ?? line.unitPrice ?? line.amount ?? line.chauffeurFee ?? line.chauffeur_fee ?? 0,
     );
-    sum += (Number.isFinite(q) ? q : 0) * (Number.isFinite(p) ? p : 0);
+    sum += (Number.isFinite(q) ? q : 1) * (Number.isFinite(p) ? p : 0);
   }
   if (Number.isFinite(sum) && sum > 0) return sum;
-  const z = toNum(o.total_amount ?? o.totalAmount ?? o.amount ?? o.total ?? 0);
+  const z = toNum(o?.total_amount ?? o?.totalAmount ?? o?.amount ?? o?.total ?? 0);
   return Number.isFinite(z) ? z : 0;
 }
 
@@ -666,6 +681,7 @@ function extractTransportModeFromOrder(row) {
 }
 
 export const GlobalDataProvider = ({ children }) => {
+  const queryClient = useQueryClient();
   const [saasRequests, setSaasRequests] = useState([]);
   const [subscriptionRequests, setSubscriptionRequests] = useState([]);
   const [securityEvents, setSecurityEvents] = useState([]);
@@ -1876,16 +1892,22 @@ export const GlobalDataProvider = ({ children }) => {
           : (resChauffeur.data.data?.orders || []);
 
         combined.push(...chauffeurOrders.map((order) => {
-          const detail = order.metadata?.customItems?.[0] || order.metadata || {};
+          const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
+          const compId = order.companyId ?? order.company_id ?? order.clientId ?? order.client_id ?? detail.companyId ?? detail.company_id ?? detail.clientId ?? null;
+          const usrId = order.createdById ?? order.created_by ?? order.userId ?? order.user_id ?? detail.userId ?? detail.created_by ?? null;
           return {
             id: `CH-ORD-${String(order.id).padStart(3, "0")}`,
             db_id: order.id,
             orderId: order.orderNumber || `ORD-${String(order.id).padStart(3, "0")}`,
             order_id_raw: order.id,
-            company_id: order.companyId ?? null,
-            client_id: order.clientId ?? null,
-            customer_id: order.customerId ?? null,
-            clientId: order.clientId ?? null,
+            company_id: compId,
+            companyId: compId,
+            client_id: order.clientId ?? order.client_id ?? detail.clientId ?? null,
+            customer_id: order.customerId ?? order.customer_id ?? usrId,
+            clientId: order.clientId ?? order.client_id ?? detail.clientId ?? null,
+            created_by: usrId,
+            user_id: usrId,
+            userId: usrId,
             client: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
             clientName: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
             mission_type: "Chauffeur",
@@ -2811,6 +2833,7 @@ export const GlobalDataProvider = ({ children }) => {
     return () => clearInterval(interval);
   }, [currentUser, fetchOrders, fetchDeliveries, fetchProjects]);
 
+
   const recordLoss = async (loss) => {
     try {
       const item = inventory.find((i) => i.name === loss.item);
@@ -3496,6 +3519,7 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       await api.delete(`/orders/${id}`);
       setOrders((prev) => prev.filter((o) => o.id !== id));
+      await syncGlobalState();
       addLog({
         action: "Order Terminated",
         detail: `Protocol ${id} deleted from ledger.`,
@@ -3600,7 +3624,7 @@ export const GlobalDataProvider = ({ children }) => {
         }
       }
 
-      await fetchOrders();
+      await syncGlobalState();
       addLog({
         action: "Order Updated",
         detail: `Order ${orderId} parameters recalibrated.`,
@@ -4116,8 +4140,7 @@ export const GlobalDataProvider = ({ children }) => {
       }
       /** Custom / bespoke: no immediate Ops/Procurement staff row — admin approves → `concierge` stage, then `assignOrderToStage` creates the concierge desk assignment. */
 
-      // Re-fetch to ensure sync and correct mapping
-      await fetchOrders();
+      await syncGlobalState();
 
       let charged = !isPersonalAutoChargeUser;
       let chargeError = null;
@@ -4328,8 +4351,7 @@ export const GlobalDataProvider = ({ children }) => {
       };
       const res = await api.post("/deliveries", reqData);
       if (res.data.success) {
-        // Re-fetch to sync
-        await fetchDeliveries();
+        await syncGlobalState();
 
         const delId = `DEL-${String(res.data.data.id).padStart(3, "0")}`;
         addLog({
@@ -4385,19 +4407,18 @@ export const GlobalDataProvider = ({ children }) => {
             detail = {};
           }
         }
-        const payload = {
-          clientId: updated.clientId || updated.client_id || detail.clientId || '',
-          status: apiStatus,
-          items: [{
-            ...detail,
-            driverName: updated.driver || detail.driverName || "",
-            driver_user_id: updated.driverId || detail.driver_user_id || null,
-            plateNumber: updated.vehicleId || detail.plateNumber || "",
-            status: apiStatus
-          }]
-        };
-        await api.put(`/orders/${patchId}`, payload);
-        await fetchDeliveries();
+        await updateChauffeurRequest({
+          id: patchId,
+          db_id: patchId,
+          mission_type: "Chauffeur",
+          status: updated.status,
+          driverName: updated.driver ?? updated.driver_name ?? detail.driverName ?? detail.driver,
+          plateNumber: updated.vehicleId ?? updated.plate_number ?? detail.plateNumber,
+          driver_user_id: updated.assigned_driver ?? updated.driverId ?? updated.driver_id ?? detail.driver_user_id,
+          passenger_info: detail,
+          _passengerInfo: detail,
+        });
+        await syncGlobalState();
         return;
       } catch (e) {
         console.error("Failed to update Chauffeur order:", e);
@@ -4448,7 +4469,7 @@ export const GlobalDataProvider = ({ children }) => {
       const res = await api.put(`/deliveries/${patchId}`, patchBody);
       console.log('PUT response:', res.data);
 
-      await fetchDeliveries();
+      await syncGlobalState();
       if (updated.status === "Delivered" || updated.status === "Completed") {
         // Auto-update the linked order status to 'delivered'
         const numericOrderId =
@@ -4465,7 +4486,7 @@ export const GlobalDataProvider = ({ children }) => {
             console.warn("Could not auto-update order status:", e.message);
           }
         }
-        await fetchOrders();
+        await syncGlobalState();
         const rawId =
           updated.order_id_raw ||
           (updated.orderId
@@ -4480,7 +4501,7 @@ export const GlobalDataProvider = ({ children }) => {
           }
         }
       } else {
-        await fetchOrders();
+        await syncGlobalState();
       }
     } catch (error) {
       console.error(
@@ -4498,6 +4519,7 @@ export const GlobalDataProvider = ({ children }) => {
       setDeliveries((prev) =>
         prev.filter((d) => d.id !== id && d.db_id !== id),
       );
+      await syncGlobalState();
       addLog({
         action: "Mission Decommissioned",
         detail: `Logistics Protocol ${id} terminated and removed from active operations.`,
@@ -4510,7 +4532,6 @@ export const GlobalDataProvider = ({ children }) => {
 
   const updateInvoice = async (updated) => {
     try {
-      // Handle string vs numeric ID
       const numericId =
         typeof updated.id === "string" && updated.id.startsWith("INV-")
           ? updated.id.split("-")[1]
@@ -4526,7 +4547,7 @@ export const GlobalDataProvider = ({ children }) => {
 
       await api.put(`/finance/invoices/${numericId}`, reqData);
 
-      await fetchFinance();
+      await syncGlobalState();
       addLog({
         action: "Invoice Updated",
         detail: `Institutional ledger ${updated.id} parameters recalibrated.`,
@@ -4544,7 +4565,7 @@ export const GlobalDataProvider = ({ children }) => {
         typeof id === "string" && id.startsWith("INV-") ? id.split("-")[1] : id;
 
       await api.delete(`/finance/invoices/${numericId}`);
-      await fetchFinance();
+      await syncGlobalState();
       addLog({
         action: "Invoice Terminated",
         detail: `Financial record ${id} removed from ledger.`,
@@ -5857,13 +5878,18 @@ export const GlobalDataProvider = ({ children }) => {
         : (res.data?.data?.orders || []);
 
       const mapped = orders.map((order) => {
-        const detail = order.metadata?.customItems?.[0] || order.metadata || {};
+        const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
+        const compId = order.companyId || order.company_id || order.clientId || order.client_id || detail.companyId || detail.company_id || detail.clientId || null;
+        const usrId = order.createdById || order.created_by || order.userId || order.user_id || detail.userId || detail.created_by || null;
         return {
           id: order.id,
           db_id: order.id,
-          clientId: order.clientId,
-          company_id: order.companyId,
-          created_by: order.createdById,
+          clientId: order.clientId || order.client_id || detail.clientId || 'CLT-GUEST',
+          company_id: compId,
+          companyId: compId,
+          created_by: usrId,
+          user_id: usrId,
+          userId: usrId,
           clientName: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
           driverName: order.driverName || detail.driverName || null,
           plateNumber: order.plateNumber || detail.plateNumber || null,
@@ -5893,7 +5919,7 @@ export const GlobalDataProvider = ({ children }) => {
     } catch (error) {
       console.error("Failed to fetch chauffeur requests:", error);
     }
-  }, [currentUser]);
+  }, [filterDataForCurrentUser]);
 
   const fetchAudits = React.useCallback(async () => {
     try {
@@ -6262,7 +6288,13 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       const fee =
         Number(request.chauffeurFee ?? request.chauffeur_fee ?? 0) || 0;
+      const compId = request.clientId && request.clientId !== "CLT-GUEST"
+        ? request.clientId
+        : currentUser?.company_id || currentUser?.companyId || currentUser?.clientId || null;
+      const usrId = currentUser?.id || null;
+
       const passengerPayload = {
+        ...request,
         passengers: request.numberOfPassengers,
         luggage: request.luggage,
         amenities: request.amenities,
@@ -6278,13 +6310,16 @@ export const GlobalDataProvider = ({ children }) => {
         bags: request.bags || 0,
         clientName: request.clientName || null,
         chauffeur_status: request.status || (request.driverName ? "assigned" : "pending"),
+        company_id: compId,
+        companyId: compId,
+        created_by: usrId,
+        user_id: usrId,
+        userId: usrId,
       };
       const reqData = {
         mission_type: "Chauffeur",
-        company_id:
-          request.clientId && request.clientId !== "CLT-GUEST"
-            ? request.clientId
-            : null,
+        company_id: compId,
+        companyId: compId,
         pickup_location: request.pickupLocation,
         drop_location: request.dropLocation,
         delivery_date: request.dueDate || null,
@@ -6295,17 +6330,59 @@ export const GlobalDataProvider = ({ children }) => {
         plate_number: request.plateNumber || null,
         passenger_info: JSON.stringify(passengerPayload),
         status: request.driverName ? "assigned" : "pending",
+        created_by: usrId,
+        user_id: usrId,
       };
-      const res = await api.post("/orders", { clientId: request.clientId || null, orderType: "CHAUFFEUR", status: reqData.status, items: [reqData] });
-      if (res.data?.success) {
-        await fetchChauffeurRequests();
-        await fetchDeliveries();
-        addLog({
-          action: "Chauffeur Dispatched",
-          detail: `VIP Transport secured for ${request.clientName}.`,
-          type: "system",
-        });
-      }
+      const res = await api.post("/orders", {
+        clientId: request.clientId || compId || null,
+        companyId: compId,
+        orderType: "CHAUFFEUR",
+        status: reqData.status,
+        items: [passengerPayload]
+      });
+
+      const newId = res.data?.data?.id || res.data?.id || Date.now();
+      const newChauffeurObj = {
+        id: newId,
+        db_id: newId,
+        clientId: request.clientId || 'CLT-GUEST',
+        company_id: compId,
+        companyId: compId,
+        created_by: usrId,
+        user_id: usrId,
+        userId: usrId,
+        clientName: request.clientName || 'Guest Client',
+        driverName: request.driverName || null,
+        plateNumber: request.plateNumber || null,
+        driver_user_id: request.driver_user_id || null,
+        serviceType: request.serviceType || "One Way",
+        pickupLocation: request.pickupLocation || "Nassau Area",
+        dropLocation: request.dropLocation || "Destination",
+        dueDate: request.dueDate || null,
+        pickupDate: request.dueDate || null,
+        pickupTime: request.pickupTime || null,
+        status: reqData.status,
+        chauffeurFee: fee,
+        chauffeur_fee_mode: request.chauffeur_fee_mode || "separate",
+        numberOfPassengers: request.numberOfPassengers || 1,
+        bags: request.bags || 0,
+        stops: request.stops || "No",
+        stopLocations: request.stopLocations || "",
+        amenities: request.amenities || [],
+        passenger_info: passengerPayload,
+        _passengerInfo: passengerPayload,
+        remarks: JSON.stringify(passengerPayload),
+        adminApproved: !!passengerPayload.adminApproved,
+      };
+
+      setChauffeurRequests((prev) => [newChauffeurObj, ...prev]);
+
+      await syncGlobalState();
+      addLog({
+        action: "Chauffeur Dispatched",
+        detail: `VIP Transport secured for ${request.clientName}.`,
+        type: "system",
+      });
     } catch (error) {
       console.error("Failed to add chauffeur request:", error);
       const msg =
@@ -6372,8 +6449,7 @@ export const GlobalDataProvider = ({ children }) => {
       } else {
         await api.put(`/deliveries/${updated.id}`, patch);
       }
-      await fetchChauffeurRequests();
-      await fetchDeliveries();
+      await syncGlobalState();
       addLog({
         action: "Chauffeur Updated",
         detail: `Protocol ID ${updated.id} status recalibrated.`,
@@ -6388,6 +6464,7 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       await api.delete(`/orders/${id}`);
       setChauffeurRequests((prev) => prev.filter((r) => r.id !== id));
+      await syncGlobalState();
     } catch (error) {
       console.error("Failed to delete chauffeur request:", error);
     }
@@ -7066,6 +7143,40 @@ export const GlobalDataProvider = ({ children }) => {
     }
   }, []);
 
+  const syncGlobalState = useCallback(async () => {
+    try {
+      if (queryClient) {
+        queryClient.invalidateQueries();
+      }
+      await Promise.allSettled([
+        fetchDashboardStats(),
+        fetchOrders(),
+        fetchDeliveries(),
+        fetchChauffeurRequests(),
+        fetchClients(),
+      ]);
+    } catch (err) {
+      console.error("Error synchronizing global state:", err);
+    }
+  }, [
+    queryClient,
+    fetchDashboardStats,
+    fetchOrders,
+    fetchDeliveries,
+    fetchChauffeurRequests,
+    fetchClients,
+  ]);
+
+  useEffect(() => {
+    const handleStateChanged = () => {
+      syncGlobalState();
+    };
+    window.addEventListener('app:state-changed', handleStateChanged);
+    return () => {
+      window.removeEventListener('app:state-changed', handleStateChanged);
+    };
+  }, [syncGlobalState]);
+
   return (
     <GlobalDataContext.Provider
       value={{
@@ -7328,7 +7439,8 @@ export const GlobalDataProvider = ({ children }) => {
         setSystemSettings,
 
         // Utility
-        refreshData: fetchInitialData,
+        syncGlobalState,
+        refreshData: syncGlobalState,
         fetchInitialData,
         reportSecurityEvent,
         securityEvents,

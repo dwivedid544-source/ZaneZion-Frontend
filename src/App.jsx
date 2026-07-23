@@ -10,6 +10,7 @@ const LogisticsDashboard = lazy(() => import('./pages/Logistics/LogisticsDashboa
 const InventoryDashboardRole = lazy(() => import('./pages/Inventory/InventoryDashboardRole'));
 const ConciergeDashboard = lazy(() => import('./pages/Concierge/ConciergeDashboard'));
 const ClientDashboard = lazy(() => import('./pages/Client/ClientDashboard'));
+const PersonalClientDashboard = lazy(() => import('./pages/Client/PersonalClientDashboard'));
 
 // Management Pages
 const Clients = lazy(() => import('./pages/Admin/Clients'));
@@ -146,7 +147,8 @@ const DashboardSelector = ({ role }) => {
     case 'concierge': return <ConciergeDashboard />;
     case 'client': return <Dashboard />;
     case 'saas_client': return <ClientDashboard />;
-    case 'customer': return <ClientDashboard />;
+    case 'personal_client': return <PersonalClientDashboard />;
+    case 'customer': return <PersonalClientDashboard />;
     case 'admin': return <Dashboard />;
     case 'staff': return <EmployeePortal />;
     default: return <Dashboard />;

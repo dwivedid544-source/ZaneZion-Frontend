@@ -79,11 +79,25 @@ const ClientOrders = () => {
             accessor: "items",
             render: (order) => {
                 const rawItems = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-                const items = (Array.isArray(rawItems) && rawItems.length > 0) ? rawItems : [{ name: order.product || 'General Item', qty: order.qty || 1 }];
-                if (items.length === 1) return <span className="font-bold text-white">{items[0].name}</span>;
+                const items = (Array.isArray(rawItems) && rawItems.length > 0) ? rawItems : [];
+                const meta = typeof order.metadata === 'string' ? (() => { try { return JSON.parse(order.metadata); } catch { return {}; } })() : (order.metadata || {});
+                const firstItem = items[0] || meta;
+
+                const getItemName = (item) => {
+                    if (!item) return order.product || (order.orderType === 'CHAUFFEUR' ? 'VIP Chauffeur Service' : 'General Item');
+                    if (item.name) return item.name;
+                    if (item.itemName) return item.itemName;
+                    if (item.serviceType) return `Chauffeur Service (${item.serviceType})`;
+                    if (order.orderType === 'CHAUFFEUR' || order.missionType === 'CHAUFFEUR') return 'VIP Chauffeur Service';
+                    return order.product || 'General Item';
+                };
+
+                const primaryName = getItemName(firstItem);
+
+                if (items.length <= 1) return <span className="font-bold text-white">{primaryName}</span>;
                 return (
                     <div className="flex items-center gap-2">
-                        <span className="font-bold text-white">{items[0].name}</span>
+                        <span className="font-bold text-white">{primaryName}</span>
                         <span className="px-2 py-0.5 bg-white/5 rounded-md text-[9px] font-black text-muted uppercase">+{items.length - 1} More</span>
                     </div>
                 );
@@ -92,7 +106,10 @@ const ClientOrders = () => {
         {
             header: "Total Value",
             accessor: "total",
-            render: (order) => <span className="font-black text-white italic tracking-tighter">${parseFloat(order.total || 0).toLocaleString()}</span>
+            render: (order) => {
+                const val = parseFloat(order.total ?? order.total_amount ?? order.amount ?? order.totalAmount ?? 0);
+                return <span className="font-black text-white italic tracking-tighter">${val.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+            }
         },
         {
             header: "Request Date",

@@ -78,4 +78,21 @@ export const swalCredentials = (title, email, password, extra = '') => Swal.fire
 // Copied toast
 export const swalCopied = (text = 'Copied!') => Toast.fire({ icon: 'success', title: text });
 
+// Loading alert with spinner
+export const swalLoading = (title = 'Processing...', text = 'Booking your chauffeur, please wait...') => Swal.fire({
+    title,
+    text,
+    allowOutsideClick: false,
+    allowEscapeKey: false,
+    allowEnterKey: false,
+    showConfirmButton: false,
+    didOpen: () => {
+        Swal.showLoading();
+    },
+    ...swalTheme,
+});
+
+// Close active swal
+export const swalClose = () => Swal.close();
+
 export default Swal;

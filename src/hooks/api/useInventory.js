@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
 export const useItems = (page = 1, limit = 10, search = '') => {
   return useQuery({
@@ -49,7 +50,7 @@ export const useCreateWarehouse = () => {
       const res = await api.post('/warehouses', data);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['warehouses'] })
+    onSuccess: () => notifyStateChanged(queryClient, ['warehouses', 'inventory', 'dashboardStats'])
   });
 };
 
@@ -60,7 +61,7 @@ export const useUpdateWarehouse = () => {
       const res = await api.put(`/warehouses/${id}`, data);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['warehouses'] })
+    onSuccess: () => notifyStateChanged(queryClient, ['warehouses', 'inventory', 'dashboardStats'])
   });
 };
 
@@ -71,7 +72,7 @@ export const useDeleteWarehouse = () => {
       const res = await api.delete(`/warehouses/${id}`);
       return res.data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['warehouses'] })
+    onSuccess: () => notifyStateChanged(queryClient, ['warehouses', 'inventory', 'dashboardStats'])
   });
 };
 
@@ -94,7 +95,8 @@ export const useCreateGRN = () => {
       return res.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries(['stock']);
+      notifyStateChanged(queryClient, ['stock', 'inventory', 'warehouses', 'dashboardStats']);
     }
   });
 };
+

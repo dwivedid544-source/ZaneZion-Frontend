@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
 // -----------------------------
 // Deliveries Hooks
@@ -25,8 +26,7 @@ export const useCreateDelivery = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
     },
   });
 };
@@ -39,8 +39,7 @@ export const useCancelDelivery = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
     },
   });
 };
@@ -53,8 +52,7 @@ export const useDeleteDelivery = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
     },
   });
 };
@@ -67,8 +65,7 @@ export const useUpdateDelivery = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
     },
   });
 };
@@ -97,8 +94,7 @@ export const useCreateMission = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['missions'] });
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      notifyStateChanged(queryClient, ['missions', 'deliveries', 'orders', 'dashboardStats']);
     },
   });
 };
@@ -111,8 +107,7 @@ export const useStartMission = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['missions'] });
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+      notifyStateChanged(queryClient, ['missions', 'deliveries', 'orders', 'dashboardStats']);
     },
   });
 };
@@ -125,9 +120,8 @@ export const useSubmitPOD = () => {
       return response.data;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['missions'] });
-      queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
+      notifyStateChanged(queryClient, ['missions', 'deliveries', 'orders', 'dashboardStats']);
     },
   });
 };
+

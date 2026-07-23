@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
 export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
   return useQuery({
@@ -66,7 +67,7 @@ export const useCreateChauffeurMission = () => {
       return { success: true, data: response.data.data };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+      notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
     }
   });
 };
@@ -85,7 +86,7 @@ export const useUpdateChauffeurMission = () => {
       return { success: true, data };
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+      notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
     }
   });
 };
@@ -98,7 +99,8 @@ export const useDeleteChauffeurMission = () => {
         return { success: true };
       },
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+        notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
       }
     });
 };
+

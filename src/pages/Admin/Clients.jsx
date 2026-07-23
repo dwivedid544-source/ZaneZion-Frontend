@@ -17,12 +17,20 @@ const Clients = () => {
   const {
     currentUser,
     subscriptionRequests, fetchSubscriptionRequests, updateSubscriptionRequest,
-    generateInvoiceFromOrder, addDelivery, hasMenuPermission, cancelPersonalMembership
+    generateInvoiceFromOrder, addDelivery, hasMenuPermission, cancelPersonalMembership,
+    accessPlans = [], fetchAccessPlans
   } = useData();
   const roleNormalized = normalizeRole(currentUser?.role);
   const isSuperAdmin = roleNormalized === 'superadmin';
   const isAdminRole = roleNormalized === 'admin' || roleNormalized === 'client' || roleNormalized === 'saas_client' || (!isSuperAdmin && hasMenuPermission('Staff Management', 'can_edit'));
   
+  const saasBusinessPlans = React.useMemo(() => {
+    if (!Array.isArray(accessPlans)) return [];
+    return accessPlans.filter(p => {
+      const type = String(p.planType || p.category || 'SaaS').toLowerCase();
+      return type === 'saas' || type === 'business' || !type.includes('personal');
+    });
+  }, [accessPlans]);
   
   const [searchTerm, setSearchTerm] = useState('');
   const [debounceSearch, setDebounceSearch] = useState('');
@@ -40,6 +48,10 @@ const Clients = () => {
   const createMutation = useCreateClient();
   const updateMutation = useUpdateClient();
   const deleteMutation = useDeleteClient();
+
+  React.useEffect(() => {
+    if (fetchAccessPlans) fetchAccessPlans();
+  }, [fetchAccessPlans]);
 
   React.useEffect(() => {
     const timer = setTimeout(() => {
@@ -246,10 +258,11 @@ const Clients = () => {
   };
 
   const handleAdd = () => {
+    const defaultPlanName = saasBusinessPlans[0]?.name || 'Standard';
     setFormData({
       name: '', email: '', phone: '', password: '', location: '', source: 'Manual',
       clientType: isAdminRole ? 'Personal' : (clientTypeFilter === 'Website' ? 'SaaS' : clientTypeFilter),
-      companyName: '', logo: '', plan: 'Starter', billingCycle: 'Monthly', paymentMethod: 'Wire Transfer',
+      companyName: '', logo: '', plan: defaultPlanName, billingCycle: 'Monthly', paymentMethod: 'Wire Transfer',
       contact: '', address: '', city: '', country: '', status: 'active'
     });
     setErrors({});
@@ -1131,11 +1144,15 @@ const Clients = () => {
                         <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Subscription Plan</label>
                         <select value={formData.plan} onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
                           className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer">
-                          <option>Starter</option>
-                          <option>Standard</option>
-                          <option>Executive</option>
-                          <option>Platinum</option>
-                          <option>Custom Enterprise</option>
+                          {saasBusinessPlans.length > 0 ? (
+                            saasBusinessPlans.map(p => (
+                              <option key={p.id} value={p.name} className="bg-sidebar text-white">
+                                {p.name} ({p.price}{p.period ? ` / ${p.period}` : ''})
+                              </option>
+                            ))
+                          ) : (
+                            <option value="Free" className="bg-sidebar text-white">Free Protocol</option>
+                          )}
                         </select>
                       </div>
                       <div className="space-y-2">

@@ -739,11 +739,17 @@ const SaaSManagement = () => {
                                     <select
                                         value={formData.plan}
                                         onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
-                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-accent outline-none appearance-none"
+                                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-accent outline-none appearance-none text-white"
                                     >
-                                        <option value="Standard">Standard Protocol</option>
-                                        <option value="Executive">Executive Protocol</option>
-                                        <option value="Platinum">Platinum Protocol</option>
+                                        {accessPlans && accessPlans.length > 0 ? (
+                                            accessPlans.map((p) => (
+                                                <option key={p.id} value={p.name} className="bg-sidebar text-white">
+                                                    {p.name} ({p.price})
+                                                </option>
+                                            ))
+                                        ) : (
+                                            <option value="Standard" className="bg-sidebar text-white">Standard Protocol</option>
+                                        )}
                                     </select>
                                 </div>
                                 <div className="space-y-1">

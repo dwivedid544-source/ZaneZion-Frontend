@@ -1596,7 +1596,7 @@ export const GlobalDataProvider = ({ children }) => {
         rawData = rawData.data || rawData.items || rawData.orders || rawData.missions || rawData.invoices || rawData.projects || Object.values(rawData).find(Array.isArray) || [];
       }
       if (!Array.isArray(rawData) || rawData.length === 0) {
-        setAccessPlans(ACCESS_PLANS);
+        setAccessPlans([]);
         return;
       }
       const mapped = rawData.map((row) => {
@@ -1635,6 +1635,7 @@ export const GlobalDataProvider = ({ children }) => {
           id: row.id,
           name: row.name,
           tier: tier,
+          planType: row.planType || row.category || 'SaaS',
           price: `$${priceNum.toLocaleString(undefined, { minimumFractionDigits: priceNum % 1 ? 2 : 0, maximumFractionDigits: 2 })}`,
           period: isAnnual ? "per year" : "per month",
           yearlyPrice: `$${yearlyPriceNum.toLocaleString(undefined, { minimumFractionDigits: yearlyPriceNum % 1 ? 2 : 0, maximumFractionDigits: 2 })}`,
@@ -1642,7 +1643,7 @@ export const GlobalDataProvider = ({ children }) => {
           features: featureList,
           commitment: commitment,
           billing_cycle: cycle,
-          max_users: row.maxUsers || row.max_users,
+          max_users: row.maxUsers || row.max_orders,
           max_orders: row.maxOrders || row.max_orders,
           status: row.isActive ? "Active" : row.status || "Inactive",
         };
@@ -1650,7 +1651,7 @@ export const GlobalDataProvider = ({ children }) => {
       setAccessPlans(mapped);
     } catch (e) {
       console.error("Fetch access plans failed", e);
-      setAccessPlans(ACCESS_PLANS);
+      setAccessPlans([]);
     }
   }, []);
 

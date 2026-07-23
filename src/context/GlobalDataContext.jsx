@@ -3107,6 +3107,7 @@ export const GlobalDataProvider = ({ children }) => {
         maxStorage: 1024,
         features: {
           tier: plan.tier || "",
+          planType: plan.planType || "SaaS",
           yearlyPrice: yearlyPriceNum,
           commitment: plan.commitment || "",
           list: plan.features || []
@@ -3136,6 +3137,7 @@ export const GlobalDataProvider = ({ children }) => {
         billingCycle: "MONTHLY",
         features: {
           tier: updated.tier || "",
+          planType: updated.planType || "SaaS",
           yearlyPrice: yearlyPriceNum,
           commitment: updated.commitment || "",
           list: updated.features || []

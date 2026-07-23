@@ -20,7 +20,18 @@ const PersonalMembership = () => {
     const personalPlan = React.useMemo(() => {
         const rawPlans = plansResponse?.data?.plans || (Array.isArray(plansResponse?.data) ? plansResponse.data : []);
         if (Array.isArray(rawPlans) && rawPlans.length > 0) {
-            const found = rawPlans.find(p => (p.planType || p.category || p.name || '').toLowerCase().includes('personal'));
+            const found = rawPlans.find(p => {
+                let featureObj = {};
+                if (p.features != null) {
+                    try {
+                        featureObj = typeof p.features === 'string' ? JSON.parse(p.features) : p.features;
+                    } catch {
+                        featureObj = {};
+                    }
+                }
+                const planType = (featureObj.planType || p.planType || p.category || p.name || '').toLowerCase();
+                return planType.includes('personal');
+            });
             if (found) {
                 const priceNum = parseFloat(found.price || 0);
                 return {

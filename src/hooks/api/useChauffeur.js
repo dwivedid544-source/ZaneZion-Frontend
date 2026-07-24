@@ -32,13 +32,17 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
         ? 1
         : (ordersData?.page ?? 1);
 
-      const mappedData = (ordersArray || []).map(order => ({
+      const mappedData = (ordersArray || []).map(order => {
+        const customItem = order?.metadata?.customItems?.[0] || {};
+        return {
           ...order,
-          id: order?.id?.toString() || '', // UI sometimes expects string id
-          ...order?.metadata?.customItems?.[0], // Any custom payload fields
-          clientName: order?.client?.companyName || order?.client?.name || 'Guest Client',
-          status: order?.status,
-      }));
+          ...order?.metadata,
+          ...customItem,
+          id: order?.id?.toString() || '',
+          clientName: order?.client?.companyName || order?.client?.name || customItem?.clientName || order?.clientName || 'Guest Client',
+          status: order?.status || customItem?.status || 'pending',
+        };
+      });
       return {
         success: true,
         data: mappedData,

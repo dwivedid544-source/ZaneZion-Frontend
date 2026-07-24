@@ -1,11 +1,18 @@
 import axios from 'axios';
 
 const getBaseUrl = () => {
-  const envUrl = import.meta.env.VITE_API_URL;
-  if (envUrl) {
-    return envUrl.endsWith('/v1') ? envUrl : `${envUrl}/v1`;
+  let envUrl = import.meta.env.VITE_API_URL || 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
+  envUrl = envUrl.replace(/\/+$/, '');
+  if (!envUrl.endsWith('/api/v1')) {
+    if (envUrl.endsWith('/api')) {
+      envUrl = `${envUrl}/v1`;
+    } else if (envUrl.endsWith('/v1')) {
+      envUrl = envUrl.replace(/\/v1$/, '/api/v1');
+    } else {
+      envUrl = `${envUrl}/api/v1`;
+    }
   }
-  return 'https://zanezion-backend-production.up.railway.app/api/v1';
+  return envUrl;
 };
 
 const api = axios.create({

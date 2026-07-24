@@ -30,15 +30,15 @@ const Login = ({ onLogin }) => {
   const [showPassword, setShowPassword] = useState(false);
 
   const demoCredentials = {
-    'superadmin': { email: 'superadmin@zanezion.com', password: '12345678' },
-    'admin': { email: 'admin@gmail.com', password: '12345678' },
-    'procurement': { email: 'procurement@gmail.com', password: '12345678' },
-    'operations': { email: 'operation@gmail.com', password: '12345678' },
-    'logistics': { email: 'logistics@gmail.com', password: '12345678' },
-    'inventory': { email: 'invontory@gmail.com', password: '12345678' },
-    'concierge': { email: 'concierge@gmail.com', password: '12345678' },
-    'client': { email: 'business01@gmail.com', password: 'password123' },
-    'staff': { email: 'staff@gmail.com', password: '12345678' },
+    'superadmin': { email: 'superadmin@zanezion.com', password: 'admin@123' },
+    'admin': { email: 'admin@gmail.com', password: 'admin@123' },
+    'procurement': { email: 'procurement@gmail.com', password: 'admin@123' },
+    'operations': { email: 'operation@gmail.com', password: 'admin@123' },
+    'logistics': { email: 'logistics@gmail.com', password: 'admin@123' },
+    'inventory': { email: 'invontory@gmail.com', password: 'admin@123' },
+    'concierge': { email: 'concierge@gmail.com', password: 'admin@123' },
+    'client': { email: 'client01@gmail.com', password: 'admin@123' },
+    'staff': { email: 'staff@gmail.com', password: 'admin@123' },
   };
 
   const roles = [
@@ -63,7 +63,17 @@ const Login = ({ onLogin }) => {
       });
 
       if (res.data?.success) {
-        const { token, user, menuPermissions: perms } = res.data.data;
+        const payload = res.data.data || res.data;
+        const user = payload?.user || (payload?.email ? payload : null);
+        const token = payload?.token || res.data?.token || '';
+        const perms = payload?.menuPermissions || res.data?.menuPermissions || [];
+
+        if (!user) {
+          setError('Login succeeded but user profile was not returned by server.');
+          setLoading(false);
+          return;
+        }
+
         const normalizedRole = resolvePortalRole(user);
 
         const userData = {
@@ -78,11 +88,11 @@ const Login = ({ onLogin }) => {
         }
 
         // Store in localStorage
-        localStorage.setItem('token', token);
+        if (token) localStorage.setItem('token', token);
         localStorage.setItem('userRole', normalizedRole);
-        localStorage.setItem('userEmail', user.email);
+        localStorage.setItem('userEmail', user.email || loginEmail || '');
         localStorage.setItem('user', JSON.stringify(userData));
-        localStorage.setItem('menuPermissions', JSON.stringify(perms || []));
+        localStorage.setItem('menuPermissions', JSON.stringify(perms));
 
         setMenuPermissions(perms || []);
         setCurrentUser(userData);

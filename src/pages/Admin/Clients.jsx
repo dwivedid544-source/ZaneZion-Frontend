@@ -295,6 +295,8 @@ const Clients = () => {
 
   const handleEdit = (client) => {
     setSelectedClient(client);
+    const isPersonal = (client.clientType || client.client_type) === 'Personal' || isAdminRole;
+    const defaultPlanName = isPersonal ? (client.plan || 'Free') : (client.plan || saasBusinessPlans[0]?.name || 'Standard');
     setFormData({
       name: client.companyName || client.name || client.business_name || '',
       email: client.email || '',
@@ -305,10 +307,10 @@ const Clients = () => {
       city: client.city || '',
       country: client.country || '',
       source: client.source || 'Manual',
-      clientType: client.clientType || client.client_type || 'SaaS',
+      clientType: client.clientType || client.client_type || (isPersonal ? 'Personal' : 'SaaS'),
       companyName: client.companyName || client.company_name || client.business_name || '',
       logo: client.logoUrl || client.logo || client.logo_url || '',
-      plan: client.plan || (saasBusinessPlans[0]?.name || 'Standard'),
+      plan: defaultPlanName,
       billingCycle: client.billingCycle || client.billing_cycle || 'Monthly',
       paymentMethod: client.paymentMethod || client.payment_method || 'Wire Transfer',
       contact: client.contactPerson || client.contact || client.contact_person || '',
@@ -319,10 +321,11 @@ const Clients = () => {
   };
 
   const handleAdd = () => {
-    const defaultPlanName = saasBusinessPlans[0]?.name || 'Standard';
+    const isPersonal = isAdminRole || clientTypeFilter === 'Personal';
+    const defaultPlanName = isPersonal ? 'Free' : (saasBusinessPlans[0]?.name || 'Standard');
     setFormData({
       name: '', email: '', phone: '', password: '', location: '', source: 'Manual',
-      clientType: isAdminRole ? 'Personal' : (clientTypeFilter === 'Website' ? 'SaaS' : clientTypeFilter),
+      clientType: isPersonal ? 'Personal' : (clientTypeFilter === 'Website' ? 'SaaS' : clientTypeFilter),
       companyName: '', logo: '', plan: defaultPlanName, billingCycle: 'Monthly', paymentMethod: 'Wire Transfer',
       contact: '', address: '', city: '', country: '', status: 'active'
     });
@@ -1199,23 +1202,34 @@ const Clients = () => {
                       </div>
                     </div>
                   )}
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Subscription Plan</label>
+                    <select value={formData.plan} onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
+                      className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer">
+                      {(formData.clientType === 'Personal' || clientTypeFilter === 'Personal' || isAdminRole) ? (
+                        <>
+                          <option value="Free" className="bg-sidebar text-white">Free Protocol</option>
+                          {personalPlans.map(p => (
+                            <option key={p.id || p.name} value={p.name} className="bg-sidebar text-white">
+                              {p.name} ({p.price || '$' + p.priceNum} / month)
+                            </option>
+                          ))}
+                        </>
+                      ) : (
+                        saasBusinessPlans.length > 0 ? (
+                          saasBusinessPlans.map(p => (
+                            <option key={p.id} value={p.name} className="bg-sidebar text-white">
+                              {p.name} ({p.price}{p.period ? ` / ${p.period}` : ''})
+                            </option>
+                          ))
+                        ) : (
+                          <option value="Free" className="bg-sidebar text-white">Free Protocol</option>
+                        )
+                      )}
+                    </select>
+                  </div>
                   {!isAdminRole && clientTypeFilter !== 'Personal' && (
                     <>
-                      <div className="space-y-2">
-                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Subscription Plan</label>
-                        <select value={formData.plan} onChange={(e) => setFormData({ ...formData, plan: e.target.value })}
-                          className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer">
-                          {saasBusinessPlans.length > 0 ? (
-                            saasBusinessPlans.map(p => (
-                              <option key={p.id} value={p.name} className="bg-sidebar text-white">
-                                {p.name} ({p.price}{p.period ? ` / ${p.period}` : ''})
-                              </option>
-                            ))
-                          ) : (
-                            <option value="Free" className="bg-sidebar text-white">Free Protocol</option>
-                          )}
-                        </select>
-                      </div>
                       <div className="space-y-2">
                         <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Billing Cycle</label>
                         <select value={formData.billingCycle} onChange={(e) => setFormData({ ...formData, billingCycle: e.target.value })}

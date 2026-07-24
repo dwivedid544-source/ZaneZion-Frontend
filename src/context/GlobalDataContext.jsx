@@ -1053,23 +1053,25 @@ export const GlobalDataProvider = ({ children }) => {
   };
 
   /** Personal (customer) portal membership — same flags as Concierge Lifestyle on Plans; local profile until PSP wiring */
-  const activatePersonalMembership = React.useCallback(async () => {
+  const activatePersonalMembership = React.useCallback(async (planName = "Premium", planFee = PERSONAL_MEMBERSHIP_FEE_USD) => {
     try {
       const memberSince = new Date().toISOString().slice(0, 10);
+      const chosenPlan = planName || "Premium";
+      const feeNum = parseFloat(planFee) || PERSONAL_MEMBERSHIP_FEE_USD;
       const next = {
         ...currentUser,
         concierge_member: true,
         conciergeMembership: true,
         concierge_membership_since: memberSince,
-        concierge_fee_usd: PERSONAL_MEMBERSHIP_FEE_USD,
-        plan: "Premium",
+        concierge_fee_usd: feeNum,
+        plan: chosenPlan,
         is_upgraded: true,
       };
 
       // 1. Update Backend — save membership fields to users table
       if (currentUser?.id) {
         await api.put(`/users/${currentUser.id}`, {
-          plan: "Premium",
+          plan: chosenPlan,
           is_upgraded: true,
           concierge_member: true,
           concierge_membership_since: memberSince,
@@ -1086,7 +1088,7 @@ export const GlobalDataProvider = ({ children }) => {
 
       addLog({
         action: "Membership upgrade",
-        detail: `Personal portal membership activated ($${PERSONAL_MEMBERSHIP_FEE_USD}/mo platform subscription fee). Access to Purchase Requests and Audit Logs is now unlocked.`,
+        detail: `Personal portal membership activated (${chosenPlan} - $${feeNum}/mo subscription fee).`,
         type: "system",
       });
     } catch (error) {
@@ -1094,7 +1096,7 @@ export const GlobalDataProvider = ({ children }) => {
       // Fallback to local update if backend fails (optimistic)
       setCurrentUser((prev) => ({
         ...prev,
-        plan: "Premium",
+        plan: planName || "Premium",
         is_upgraded: true,
         concierge_member: true,
       }));

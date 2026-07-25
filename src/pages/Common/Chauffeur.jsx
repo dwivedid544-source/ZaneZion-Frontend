@@ -998,9 +998,25 @@ const Chauffeur = () => {
                                                             <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Book For Client</label>
                                                             <select name="assignClient" defaultValue={editingRequest?.clientId || ''} className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer">
                                                                 <option value="">Current User ({currentUser?.name})</option>
-                                                                {!isClientAdmin && (clients || []).map(c => (
-                                                                    <option key={c.id} value={c.id}>{c.fullName || c.name || c.companyName || c.business_name}</option>
-                                                                ))}
+                                                                {!isClientAdmin && (clients || [])
+                                                                    .filter(c => {
+                                                                        const ct = String(c.client_type || c.clientType || c.type || '').trim().toLowerCase();
+                                                                        const tt = String(c.tenant_type || c.tenantType || '').trim().toLowerCase();
+                                                                        const category = String(c.category || '').trim().toLowerCase();
+                                                                        const role = String(c.role || c.user_role || '').trim().toLowerCase();
+                                                                        if (
+                                                                            ct === 'saas' || ct === 'business' || ct === 'enterprise' ||
+                                                                            tt === 'saas' || tt === 'business' || tt === 'enterprise' ||
+                                                                            category === 'saas' || category === 'business' || category === 'enterprise' ||
+                                                                            role === 'saas' || role === 'business' || role === 'saas_client' || role === 'business_client'
+                                                                        ) {
+                                                                            return false;
+                                                                        }
+                                                                        return true;
+                                                                    })
+                                                                    .map(c => (
+                                                                        <option key={c.id} value={c.id}>{c.fullName || c.name || c.companyName || c.business_name} (Personal)</option>
+                                                                    ))}
                                                             </select>
                                                         </div>
 

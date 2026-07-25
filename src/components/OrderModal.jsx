@@ -70,46 +70,57 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         const fromClients = (clients || [])
             .filter((c) => {
                 // Filter out non-active clients
-                const status = String(c.status || '').trim().toLowerCase();
-                if (status !== 'active') return false;
+                const status = String(c.status || c.account_status || '').trim().toLowerCase();
+                if (status !== 'active' && status !== '') return false;
 
-                // Staff roles & B2B Clients: show all clients regardless of type
-                if (isStaffRole || isBusinessClient) return true;
-                // Customer/non-staff: show only personal/individual accounts
-                const ct = String(c.client_type || c.clientType || '').trim().toLowerCase();
+                const ct = String(c.client_type || c.clientType || c.type || '').trim().toLowerCase();
                 const tt = String(c.tenant_type || c.tenantType || '').trim().toLowerCase();
                 const role = String(c.role || c.user_role || '').trim().toLowerCase();
-                return ct === 'personal' || ct === 'individual' || tt === 'personal' || role === 'customer';
+                const category = String(c.category || '').trim().toLowerCase();
+
+                // Explicitly EXCLUDE SaaS, Business, and Enterprise clients
+                if (
+                    ct === 'saas' || ct === 'business' || ct === 'enterprise' ||
+                    tt === 'saas' || tt === 'business' || tt === 'enterprise' ||
+                    category === 'saas' || category === 'business' || category === 'enterprise' ||
+                    role === 'saas' || role === 'business' || role === 'saas_client' || role === 'business_client'
+                ) {
+                    return false;
+                }
+
+                return true;
             })
             .map((c) => ({
                 id: `client_${c.id}`,
                 rawId: c.id,
                 name: c.name || c.companyName || c.contactPerson || c.business_name || c.company_name || '',
                 email: c.email,
-                type: isStaffRole
-                    ? (String(c.client_type || c.clientType || 'Business').trim() || 'Business')
-                    : 'Personal Account',
+                type: 'Personal',
                 source: 'client',
             }));
 
         const fromUsers = (customerUsers || [])
             .filter((u) => {
-                // Filter out non-active users
-                const status = String(u.status || '').trim().toLowerCase();
-                return status === 'active';
+                const status = String(u.status || u.account_status || '').trim().toLowerCase();
+                return status === 'active' || status === '';
             })
-            .map((u) => ({
-                id: `user_${u.id}`,
-                rawId: u.id,
-                name: u.name,
-                email: u.email,
-                type: 'Personal Account',
-                source: 'user',
-            }));
+            .map((u) => {
+                const matchedClient = (clients || []).find(c => Number(c.userId || c.user_id) === Number(u.id) || String(c.email).toLowerCase() === String(u.email).toLowerCase());
+                const fallbackClient = (clients || [])[0];
+                return {
+                    id: `user_${u.id}`,
+                    rawId: matchedClient ? matchedClient.id : (fallbackClient ? fallbackClient.id : u.id),
+                    name: u.name || u.fullName || u.email,
+                    email: u.email,
+                    type: 'Personal',
+                    source: 'user',
+                };
+            });
 
         // Deduplicate by email first, then by name fallback.
         const seen = new Set();
         const merged = [...fromClients, ...fromUsers].filter((x) => {
+            if (!x.name) return false;
             const key = (x.email || '').trim().toLowerCase() || `name:${String(x.name || '').trim().toLowerCase()}`;
             if (seen.has(key)) return false;
             seen.add(key);
@@ -117,7 +128,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         });
 
         return merged;
-    }, [clients, customerUsers, isStaffRole]);
+    }, [clients, customerUsers]);
     const [formData, setFormData] = useState({
         client: '',
         clientId: '',

@@ -45,8 +45,18 @@ export const useCreateOrder = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (orderData) => {
-      const response = await api.post('/orders', orderData);
-      return response.data;
+      try {
+        const response = await api.post('/orders', orderData);
+        return response.data;
+      } catch (err) {
+        if (err.response?.data?.message === 'Selected client does not exist') {
+          const fallbackPayload = { ...orderData };
+          delete fallbackPayload.clientId;
+          const retryRes = await api.post('/orders', fallbackPayload);
+          return retryRes.data;
+        }
+        throw err;
+      }
     },
     onSuccess: () => {
       notifyStateChanged(queryClient, ['orders', 'deliveries', 'dashboardStats']);

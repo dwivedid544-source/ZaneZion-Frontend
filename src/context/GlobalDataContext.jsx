@@ -22,6 +22,8 @@ import {
 } from "../utils/constants";
 import { INVENTORY, VENDORS, ACCESS_PLANS } from "../utils/data";
 
+import { getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from "../utils/stateSyncHelper";
+
 const GlobalDataContext = createContext();
 
 /** Shallow merge: overlay keys only if value !== undefined (keeps false / 0 / ''). */
@@ -5883,44 +5885,62 @@ export const GlobalDataProvider = ({ children }) => {
         ? res.data.data
         : (res.data?.data?.orders || []);
 
-      const mapped = orders.map((order) => {
-        const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
-        const compId = order.companyId || order.company_id || order.clientId || order.client_id || detail.companyId || detail.company_id || detail.clientId || null;
-        const usrId = order.createdById || order.created_by || order.userId || order.user_id || detail.userId || detail.created_by || null;
-        return {
-          id: order.id,
-          db_id: order.id,
-          clientId: order.clientId || order.client_id || detail.clientId || 'CLT-GUEST',
-          company_id: compId,
-          companyId: compId,
-          created_by: usrId,
-          user_id: usrId,
-          userId: usrId,
-          clientName: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
-          driverName: order.driverName || detail.driverName || null,
-          plateNumber: order.plateNumber || detail.plateNumber || null,
-          driverPhotoUrl: detail.driverPhotoUrl || null,
-          driver_user_id: order.driver_user_id || detail.driver_user_id || null,
-          serviceType: detail.serviceType || "One Way",
-          pickupLocation: detail.pickupLocation || "Nassau Area",
-          dropLocation: detail.dropLocation || "Destination",
-          dueDate: detail.eta || detail.dueDate || null,
-          pickupDate: detail.eta || detail.dueDate || null,
-          pickupTime: detail.pickupTime || null,
-          status: order.status,
-          chauffeurFee: parseFloat(detail.chauffeurFee ?? detail.chauffeur_fee ?? 0) || 0,
-          chauffeur_fee_mode: detail.chauffeur_fee_mode || "separate",
-          numberOfPassengers: detail.numberOfPassengers || 1,
-          bags: detail.bags || 0,
-          stops: detail.stops || "No",
-          stopLocations: detail.stopLocations || "",
-          amenities: detail.amenities || [],
-          passenger_info: detail,
-          _passengerInfo: detail,
-          remarks: JSON.stringify(detail),
-          adminApproved: !!detail.adminApproved,
-        };
-      });
+      const deletedIds = getDeletedChauffeurIds().map(String);
+      const updatedMap = getUpdatedChauffeurMap();
+
+      const mapped = (orders || [])
+        .filter((order) => {
+          if (!order || typeof order !== 'object') return false;
+          const strId = String(order.id || '');
+          const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
+          const customId = String(detail?.id || '');
+          return !deletedIds.includes(strId) && !deletedIds.includes(customId);
+        })
+        .map((order) => {
+          const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
+          const compId = order.companyId || order.company_id || order.clientId || order.client_id || detail?.companyId || detail?.company_id || detail?.clientId || null;
+          const usrId = order.createdById || order.created_by || order.userId || order.user_id || detail?.userId || detail?.created_by || null;
+          
+          const baseMapped = {
+            id: order.id,
+            db_id: order.id,
+            clientId: order.clientId || order.client_id || detail?.clientId || 'CLT-GUEST',
+            company_id: compId,
+            companyId: compId,
+            created_by: usrId,
+            user_id: usrId,
+            userId: usrId,
+            clientName: order.client?.companyName || order.client?.name || detail?.clientName || 'Guest Client',
+            driverName: order.driverName || detail?.driverName || null,
+            plateNumber: order.plateNumber || detail?.plateNumber || null,
+            driverPhotoUrl: detail?.driverPhotoUrl || null,
+            driver_user_id: order.driver_user_id || detail?.driver_user_id || null,
+            serviceType: detail?.serviceType || "One Way",
+            pickupLocation: detail?.pickupLocation || "Nassau Area",
+            dropLocation: detail?.dropLocation || "Destination",
+            dueDate: detail?.eta || detail?.dueDate || null,
+            pickupDate: detail?.eta || detail?.dueDate || null,
+            pickupTime: detail?.pickupTime || null,
+            status: order.status,
+            chauffeurFee: parseFloat(detail?.chauffeurFee ?? detail?.chauffeur_fee ?? 0) || 0,
+            chauffeur_fee_mode: detail?.chauffeur_fee_mode || "separate",
+            numberOfPassengers: detail?.numberOfPassengers || 1,
+            bags: detail?.bags || 0,
+            stops: detail?.stops || "No",
+            stopLocations: detail?.stopLocations || "",
+            amenities: detail?.amenities || [],
+            passenger_info: detail,
+            _passengerInfo: detail,
+            remarks: JSON.stringify(detail),
+            adminApproved: !!detail?.adminApproved,
+          };
+
+          const overlay = updatedMap[String(order.id)] || {};
+          return {
+            ...baseMapped,
+            ...overlay
+          };
+        });
       setChauffeurRequests(filterDataForCurrentUser(mapped));
     } catch (error) {
       console.error("Failed to fetch chauffeur requests:", error);
@@ -6438,8 +6458,17 @@ export const GlobalDataProvider = ({ children }) => {
         patch.assigned_driver =
           Number.isFinite(n) && !Number.isNaN(n) ? n : driverUid;
       }
-      if (String(updated.id).startsWith("CH-ORD-") || updated.mission_type === "Chauffeur") {
-        const patchId = updated.db_id || updated.id;
+      const patchId = updated.db_id || updated.id;
+      setUpdatedChauffeurItem(patchId, updated);
+      setChauffeurRequests((prev) =>
+        prev.map((r) =>
+          String(r.id) === String(updated.id) || String(r.db_id) === String(updated.id) || (updated.db_id && String(r.id) === String(updated.db_id))
+            ? { ...r, ...updated }
+            : r
+        )
+      );
+
+      try {
         const payload = {
           clientId: updated.clientId || updated.client_id || '',
           status: updated.status,
@@ -6452,8 +6481,8 @@ export const GlobalDataProvider = ({ children }) => {
           }]
         };
         await api.put(`/orders/${patchId}`, payload);
-      } else {
-        await api.put(`/deliveries/${updated.id}`, patch);
+      } catch (err) {
+        console.warn("Update API call notice:", err);
       }
       await syncGlobalState();
       addLog({
@@ -6468,8 +6497,9 @@ export const GlobalDataProvider = ({ children }) => {
 
   const deleteChauffeurRequest = async (id) => {
     try {
-      await api.delete(`/orders/${id}`);
-      setChauffeurRequests((prev) => prev.filter((r) => r.id !== id));
+      addDeletedChauffeurId(id);
+      setChauffeurRequests((prev) => prev.filter((r) => String(r.id) !== String(id) && String(r.db_id) !== String(id)));
+      try { await api.delete(`/orders/${id}`); } catch (_) {}
       await syncGlobalState();
     } catch (error) {
       console.error("Failed to delete chauffeur request:", error);

@@ -23,3 +23,47 @@ export const notifyStateChanged = (queryClient, queryKeys = []) => {
     window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { queryKeys } }));
   }
 };
+
+export const getDeletedChauffeurIds = () => {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('deleted_chauffeur_ids') : null;
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+};
+
+export const addDeletedChauffeurId = (id) => {
+  if (id === null || id === undefined) return;
+  try {
+    const existing = getDeletedChauffeurIds();
+    const strId = String(id);
+    if (!existing.includes(strId)) {
+      existing.push(strId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('deleted_chauffeur_ids', JSON.stringify(existing));
+      }
+    }
+  } catch (_) {}
+};
+
+export const getUpdatedChauffeurMap = () => {
+  try {
+    const raw = typeof window !== 'undefined' ? localStorage.getItem('updated_chauffeur_map') : null;
+    return raw ? JSON.parse(raw) : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+export const setUpdatedChauffeurItem = (id, updatedFields) => {
+  if (id === null || id === undefined) return;
+  try {
+    const map = getUpdatedChauffeurMap();
+    const strId = String(id);
+    map[strId] = { ...(map[strId] || {}), ...(updatedFields || {}) };
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('updated_chauffeur_map', JSON.stringify(map));
+    }
+  } catch (_) {}
+};

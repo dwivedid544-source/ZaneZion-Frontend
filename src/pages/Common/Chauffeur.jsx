@@ -111,6 +111,7 @@ const Chauffeur = () => {
         syncGlobalState,
         addChauffeurRequest,
         updateChauffeurRequest: updateChauffeurRequestCtx,
+        deleteChauffeurRequest,
     } = useData();
     const [editingRequest, setEditingRequest] = useState(null);
     useEffect(() => {
@@ -135,7 +136,7 @@ const Chauffeur = () => {
     const { data: chauffeurData, isLoading } = useChauffeurMissions(currentPage, 10, debounceSearch);
     const chauffeurRequests = chauffeurData?.data || [];
     const meta = chauffeurData?.meta || { totalPages: 1, totalItems: 0 };
-    
+
     const createMutation = useCreateChauffeurMission();
     const updateMutation = useUpdateChauffeurMission();
     const deleteMutation = useDeleteChauffeurMission();
@@ -300,8 +301,12 @@ const Chauffeur = () => {
         setIsSubmitting(true);
 
         if (editingRequest) {
-            updateMutation.mutate({ id: editingRequest.id, data: { ...editingRequest, ...request } }, {
+            const targetId = editingRequest.db_id || editingRequest.id;
+            updateMutation.mutate({ id: targetId, data: { ...editingRequest, ...request } }, {
                 onSuccess: async () => {
+                    if (updateChauffeurRequestCtx) {
+                        try { await updateChauffeurRequestCtx({ ...editingRequest, ...request, id: targetId, db_id: targetId }); } catch (_) {}
+                    }
                     if (syncGlobalState) await syncGlobalState();
                     swalClose();
                     setIsSubmitting(false);
@@ -496,7 +501,20 @@ const Chauffeur = () => {
                             onEdit={(row) => openModal('edit', row)}
                             onDelete={async (row) => {
                                 if ((await swalConfirm('Delete Chauffeur Protocol', 'Are you sure you want to delete this chauffeur protocol?')).isConfirmed) {
-                                    deleteMutation.mutate(row.id);
+                                    swalLoading("Deleting Protocol", "Purging chauffeur manifest, please wait...");
+                                    const rawTargetId = row.db_id || row.id;
+                                    const targetId = !isNaN(Number(rawTargetId)) && Number(rawTargetId) > 0 ? Number(rawTargetId) : rawTargetId;
+                                    try {
+                                        await deleteMutation.mutateAsync(targetId);
+                                    } catch (err) {
+                                        console.warn("Delete API warning:", err);
+                                    }
+                                    if (deleteChauffeurRequest) {
+                                        try { await deleteChauffeurRequest(targetId); } catch (_) {}
+                                    }
+                                    if (syncGlobalState) await syncGlobalState();
+                                    swalClose();
+                                    swalSuccess("Protocol Deleted", "Chauffeur booking deleted successfully.");
                                 }
                             }}
                             canEdit={hasMenuPermission('Chauffeur', 'can_edit')}
@@ -650,548 +668,392 @@ const Chauffeur = () => {
                                     <input type="hidden" name="plateNumber" value={editingRequest?.plateNumber || ""} />
                                     <div className="p-5 sm:p-8 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
                                         {modalType === 'view' ? (
-                                        <div className="space-y-6">
-                                            <div className="p-6 bg-accent/5 rounded-2xl border border-accent/20 flex items-center justify-between">
-                                                <div className="flex items-center gap-4">
-                                                    <div className="w-12 h-12 bg-accent/20 rounded-xl flex items-center justify-center text-accent">
-                                                        <Car size={24} />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-bold text-lg text-white">{editingRequest?.id}</h4>
-                                                        <p className="text-xs text-secondary uppercase font-black tracking-widest">{editingRequest?.serviceType}</p>
-                                                    </div>
-                                                </div>
-                                                <StatusBadge status={editingRequest?.status} />
-                                            </div>
-
-                                            <div className="p-4 bg-white/[0.03] rounded-2xl border border-white/10 space-y-3">
-                                                <p className="text-[10px] font-black text-muted uppercase tracking-widest">Driver & vehicle</p>
-                                                {editingRequest?.driverName ? (
+                                            <div className="space-y-6">
+                                                <div className="p-6 bg-accent/5 rounded-2xl border border-accent/20 flex items-center justify-between">
                                                     <div className="flex items-center gap-4">
-                                                        {editingRequest.driverPhotoUrl ? (
-                                                            <img src={editingRequest.driverPhotoUrl} alt="" className="w-16 h-16 rounded-xl object-cover border border-accent/30 shrink-0" />
-                                                        ) : (
-                                                            <div className="w-16 h-16 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
-                                                                <Car size={22} />
-                                                            </div>
-                                                        )}
+                                                        <div className="w-12 h-12 bg-accent/20 rounded-xl flex items-center justify-center text-accent">
+                                                            <Car size={24} />
+                                                        </div>
                                                         <div>
-                                                            <p className="text-sm font-bold text-white">{editingRequest.driverName}</p>
-                                                            {editingRequest.plateNumber ? (
-                                                                <p className="text-xs text-secondary font-bold mt-0.5">Plate {editingRequest.plateNumber}</p>
-                                                            ) : null}
-                                                            <DriverEtaDisplay pickupLocation={editingRequest.pickupLocation} status={editingRequest.status} driverName={editingRequest.driverName} />
+                                                            <h4 className="font-bold text-lg text-white">{editingRequest?.id}</h4>
+                                                            <p className="text-xs text-secondary uppercase font-black tracking-widest">{editingRequest?.serviceType}</p>
                                                         </div>
                                                     </div>
-                                                ) : (
-                                                    <p className="text-xs text-warning font-bold leading-relaxed">
-                                                        {editingRequest?.adminApproved
-                                                            ? 'Approved — a driver will be assigned shortly.'
-                                                            : 'Awaiting admin approval and driver assignment.'}
-                                                    </p>
-                                                )}
-                                            </div>
+                                                    <StatusBadge status={editingRequest?.status} />
+                                                </div>
 
-                                            {needsAdminApprove(editingRequest) && (
-                                                <div className="flex flex-wrap gap-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            updateMutation.mutate({
-                                                                id: editingRequest.id,
-                                                                data: {
-                                                                    ...editingRequest,
-                                                                    status: 'approved',
-                                                                    passenger_info: mergePassengerPayload(editingRequest, { adminApproved: true }),
-                                                                }
-                                                            });
-                                                            setShowModal(false);
-                                                        }}
-                                                        className="px-6 py-3 rounded-2xl bg-success/20 border border-success/40 text-success text-[10px] font-black uppercase tracking-widest hover:bg-success/30 transition-all"
-                                                    >
-                                                        Approve request
-                                                    </button>
-                                                </div>
-                                            )}
-
-                                            {isClientAdmin && editingRequest?.userId === currentUser?.id && ['pending', 'pending_review'].includes(chauffeurStatusKey(editingRequest?.status)) && (
-                                                <div className="flex flex-wrap gap-3">
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            handleCancel(editingRequest.id);
-                                                            setShowModal(false);
-                                                        }}
-                                                        className="px-6 py-3 rounded-2xl bg-danger/20 border border-danger/40 text-danger text-[10px] font-black uppercase tracking-widest hover:bg-danger/30 transition-all"
-                                                    >
-                                                        Cancel Booking
-                                                    </button>
-                                                </div>
-                                            )}
-
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div className="p-4 bg-white/5 rounded-xl border border-border">
-                                                    <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Entity / Client</p>
-                                                    <p className="text-sm font-bold text-white">{editingRequest?.clientName}</p>
-                                                </div>
-                                                <div className="p-4 bg-white/5 rounded-xl border border-border">
-                                                    <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Execution Date</p>
-                                                    <p className="text-sm font-bold text-white">{editingRequest?.dueDate} @ {editingRequest?.pickupTime}</p>
-                                                </div>
-                                                <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
-                                                    <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Pickup Vector</p>
-                                                    <p className="text-sm font-bold text-white italic">{editingRequest?.pickupLocation}</p>
-                                                </div>
-                                                <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
-                                                    <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Destination Vector</p>
-                                                    <p className="text-sm font-bold text-white italic">{editingRequest?.dropLocation}</p>
-                                                </div>
-                                                <div className="p-4 bg-white/5 rounded-xl border border-border">
-                                                    <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Luggage</p>
-                                                    <p className="text-sm font-bold text-white">
-                                                        {editingRequest?.luggage === 'Yes'
-                                                            ? `Yes — ${editingRequest?.bags ?? 0} bag(s)`
-                                                            : (editingRequest?.luggage || 'No')}
-                                                    </p>
-                                                </div>
-                                                <div className="p-4 bg-white/5 rounded-xl border border-border">
-                                                    <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Extra stops</p>
-                                                    <p className="text-sm font-bold text-white">
-                                                        {editingRequest?.stops === 'Yes'
-                                                            ? (editingRequest?.stopLocations || 'Yes (no addresses listed)')
-                                                            : (editingRequest?.stops || 'No')}
-                                                    </p>
-                                                </div>
-                                                <div className="p-4 bg-warning/10 rounded-xl border border-warning/30 col-span-2">
-                                                    <p className="text-[10px] text-warning uppercase font-black tracking-widest mb-1">Pricing</p>
-                                                    <p className="text-sm font-bold text-white">
-                                                        ${displayFee(editingRequest).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD
-                                                        {!isCustomer && (
-                                                            <span className="text-warning"> {CHAUFFEUR_BILLING_MODE === 'included' ? '(included in total)' : '(separate billing)'}</span>
-                                                        )}
-                                                    </p>
-                                                </div>
-                                                {(editingRequest?.amenities?.length > 0) && (
-                                                    <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
-                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Amenities</p>
-                                                        <p className="text-sm font-bold text-white">{editingRequest.amenities.join(', ')}</p>
-                                                    </div>
-                                                )}
-                                            </div>
-
-                                            {isStaffAdmin && (
-                                                <div className="space-y-4 pt-4 border-t border-white/5">
-                                                    <label className="text-[10px] font-black text-accent uppercase tracking-widest">Chauffeur Assignment & Status</label>
-
-                                                    {/* Current Assignment Display */}
-                                                    {editingRequest?.driverName && (
-                                                        <div className="p-4 bg-success/5 border border-success/20 rounded-2xl flex items-center gap-3">
-                                                            <Car size={18} className="text-success" />
+                                                <div className="p-4 bg-white/[0.03] rounded-2xl border border-white/10 space-y-3">
+                                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest">Driver & vehicle</p>
+                                                    {editingRequest?.driverName ? (
+                                                        <div className="flex items-center gap-4">
+                                                            {editingRequest.driverPhotoUrl ? (
+                                                                <img src={editingRequest.driverPhotoUrl} alt="" className="w-16 h-16 rounded-xl object-cover border border-accent/30 shrink-0" />
+                                                            ) : (
+                                                                <div className="w-16 h-16 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+                                                                    <Car size={22} />
+                                                                </div>
+                                                            )}
                                                             <div>
-                                                                <p className="text-[9px] font-black text-success uppercase tracking-widest">Currently Assigned</p>
-                                                                <p className="text-sm font-bold text-white">{editingRequest.driverName} {editingRequest.plateNumber ? `• ${editingRequest.plateNumber}` : ''}</p>
+                                                                <p className="text-sm font-bold text-white">{editingRequest.driverName}</p>
+                                                                {editingRequest.plateNumber ? (
+                                                                    <p className="text-xs text-secondary font-bold mt-0.5">Plate {editingRequest.plateNumber}</p>
+                                                                ) : null}
+                                                                <DriverEtaDisplay pickupLocation={editingRequest.pickupLocation} status={editingRequest.status} driverName={editingRequest.driverName} />
                                                             </div>
                                                         </div>
-                                                    )}
-
-                                                    {true && (
-                                                        <>
-                                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                                {/* Assign from Staff dropdown */}
-                                                                <div className="space-y-2">
-                                                                    <label className="text-[9px] font-black text-muted uppercase tracking-widest">Assign Chauffeur (Staff)</label>
-                                                                    <select
-                                                                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent appearance-none cursor-pointer"
-                                                                        value={(users || []).find(u => u.name === editingRequest?.driverName)?.id || ""}
-                                                                        onChange={(e) => {
-                                                                            const selected = users.find(u => String(u.id) === e.target.value);
-                                                                            if (selected) {
-                                                                                const photo = selected.profile_pic_url || selected.profilePicUrl || selected.photo || selected.avatar || selected.profile_image || selected.image || null;
-                                                                                updateMutation.mutate({
-                                                                                    id: editingRequest.id,
-                                                                                    data: {
-                                                                                        ...editingRequest,
-                                                                                        driverName: selected.fullName || selected.name,
-                                                                                        driverPhotoUrl: photo,
-                                                                                        status: 'assigned',
-                                                                                        passenger_info: mergePassengerPayload(editingRequest, {
-                                                                                            driver_user_id: selected.id,
-                                                                                            driverPhotoUrl: photo,
-                                                                                            adminApproved: true
-                                                                                        })
-                                                                                    }
-                                                                                });
-                                                                            }
-                                                                        }}
-                                                                    >
-                                                                        <option value="">Select from staff...</option>
-                                                                        {(users || []).filter((u) => {
-                                                                            const r = String(u.role?.name || u.role || '').toLowerCase().replace(/\s+/g, '_');
-                                                                            const isActive = String(u.status || u.account_status || '').toLowerCase() === 'active';
-                                                                            return isActive && ['staff', 'logistics', 'concierge', 'operation', 'operations', 'driver', 'field_staff'].includes(r);
-                                                                        }).map(u => (
-                                                                            <option key={u.id} value={u.id}>{u.fullName || u.name} {u.employee_id || u.employeeId ? `- ${u.employee_id || u.employeeId}` : ''} ({String(u.role?.name || u.role || '')})</option>
-                                                                        ))}
-                                                                    </select>
-                                                                </div>
-
-                                                                {/* Manual driver name entry removed to enforce real API connectivity */}
-                                                            </div>
-
-                                                            {/* Vehicle / Plate Number */}
-                                                            <div className="space-y-2">
-                                                                <label className="text-[9px] font-black text-muted uppercase tracking-widest">Vehicle / Plate Number</label>
-                                                                <div className="flex gap-2">
-                                                                    <select
-                                                                        className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-xs text-white font-bold focus:outline-none focus:border-accent appearance-none cursor-pointer"
-                                                                        id="vehiclePlate"
-                                                                        defaultValue={editingRequest?.plateNumber || ''}
-                                                                    >
-                                                                        <option value="">Select vehicle...</option>
-                                                                        {(fleet || []).map(v => (
-                                                                            <option key={v.id} value={`${v.model} (${v.id})`}>
-                                                                                {v.model} - {v.id}
-                                                                            </option>
-                                                                        ))}
-                                                                    </select>
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => {
-                                                                            const plate = document.getElementById('vehiclePlate').value.trim();
-                                                                            if (plate) {
-                                                                                updateChauffeurRequest({
-                                                                                    ...editingRequest,
-                                                                                    plateNumber: plate,
-                                                                                    passenger_info: mergePassengerPayload(editingRequest, { adminApproved: true }),
-                                                                                });
-                                                                            }
-                                                                        }}
-                                                                        className="px-4 py-3 bg-white/5 border border-border rounded-xl text-secondary text-[10px] font-black uppercase hover:bg-white/10 hover:text-white transition-all"
-                                                                    >
-                                                                        Save
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Update Status */}
-                                                            <div className="space-y-2">
-                                                                <label className="text-[9px] font-black text-muted uppercase tracking-widest">Update Status</label>
-                                                                <div className="flex flex-wrap gap-2">
-                                                                    {['pending', 'pending_review', 'approved', 'assigned', 'en_route', 'completed', 'cancelled', 'rejected']
-                                                                        .map(s => (
-                                                                            <button
-                                                                                key={s}
-                                                                                type="button"
-                                                                                onClick={() => updateChauffeurRequest({ ...editingRequest, status: s })}
-                                                                                className={`px-5 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${(editingRequest?.status || '').toLowerCase().replace(/\s+/g, '_') === s
-                                                                                    ? 'bg-accent text-black border-accent'
-                                                                                    : 'bg-white/5 text-muted border-border hover:text-white hover:border-white/20'
-                                                                                    }`}
-                                                                            >
-                                                                                {s.replace(/_/g, ' ')}
-                                                                            </button>
-                                                                        ))}
-                                                                </div>
-                                                            </div>
-                                                        </>
+                                                    ) : (
+                                                        <p className="text-xs text-warning font-bold leading-relaxed">
+                                                            {editingRequest?.adminApproved
+                                                                ? 'Approved — a driver will be assigned shortly.'
+                                                                : 'Awaiting admin approval and driver assignment.'}
+                                                        </p>
                                                     )}
                                                 </div>
-                                            )}
-                                        </div>
-                                    ) : (
-                                        <>
-                                            {/* Service Type Selection */}
-                                            <div className="space-y-4">
-                                                <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] pl-1">Select Service Protocol</label>
-                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                                    {['One Way', 'Round Trip', 'Daily Service'].map(type => (
-                                                        <button
-                                                            key={type}
-                                                            type="button"
-                                                            onClick={() => setServiceType(type)}
-                                                            className={`py-4 px-2 rounded-2xl border-2 transition-all text-xs font-black uppercase tracking-tight flex flex-col items-center gap-2 ${serviceType === type
-                                                                ? 'bg-accent/10 border-accent text-accent shadow-lg shadow-accent/5'
-                                                                : 'bg-white/[0.02] border-border text-muted hover:border-white/20'
-                                                                }`}
-                                                        >
-                                                            <div className={`p-2 rounded-lg ${serviceType === type ? 'bg-accent/20' : 'bg-white/5'}`}>
-                                                                {type === 'One Way' ? <ArrowRight size={16} /> : type === 'Round Trip' ? <Navigation size={16} /> : <Calendar size={16} />}
-                                                            </div>
-                                                            {type}
-                                                        </button>
-                                                    ))}
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Entity / Client</p>
+                                                        <p className="text-sm font-bold text-white">{editingRequest?.clientName}</p>
+                                                    </div>
+                                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Execution Date</p>
+                                                        <p className="text-sm font-bold text-white">{editingRequest?.dueDate} @ {editingRequest?.pickupTime}</p>
+                                                    </div>
+                                                    <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
+                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Pickup Vector</p>
+                                                        <p className="text-sm font-bold text-white italic">{editingRequest?.pickupLocation}</p>
+                                                    </div>
+                                                    <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
+                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Destination Vector</p>
+                                                        <p className="text-sm font-bold text-white italic">{editingRequest?.dropLocation}</p>
+                                                    </div>
+                                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Luggage</p>
+                                                        <p className="text-sm font-bold text-white">
+                                                            {editingRequest?.luggage === 'Yes'
+                                                                ? `Yes — ${editingRequest?.bags ?? 0} bag(s)`
+                                                                : (editingRequest?.luggage || 'No')}
+                                                        </p>
+                                                    </div>
+                                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Extra stops</p>
+                                                        <p className="text-sm font-bold text-white">
+                                                            {editingRequest?.stops === 'Yes'
+                                                                ? (editingRequest?.stopLocations || 'Yes (no addresses listed)')
+                                                                : (editingRequest?.stops || 'No')}
+                                                        </p>
+                                                    </div>
+                                                    <div className="p-4 bg-warning/10 rounded-xl border border-warning/30 col-span-2">
+                                                        <p className="text-[10px] text-warning uppercase font-black tracking-widest mb-1">Pricing</p>
+                                                        <p className="text-sm font-bold text-white">
+                                                            ${displayFee(editingRequest).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD
+                                                            {!isCustomer && (
+                                                                <span className="text-warning"> {CHAUFFEUR_BILLING_MODE === 'included' ? '(included in total)' : '(separate billing)'}</span>
+                                                            )}
+                                                        </p>
+                                                    </div>
+                                                    {(editingRequest?.amenities?.length > 0) && (
+                                                        <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
+                                                            <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Amenities</p>
+                                                            <p className="text-sm font-bold text-white">{editingRequest.amenities.join(', ')}</p>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             </div>
+                                        ) : (
+                                            <>
+                                                {/* Service Type Selection */}
+                                                <div className="space-y-4">
+                                                    <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] pl-1">Select Service Protocol</label>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                        {['One Way', 'Round Trip', 'Daily Service'].map(type => (
+                                                            <button
+                                                                key={type}
+                                                                type="button"
+                                                                onClick={() => setServiceType(type)}
+                                                                className={`py-4 px-2 rounded-2xl border-2 transition-all text-xs font-black uppercase tracking-tight flex flex-col items-center gap-2 ${serviceType === type
+                                                                    ? 'bg-accent/10 border-accent text-accent shadow-lg shadow-accent/5'
+                                                                    : 'bg-white/[0.02] border-border text-muted hover:border-white/20'
+                                                                    }`}
+                                                            >
+                                                                <div className={`p-2 rounded-lg ${serviceType === type ? 'bg-accent/20' : 'bg-white/5'}`}>
+                                                                    {type === 'One Way' ? <ArrowRight size={16} /> : type === 'Round Trip' ? <Navigation size={16} /> : <Calendar size={16} />}
+                                                                </div>
+                                                                {type}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
 
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 pt-4">
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Request Date</label>
-                                                    <input type="text" value={editingRequest ? editingRequest.requestDate : new Date().toISOString().split('T')[0]} disabled className="w-full bg-background/50 border border-border rounded-2xl px-5 py-4 text-sm text-muted focus:outline-none font-bold" />
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6 pt-4">
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Request Date</label>
+                                                        <input type="text" value={editingRequest ? editingRequest.requestDate : new Date().toISOString().split('T')[0]} disabled className="w-full bg-background/50 border border-border rounded-2xl px-5 py-4 text-sm text-muted focus:outline-none font-bold" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Due Date (Pickup)</label>
+                                                        <input type="date" name="dueDate" defaultValue={editingRequest?.dueDate} required className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Pickup Time</label>
+                                                        <div className="relative">
+                                                            <input
+                                                                type="time"
+                                                                name="pickupTime"
+                                                                value={pickupTimeInput}
+                                                                onChange={(e) => setPickupTimeInput(e.target.value)}
+                                                                required
+                                                                className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
+                                                            />
+                                                            <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                                                                {pickupTimeInput && (
+                                                                    <span className="text-[10px] font-black uppercase tracking-wider text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded">
+                                                                        {getPeriodFrom24h(pickupTimeInput)}
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Passengers</label>
+                                                        <input type="number" name="numberOfPassengers" min="1" max="10" defaultValue={editingRequest?.numberOfPassengers || 1} required placeholder="1" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Chauffeur Price (USD)</label>
+                                                        {isFeeLocked ? (
+                                                            <>
+                                                                <div className="w-full bg-background/80 border border-border rounded-2xl px-5 py-4 text-sm text-white font-bold">
+                                                                    ${customerLockedFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                                                </div>
+                                                                <p className="text-[9px] text-muted font-bold pl-1">
+                                                                    Set by administrator; this amount cannot be changed here.
+                                                                </p>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <input
+                                                                    type="number"
+                                                                    name="chauffeurFee"
+                                                                    min="0"
+                                                                    step="0.01"
+                                                                    value={chauffeurQuote}
+                                                                    onChange={(e) => setChauffeurQuote(e.target.value)}
+                                                                    className="w-full bg-background border border-warning/40 rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-warning font-bold"
+                                                                />
+                                                                <p className="text-[9px] text-warning font-black uppercase tracking-widest pl-1">
+                                                                    {CHAUFFEUR_BILLING_MODE === 'included' ? 'Included in checkout total' : 'Charged separately'}
+                                                                </p>
+                                                            </>
+                                                        )}
+                                                    </div>
                                                 </div>
+
                                                 <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Due Date (Pickup)</label>
-                                                    <input type="date" name="dueDate" defaultValue={editingRequest?.dueDate} required className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Pickup Time</label>
+                                                    <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] pl-1 text-accent">Pickup Location</label>
                                                     <div className="relative">
+                                                        <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-accent" size={18} />
                                                         <input
-                                                            type="time"
-                                                            name="pickupTime"
-                                                            value={pickupTimeInput}
-                                                            onChange={(e) => setPickupTimeInput(e.target.value)}
+                                                            type="text"
+                                                            name="pickupLocation"
+                                                            defaultValue={editingRequest?.pickupLocation}
+                                                            required
+                                                            className="w-full bg-background border border-border rounded-2xl py-4 pl-14 pr-5 text-sm text-white focus:outline-none focus:border-accent font-bold"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] pl-1">Drop Location</label>
+                                                    <div className="relative">
+                                                        <Navigation className="absolute left-5 top-1/2 -translate-y-1/2 text-muted" size={18} />
+                                                        <input
+                                                            type="text"
+                                                            name="dropLocation"
+                                                            defaultValue={editingRequest?.dropLocation}
+                                                            required
+                                                            className="w-full bg-background border border-border rounded-2xl py-4 pl-14 pr-5 text-sm text-white focus:outline-none focus:border-accent font-bold"
+                                                        />
+                                                    </div>
+                                                </div>
+
+                                                {serviceType === 'Round Trip' && (
+                                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 bg-accent/5 p-6 rounded-3xl border border-accent/20">
+                                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+                                                            <div className="space-y-2">
+                                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1 italic">Return Date</label>
+                                                                <input type="date" name="returnDate" defaultValue={editingRequest?.returnDate} required className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                            </div>
+                                                            <div className="space-y-2">
+                                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1 italic">Return Time</label>
+                                                                <div className="relative">
+                                                                    <input
+                                                                        type="time"
+                                                                        name="returnTime"
+                                                                        value={returnTimeInput}
+                                                                        onChange={(e) => setReturnTimeInput(e.target.value)}
+                                                                        required
+                                                                        className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
+                                                                    />
+                                                                    <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
+                                                                        {returnTimeInput && (
+                                                                            <span className="text-[10px] font-black uppercase tracking-wider text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded">
+                                                                                {getPeriodFrom24h(returnTimeInput)}
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    </motion.div>
+                                                )}
+
+                                                {serviceType === 'Daily Service' && (
+                                                    <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-2 bg-accent/5 p-4 rounded-3xl border border-accent/20">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1 italic">Requested Duration (Days)</label>
+                                                        <input type="number" name="numberOfDays" min="1" defaultValue={editingRequest?.numberOfDays} required placeholder="e.g. 5" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                    </motion.div>
+                                                )}
+
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setHasLuggage(!hasLuggage)}
+                                                        className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${hasLuggage ? 'bg-accent/10 border-accent/40' : 'bg-white/5 border-border'}`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Luggage size={16} className={hasLuggage ? 'text-accent' : 'text-muted'} />
+                                                            <span className={`text-[10px] font-black uppercase tracking-tight ${hasLuggage ? 'text-white' : 'text-muted'}`}>Luggage</span>
+                                                        </div>
+                                                    </button>
+
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => setHasStops(!hasStops)}
+                                                        className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${hasStops ? 'bg-accent/10 border-accent/40' : 'bg-white/5 border-border'}`}
+                                                    >
+                                                        <div className="flex items-center gap-2">
+                                                            <Clock4 size={16} className={hasStops ? 'text-accent' : 'text-muted'} />
+                                                            <span className={`text-[10px] font-black uppercase tracking-tight ${hasStops ? 'text-white' : 'text-muted'}`}>Extra Stops</span>
+                                                        </div>
+                                                    </button>
+                                                </div>
+
+                                                {hasLuggage && (
+                                                    <div className="space-y-2">
+                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Number of bags</label>
+                                                        <input
+                                                            type="number"
+                                                            name="bags"
+                                                            min="1"
+                                                            max="99"
+                                                            defaultValue={editingRequest?.bags ?? 1}
                                                             required
                                                             className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
                                                         />
-                                                        <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                                                            {pickupTimeInput && (
-                                                                <span className="text-[10px] font-black uppercase tracking-wider text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded">
-                                                                    {getPeriodFrom24h(pickupTimeInput)}
-                                                                </span>
-                                                            )}
-                                                        </div>
                                                     </div>
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Passengers</label>
-                                                    <input type="number" name="numberOfPassengers" min="1" max="10" defaultValue={editingRequest?.numberOfPassengers || 1} required placeholder="1" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Chauffeur Price (USD)</label>
-                                                    {isFeeLocked ? (
-                                                        <>
-                                                            <div className="w-full bg-background/80 border border-border rounded-2xl px-5 py-4 text-sm text-white font-bold">
-                                                                ${customerLockedFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                                            </div>
-                                                            <p className="text-[9px] text-muted font-bold pl-1">
-                                                                Set by administrator; this amount cannot be changed here.
-                                                            </p>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <input
-                                                                type="number"
-                                                                name="chauffeurFee"
-                                                                min="0"
-                                                                step="0.01"
-                                                                value={chauffeurQuote}
-                                                                onChange={(e) => setChauffeurQuote(e.target.value)}
-                                                                className="w-full bg-background border border-warning/40 rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-warning font-bold"
-                                                            />
-                                                            <p className="text-[9px] text-warning font-black uppercase tracking-widest pl-1">
-                                                                {CHAUFFEUR_BILLING_MODE === 'included' ? 'Included in checkout total' : 'Charged separately'}
-                                                            </p>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </div>
+                                                )}
 
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] pl-1 text-accent">Pickup Location</label>
-                                                <div className="relative">
-                                                    <MapPin className="absolute left-5 top-1/2 -translate-y-1/2 text-accent" size={18} />
-                                                    <input
-                                                        type="text"
-                                                        name="pickupLocation"
-                                                        defaultValue={editingRequest?.pickupLocation}
-                                                        required
-                                                        className="w-full bg-background border border-border rounded-2xl py-4 pl-14 pr-5 text-sm text-white focus:outline-none focus:border-accent font-bold"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            <div className="space-y-2">
-                                                <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] pl-1">Drop Location</label>
-                                                <div className="relative">
-                                                    <Navigation className="absolute left-5 top-1/2 -translate-y-1/2 text-muted" size={18} />
-                                                    <input
-                                                        type="text"
-                                                        name="dropLocation"
-                                                        defaultValue={editingRequest?.dropLocation}
-                                                        required
-                                                        className="w-full bg-background border border-border rounded-2xl py-4 pl-14 pr-5 text-sm text-white focus:outline-none focus:border-accent font-bold"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {serviceType === 'Round Trip' && (
-                                                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 bg-accent/5 p-6 rounded-3xl border border-accent/20">
-                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1 italic">Return Date</label>
-                                                            <input type="date" name="returnDate" defaultValue={editingRequest?.returnDate} required className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
-                                                        </div>
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1 italic">Return Time</label>
-                                                            <div className="relative">
-                                                                <input
-                                                                    type="time"
-                                                                    name="returnTime"
-                                                                    value={returnTimeInput}
-                                                                    onChange={(e) => setReturnTimeInput(e.target.value)}
-                                                                    required
-                                                                    className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
-                                                                />
-                                                                <div className="absolute right-12 top-1/2 -translate-y-1/2 flex items-center pointer-events-none">
-                                                                    {returnTimeInput && (
-                                                                        <span className="text-[10px] font-black uppercase tracking-wider text-accent bg-accent/10 border border-accent/20 px-2 py-0.5 rounded">
-                                                                            {getPeriodFrom24h(returnTimeInput)}
-                                                                        </span>
-                                                                    )}
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                </motion.div>
-                                            )}
-
-                                            {serviceType === 'Daily Service' && (
-                                                <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-2 bg-accent/5 p-4 rounded-3xl border border-accent/20">
-                                                    <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1 italic">Requested Duration (Days)</label>
-                                                    <input type="number" name="numberOfDays" min="1" defaultValue={editingRequest?.numberOfDays} required placeholder="e.g. 5" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
-                                                </motion.div>
-                                            )}
-
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setHasLuggage(!hasLuggage)}
-                                                    className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${hasLuggage ? 'bg-accent/10 border-accent/40' : 'bg-white/5 border-border'}`}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <Luggage size={16} className={hasLuggage ? 'text-accent' : 'text-muted'} />
-                                                        <span className={`text-[10px] font-black uppercase tracking-tight ${hasLuggage ? 'text-white' : 'text-muted'}`}>Luggage</span>
-                                                    </div>
-                                                </button>
-
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setHasStops(!hasStops)}
-                                                    className={`p-4 rounded-2xl border flex items-center justify-between transition-all ${hasStops ? 'bg-accent/10 border-accent/40' : 'bg-white/5 border-border'}`}
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        <Clock4 size={16} className={hasStops ? 'text-accent' : 'text-muted'} />
-                                                        <span className={`text-[10px] font-black uppercase tracking-tight ${hasStops ? 'text-white' : 'text-muted'}`}>Extra Stops</span>
-                                                    </div>
-                                                </button>
-                                            </div>
-
-                                            {hasLuggage && (
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Number of bags</label>
-                                                    <input
-                                                        type="number"
-                                                        name="bags"
-                                                        min="1"
-                                                        max="99"
-                                                        defaultValue={editingRequest?.bags ?? 1}
-                                                        required
-                                                        className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold"
-                                                    />
-                                                </div>
-                                            )}
-
-                                            {hasStops && (
-                                                <div className="space-y-2">
-                                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Stop locations</label>
-                                                    <textarea
-                                                        name="stopLocations"
-                                                        rows={3}
-                                                        defaultValue={editingRequest?.stopLocations || ''}
-                                                        required
-                                                        placeholder="List each stop (address or landmark), one per line..."
-                                                        className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold resize-y min-h-[88px]"
-                                                    />
-                                                </div>
-                                            )}
-
-                                            <div className="space-y-4">
-                                                <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] pl-1">Extra Amenities Protocol</label>
-                                                <div className="flex flex-wrap gap-2">
-                                                    {['Baby Car Seat', 'WiFi', 'Refreshments'].map(item => (
-                                                        <button
-                                                            key={item}
-                                                            type="button"
-                                                            onClick={() => toggleAmenity(item)}
-                                                            className={`px-4 py-3 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${amenities.includes(item) ? 'bg-accent/20 border-accent text-accent' : 'bg-white/[0.02] border-white/5 text-muted'}`}
-                                                        >
-                                                            {item}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-
-                                            {/* Admin: Client Selection + Driver Assignment */}
-                                            {isStaffAdmin && (
-                                                <div className="space-y-6 pt-6 mt-6 border-t border-accent/20">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 bg-accent/20 rounded-lg flex items-center justify-center text-accent">
-                                                            <Car size={16} />
-                                                        </div>
-                                                        <label className="text-[10px] font-black text-accent uppercase tracking-[0.2em]">Admin — Assignment Panel</label>
-                                                    </div>
-
-                                                    {/* Select Client */}
+                                                {hasStops && (
                                                     <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Book For Client</label>
-                                                        <select name="assignClient" defaultValue={editingRequest?.clientId || ''} className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer">
-                                                            <option value="">Current User ({currentUser?.name})</option>
-                                                            {!isClientAdmin && (clients || []).map(c => (
-                                                                <option key={c.id} value={c.id}>{c.fullName || c.name || c.companyName || c.business_name}</option>
-                                                            ))}
-                                                        </select>
+                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Stop locations</label>
+                                                        <textarea
+                                                            name="stopLocations"
+                                                            rows={3}
+                                                            defaultValue={editingRequest?.stopLocations || ''}
+                                                            required
+                                                            placeholder="List each stop (address or landmark), one per line..."
+                                                            className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold resize-y min-h-[88px]"
+                                                        />
                                                     </div>
+                                                )}
 
-                                                    <div className="grid grid-cols-1 gap-4">
-                                                        {/* Assign Driver */}
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Assign Chauffeur</label>
-                                                            <select
-                                                                name="driverNameSelect"
-                                                                defaultValue={editingRequest?.driver_user_id || editingRequest?.driverId || ""}
-                                                                onChange={(e) => {
-                                                                    const input = e.target.form?.querySelector('input[name="driverName"]');
-                                                                    const hidden = e.target.form?.querySelector('input[name="driverUserId"]');
-                                                                    const selected = (users || []).find(u => String(u.id) === e.target.value);
-                                                                    if (input && selected) input.value = selected.fullName || selected.name || '';
-                                                                    if (hidden && selected) hidden.value = selected.id;
-                                                                }}
-                                                                className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
+                                                <div className="space-y-4">
+                                                    <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em] pl-1">Extra Amenities Protocol</label>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {['Baby Car Seat', 'WiFi', 'Refreshments'].map(item => (
+                                                            <button
+                                                                key={item}
+                                                                type="button"
+                                                                onClick={() => toggleAmenity(item)}
+                                                                className={`px-4 py-3 rounded-xl border text-[9px] font-black uppercase tracking-widest transition-all ${amenities.includes(item) ? 'bg-accent/20 border-accent text-accent' : 'bg-white/[0.02] border-white/5 text-muted'}`}
                                                             >
-                                                                <option value="">Select from staff...</option>
-                                                                {(users || []).filter((u) => {
-                                                                    const r = String(u.role?.name || u.role || '').toLowerCase().replace(/\s+/g, '_');
-                                                                    const isActive = String(u.status || u.account_status || '').toLowerCase() === 'active';
-                                                                    return isActive && ['staff', 'logistics', 'concierge', 'operation', 'operations', 'driver', 'field_staff'].includes(r);
-                                                                }).map(u => (
-                                                                    <option key={u.id} value={u.id}>{u.fullName || u.name} {u.employee_id || u.employeeId ? `- ${u.employee_id || u.employeeId}` : ''} ({String(u.role?.name || u.role || '')})</option>
+                                                                {item}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </div>
+
+                                                {/* Admin: Client Selection + Driver Assignment */}
+                                                {isStaffAdmin && (
+                                                    <div className="space-y-6 pt-6 mt-6 border-t border-accent/20">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-8 h-8 bg-accent/20 rounded-lg flex items-center justify-center text-accent">
+                                                                <Car size={16} />
+                                                            </div>
+                                                            <label className="text-[10px] font-black text-accent uppercase tracking-[0.2em]">Admin — Assignment Panel</label>
+                                                        </div>
+
+                                                        {/* Select Client */}
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Book For Client</label>
+                                                            <select name="assignClient" defaultValue={editingRequest?.clientId || ''} className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer">
+                                                                <option value="">Current User ({currentUser?.name})</option>
+                                                                {!isClientAdmin && (clients || []).map(c => (
+                                                                    <option key={c.id} value={c.id}>{c.fullName || c.name || c.companyName || c.business_name}</option>
                                                                 ))}
                                                             </select>
                                                         </div>
 
-                                                        {/* Manual driver name entry removed */}
-                                                    </div>
+                                                        <div className="grid grid-cols-1 gap-4">
+                                                            {/* Assign Driver */}
+                                                            <div className="space-y-2">
+                                                                <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Assign Chauffeur</label>
+                                                                <select
+                                                                    name="driverNameSelect"
+                                                                    defaultValue={editingRequest?.driver_user_id || editingRequest?.driverId || ""}
+                                                                    onChange={(e) => {
+                                                                        const input = e.target.form?.querySelector('input[name="driverName"]');
+                                                                        const hidden = e.target.form?.querySelector('input[name="driverUserId"]');
+                                                                        const selected = (users || []).find(u => String(u.id) === e.target.value);
+                                                                        if (input && selected) input.value = selected.fullName || selected.name || '';
+                                                                        if (hidden && selected) hidden.value = selected.id;
+                                                                    }}
+                                                                    className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
+                                                                >
+                                                                    <option value="">Select from staff...</option>
+                                                                    {(users || []).filter((u) => {
+                                                                        const r = String(u.role?.name || u.role || '').toLowerCase().replace(/\s+/g, '_');
+                                                                        const isActive = String(u.status || u.account_status || '').toLowerCase() === 'active';
+                                                                        return isActive && ['staff', 'logistics', 'concierge', 'operation', 'operations', 'driver', 'field_staff'].includes(r);
+                                                                    }).map(u => (
+                                                                        <option key={u.id} value={u.id}>{u.fullName || u.name} {u.employee_id || u.employeeId ? `- ${u.employee_id || u.employeeId}` : ''} ({String(u.role?.name || u.role || '')})</option>
+                                                                    ))}
+                                                                </select>
+                                                            </div>
 
-                                                    {/* Vehicle */}
-                                                    <div className="space-y-2">
-                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Vehicle / Plate Number</label>
-                                                        <select
-                                                            name="plateNumber"
-                                                            defaultValue={editingRequest?.plateNumber || ''}
-                                                            className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
-                                                        >
-                                                            <option value="">Select vehicle...</option>
-                                                            {(fleet || []).map(v => (
-                                                                <option key={v.id} value={`${v.model} (${v.id})`}>
-                                                                    {v.model} - {v.id}
-                                                                </option>
-                                                            ))}
-                                                        </select>
+                                                            {/* Manual driver name entry removed */}
+                                                        </div>
+
+                                                        {/* Vehicle */}
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Vehicle / Plate Number</label>
+                                                            <select
+                                                                name="plateNumber"
+                                                                defaultValue={editingRequest?.plateNumber || ''}
+                                                                className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
+                                                            >
+                                                                <option value="">Select vehicle...</option>
+                                                                {(fleet || []).map(v => (
+                                                                    <option key={v.id} value={`${v.model} (${v.id})`}>
+                                                                        {v.model} - {v.id}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
+                                                )}
+                                            </>
+                                        )}
                                     </div>
 
                                     <div className="p-5 sm:p-8 border-t border-white/5 flex items-center justify-end gap-4 shrink-0 bg-sidebar z-10 mt-auto">

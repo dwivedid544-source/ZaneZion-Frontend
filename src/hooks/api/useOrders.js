@@ -59,6 +59,7 @@ export const useCreateOrder = () => {
       }
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       notifyStateChanged(queryClient, ['orders', 'deliveries', 'dashboardStats']);
     },
   });
@@ -72,6 +73,7 @@ export const useUpdateOrderStatus = () => {
       return response.data;
     },
     onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       notifyStateChanged(queryClient, ['orders', ['orders', variables.id], 'deliveries', 'dashboardStats']);
     },
   });
@@ -85,6 +87,7 @@ export const useUpdateOrder = () => {
       return response.data;
     },
     onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       notifyStateChanged(queryClient, ['orders', ['orders', variables.id], 'deliveries', 'dashboardStats']);
     },
   });
@@ -98,6 +101,7 @@ export const useDeleteOrder = () => {
       return response.data;
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['orders'] });
       notifyStateChanged(queryClient, ['orders', 'deliveries', 'dashboardStats']);
     },
   });

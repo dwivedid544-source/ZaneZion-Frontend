@@ -4059,6 +4059,8 @@ export const GlobalDataProvider = ({ children }) => {
         order_kind: order.order_kind || order.orderKind || "marketplace",
         delivery_mode:
           order.deliveryType || order.delivery_mode || order.deliveryMode,
+        currentDepartment: routedDepartment,
+        current_department: routedDepartment,
         routed_department: routedDepartment,
         route_department: routedDepartment,
         total_amount: totalAmountVal,

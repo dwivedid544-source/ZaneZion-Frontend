@@ -37,6 +37,35 @@ function isSaaSPortfolioClient(c) {
   return ct === 'saas' || tt === 'saas' || c?.source === 'Subscriber';
 }
 
+const compressImageFile = (file, maxWidth = 400, quality = 0.7) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target.result;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = () => {
+        resolve(event.target.result);
+      };
+    };
+    reader.onerror = () => resolve(null);
+  });
+};
+
 const Inventory = () => {
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -408,9 +437,12 @@ const Inventory = () => {
               const urlFromApi = uploadRes.data?.data?.url || uploadRes.data?.url;
               if (urlFromApi) {
                 uploadedImageUrl = urlFromApi;
+              } else {
+                uploadedImageUrl = await compressImageFile(imageFile);
               }
             } catch (err) {
-              console.warn('[IMAGE_UPLOAD_FAILED] Image upload to Cloudinary failed:', err);
+              console.warn('[IMAGE_UPLOAD_FAILED] Cloudinary upload failed, using compressed fallback:', err);
+              uploadedImageUrl = await compressImageFile(imageFile);
             }
           }
 
@@ -432,7 +464,8 @@ const Inventory = () => {
           await queryClient.invalidateQueries({ queryKey: ['items'] });
         } catch (e) {
           console.warn('[REAL_API_FAILED] Item creation via real API failed', e);
-          res = { ok: false, error: 'Failed to create item' };
+          const serverErr = e.response?.data?.message || e.response?.data?.error || e.message || 'Failed to create item';
+          res = { ok: false, error: serverErr };
         }
         if (!res?.ok) {
           swalError('Save failed', res?.error || 'Stock entry could not be saved.');
@@ -610,9 +643,12 @@ const Inventory = () => {
               const urlFromApi = uploadRes.data?.data?.url || uploadRes.data?.url;
               if (urlFromApi) {
                 uploadedImageUrl = urlFromApi;
+              } else {
+                uploadedImageUrl = await compressImageFile(imageFile);
               }
             } catch (err) {
-              console.warn('[IMAGE_UPLOAD_FAILED] Image upload to Cloudinary failed:', err);
+              console.warn('[IMAGE_UPLOAD_FAILED] Cloudinary upload failed, using compressed fallback:', err);
+              uploadedImageUrl = await compressImageFile(imageFile);
             }
           }
 
@@ -716,15 +752,31 @@ const Inventory = () => {
     {
       header: "Photo",
       accessor: "image",
-      render: (item) => (
-        <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center">
-          {item.image ? (
-            <img src={toAbsoluteImageUrl(item.image)} alt="" className="w-full h-full object-cover" onError={(e) => { e.currentTarget.src = ''; e.currentTarget.parentElement.innerHTML = '<div class="text-muted"><Package size={16}/></div>'; }} />
-          ) : (
-            <ImageIcon size={16} className="text-muted/40" />
-          )}
-        </div>
-      )
+      render: (item) => {
+        const img = item.image || item.image_url || item.imageUrl;
+        return (
+          <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center relative">
+            {img ? (
+              <img
+                src={toAbsoluteImageUrl(img)}
+                alt={item.name || "Product"}
+                className="w-full h-full object-cover"
+                onError={(e) => {
+                  e.currentTarget.style.display = 'none';
+                  const parent = e.currentTarget.parentElement;
+                  if (parent) {
+                    const fallback = parent.querySelector('.photo-fallback');
+                    if (fallback) fallback.classList.remove('hidden');
+                  }
+                }}
+              />
+            ) : null}
+            <div className={`photo-fallback ${img ? 'hidden' : 'block'}`}>
+              <ImageIcon size={16} className="text-muted/40" />
+            </div>
+          </div>
+        );
+      }
     },
     { header: "Product Name", accessor: "name" },
     { header: "Category", accessor: "category", render: (item) => typeof item.category === 'object' && item.category !== null ? item.category.name : (item.category || '—') },
@@ -1502,16 +1554,29 @@ const Inventory = () => {
                       <div className="text-[9px] text-muted font-bold uppercase tracking-widest">Preview</div>
                     </div>
                   )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0] || null;
-                      setImageFile(file);
-                      if (file) setImagePreview(URL.createObjectURL(file));
-                    }}
-                    className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white"
-                  />
+                  <div className="flex flex-col gap-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setImageFile(file);
+                        if (file) setImagePreview(URL.createObjectURL(file));
+                      }}
+                      className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white"
+                    />
+                    <input
+                      type="text"
+                      value={formData.image || ''}
+                      onChange={(e) => {
+                        setFormData({ ...formData, image: e.target.value });
+                        setImageFile(null);
+                        setImagePreview(e.target.value || null);
+                      }}
+                      placeholder="Or paste an image URL (optional)"
+                      className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none text-white"
+                    />
+                  </div>
                 </div>
               </div>
             </div>

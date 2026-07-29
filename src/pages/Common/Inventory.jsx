@@ -832,9 +832,9 @@ const Inventory = () => {
                   onView={(item) => handleAction('view', item)}
                   onEdit={(item) => handleAction('edit', item)}
                   onDelete={(item) => handleAction('delete', item)}
-                  canEdit={isAdmin || hasMenuPermission('Inventory', 'can_edit')}
-                  canDelete={isAdmin || hasMenuPermission('Inventory', 'can_delete')}
-                  customAction={(item) => (
+                  canEdit={canManageInventory}
+                  canDelete={canManageInventory}
+                  customAction={(item) => canManageInventory ? (
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => handleAction('issue', item)}
@@ -851,7 +851,7 @@ const Inventory = () => {
                         <AlertTriangle size={16} />
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 />
                 <div className="mt-6 border-t border-white/5 pt-6">
                   <Pagination currentPage={page} totalPages={meta.totalPages} onPageChange={setPage} totalItems={meta.totalItems} />

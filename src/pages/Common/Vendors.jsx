@@ -279,7 +279,7 @@ const Vendors = () => {
               <Search className="text-muted block" size={16} strokeWidth={2} />
             </div>
           </div>
-          {hasMenuPermission('Vendors', 'can_add') && (
+          {isVendorAdmin && (
             <button className="btn-primary flex items-center gap-2" onClick={() => handleAction('add', {})}>
               <Plus size={16} /> Add Vendor
             </button>
@@ -295,8 +295,8 @@ const Vendors = () => {
           onView={(item) => handleAction('view', item)}
           onEdit={(item) => handleAction('edit', item)}
           onDelete={(item) => handleAction('delete', item)}
-          canEdit={hasMenuPermission('Vendors', 'can_edit')}
-          canDelete={hasMenuPermission('Vendors', 'can_delete')}
+          canEdit={isVendorAdmin}
+          canDelete={isVendorAdmin}
           customAction={(row) => (
             isVendorAdmin && String(row.status || '').toLowerCase() === 'inactive' ? (
               <button

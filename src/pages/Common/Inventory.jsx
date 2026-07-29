@@ -447,18 +447,27 @@ const Inventory = () => {
         try {
           let uploadedImageUrl = formData.image || null;
           if (imageFile) {
+            console.log('📸 [FRONTEND_IMAGE_UPLOAD_START] Uploading image file:', {
+              fileName: imageFile.name,
+              fileSize: `${(imageFile.size / 1024).toFixed(2)} KB`,
+              fileType: imageFile.type
+            });
             try {
               const uploadData = new FormData();
               uploadData.append('image', imageFile);
               const uploadRes = await realApi.post('/items/upload-image', uploadData);
+              console.log('✅ [FRONTEND_IMAGE_UPLOAD_SUCCESS] Upload API response:', uploadRes.data);
               const urlFromApi = uploadRes.data?.data?.url || uploadRes.data?.url;
               if (urlFromApi) {
                 uploadedImageUrl = urlFromApi;
+                console.log('🔗 [FRONTEND_IMAGE_URL_SET] Using Cloudinary URL:', uploadedImageUrl);
               } else {
+                console.warn('⚠️ [FRONTEND_IMAGE_UPLOAD_FALLBACK] No URL returned, using base64 compression');
                 uploadedImageUrl = await compressImageFile(imageFile);
               }
             } catch (err) {
-              console.warn('[IMAGE_UPLOAD_FAILED] Cloudinary upload failed, using compressed fallback:', err);
+              console.error('❌ [FRONTEND_IMAGE_UPLOAD_ERROR] Upload API failed:', err?.response?.data || err?.message || err);
+              console.warn('⚠️ [FRONTEND_IMAGE_UPLOAD_FALLBACK] Using compressed base64 fallback');
               uploadedImageUrl = await compressImageFile(imageFile);
             }
           }
@@ -475,14 +484,15 @@ const Inventory = () => {
             price: Number(formData.price) || 0,
             warehouseId: wid,
           };
+          console.log('🚀 [FRONTEND_CREATE_ITEM_PAYLOAD]', apiPayload);
           const apiRes = await realApi.post('/items', apiPayload);
-          console.log('[REAL_API_SUCCESS] Item created successfully via real API');
+          console.log('🎉 [FRONTEND_CREATE_ITEM_SUCCESS]', apiRes.data);
           res = { ok: true, data: apiRes.data };
           await queryClient.invalidateQueries({ queryKey: ['items'] });
           swalSuccess('Asset Created', `Successfully added "${formData.item.trim()}" to stock ledger.`);
           setIsModalOpen(false);
         } catch (e) {
-          console.warn('[REAL_API_FAILED] Item creation via real API failed', e);
+          console.error('💥 [FRONTEND_CREATE_ITEM_FAILED]', e?.response?.data || e?.message || e);
           const serverErr = e.response?.data?.message || e.response?.data?.error || e.message || 'Failed to create item';
           res = { ok: false, error: serverErr };
         }
@@ -654,18 +664,27 @@ const Inventory = () => {
         try {
           let uploadedImageUrl = formData.image || null;
           if (imageFile) {
+            console.log('📸 [FRONTEND_IMAGE_UPDATE_START] Uploading new image file for edit:', {
+              fileName: imageFile.name,
+              fileSize: `${(imageFile.size / 1024).toFixed(2)} KB`,
+              fileType: imageFile.type
+            });
             try {
               const uploadData = new FormData();
               uploadData.append('image', imageFile);
               const uploadRes = await realApi.post('/items/upload-image', uploadData);
+              console.log('✅ [FRONTEND_IMAGE_UPDATE_SUCCESS] Upload API response:', uploadRes.data);
               const urlFromApi = uploadRes.data?.data?.url || uploadRes.data?.url;
               if (urlFromApi) {
                 uploadedImageUrl = urlFromApi;
+                console.log('🔗 [FRONTEND_IMAGE_URL_UPDATED] Using Cloudinary URL:', uploadedImageUrl);
               } else {
+                console.warn('⚠️ [FRONTEND_IMAGE_UPDATE_FALLBACK] No URL returned, using base64 compression');
                 uploadedImageUrl = await compressImageFile(imageFile);
               }
             } catch (err) {
-              console.warn('[IMAGE_UPLOAD_FAILED] Cloudinary upload failed, using compressed fallback:', err);
+              console.error('❌ [FRONTEND_IMAGE_UPDATE_ERROR] Upload API failed:', err?.response?.data || err?.message || err);
+              console.warn('⚠️ [FRONTEND_IMAGE_UPDATE_FALLBACK] Using compressed base64 fallback');
               uploadedImageUrl = await compressImageFile(imageFile);
             }
           }
@@ -681,12 +700,13 @@ const Inventory = () => {
           if (!isNaN(catId) && catId > 0) apiPayload.categoryId = catId;
           if (!isNaN(uId) && uId > 0) apiPayload.unitId = uId;
 
-          await realApi.put(`/items/${formData.id}`, apiPayload);
-          console.log('[REAL_API_SUCCESS] Item updated successfully via real API');
+          console.log('🚀 [FRONTEND_UPDATE_ITEM_PAYLOAD]', apiPayload);
+          const updateRes = await realApi.put(`/items/${formData.id}`, apiPayload);
+          console.log('🎉 [FRONTEND_UPDATE_ITEM_SUCCESS]', updateRes.data);
           await queryClient.invalidateQueries({ queryKey: ['items'] });
           swalSuccess('Success', 'Item updated successfully.');
         } catch (e) {
-          console.warn('[REAL_API_FAILED] Item update via real API failed', e);
+          console.error('💥 [FRONTEND_UPDATE_ITEM_FAILED]', e?.response?.data || e?.message || e);
           swalWarning('Error', 'Failed to update item.');
         }
       } else if (modalType === 'delete') {

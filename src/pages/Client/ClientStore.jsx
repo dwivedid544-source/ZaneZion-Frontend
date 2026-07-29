@@ -746,6 +746,7 @@ const ClientStore = () => {
                                             <div className="aspect-square bg-white/5 border-b border-white/5 flex items-center justify-center relative overflow-hidden">
                                                 {item.image && (
                                                     <img
+                                                        key={item.image}
                                                         src={toAbsoluteImageUrl(item.image)}
                                                         alt={item.name}
                                                         className="w-full h-full object-cover group-hover:scale-110 transition-all duration-700"

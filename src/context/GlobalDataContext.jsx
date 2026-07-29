@@ -60,9 +60,15 @@ function inventoryImageFromApiRow(i) {
     i.image_url,
     i.imageUrl,
     i.image,
+    i.item?.image_url,
+    i.item?.imageUrl,
+    i.item?.image,
     i.photo_url,
     i.photoUrl,
     i.photo,
+    i.item?.photo_url,
+    i.item?.photoUrl,
+    i.item?.photo,
     i.product_image,
     i.productImage,
     i.picture_url,
@@ -77,6 +83,11 @@ function inventoryImageFromApiRow(i) {
       ? typeof i.images[0] === "string"
         ? i.images[0]
         : i.images[0]?.url
+      : null,
+    Array.isArray(i.item?.images) && i.item.images[0]
+      ? typeof i.item.images[0] === "string"
+        ? i.item.images[0]
+        : i.item.images[0]?.url
       : null,
   ];
   for (const c of candidates) {

@@ -1234,59 +1234,52 @@ const Inventory = () => {
             </div>
           ) : modalType === 'entry' ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="space-y-1 col-span-1 md:col-span-2">
-                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Inventory Type</label>
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
-                    <input
-                      type="radio"
-                      name="inventoryType"
-                      value="Marketplace"
-                      checked={formData.inventoryType === 'Marketplace'}
-                      onChange={(e) => setFormData({ ...formData, inventoryType: 'Marketplace', inventorySegment: 'Business', clientId: '' })}
-                      className="accent-accent"
-                    />
-                    Marketplace Inventory
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
-                    <input
-                      type="radio"
-                      name="inventoryType"
-                      value="Business"
-                      checked={formData.inventoryType === 'Client' && formData.inventorySegment !== 'SaaS'}
-                      onChange={(e) => setFormData({ ...formData, inventoryType: 'Client', inventorySegment: 'Business' })}
-                      className="accent-accent"
-                    />
-                    Business Inventory
-                  </label>
-                  {/* <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
-                    <input
-                      type="radio"
-                      name="inventoryType"
-                      value="SaaS"
-                      checked={formData.inventoryType === 'Client' && formData.inventorySegment === 'SaaS'}
-                      onChange={(e) => setFormData({ ...formData, inventoryType: 'Client', inventorySegment: 'SaaS' })}
-                      className="accent-accent"
-                    />
-                    SaaS Inventory
-                  </label> */}
-                </div>
-              </div>
+              {!isSaaSPortal && (
+                <>
+                  <div className="space-y-1 col-span-1 md:col-span-2">
+                    <label className="text-[10px] font-black text-muted uppercase tracking-widest">Inventory Type</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                        <input
+                          type="radio"
+                          name="inventoryType"
+                          value="Marketplace"
+                          checked={formData.inventoryType === 'Marketplace'}
+                          onChange={(e) => setFormData({ ...formData, inventoryType: 'Marketplace', inventorySegment: 'Business', clientId: '' })}
+                          className="accent-accent"
+                        />
+                        Marketplace Inventory
+                      </label>
+                      <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                        <input
+                          type="radio"
+                          name="inventoryType"
+                          value="Business"
+                          checked={formData.inventoryType === 'Client' && formData.inventorySegment !== 'SaaS'}
+                          onChange={(e) => setFormData({ ...formData, inventoryType: 'Client', inventorySegment: 'Business' })}
+                          className="accent-accent"
+                        />
+                        Business Inventory
+                      </label>
+                    </div>
+                  </div>
 
-              {formData.inventoryType === 'Client' && !isCustomer && (
-                <div className="space-y-1 col-span-1 md:col-span-2">
-                  <label className="text-[10px] font-black text-muted uppercase tracking-widest text-accent">Select Client Owner</label>
-                  <select
-                    value={formData.clientId}
-                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
-                    className="w-full bg-background border border-accent/20 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white shadow-lg shadow-accent/5"
-                  >
-                    <option value="">Select Client...</option>
-                    {(formData.inventorySegment === 'SaaS' ? saasClientsForInventorySelect : businessClientsForInventorySelect).map(c => (
-                      <option key={String(c.id)} value={c.id}>{c.companyName || c.business_name || c.name}</option>
-                    ))}
-                  </select>
-                </div>
+                  {formData.inventoryType === 'Client' && !isCustomer && (
+                    <div className="space-y-1 col-span-1 md:col-span-2">
+                      <label className="text-[10px] font-black text-muted uppercase tracking-widest text-accent">Select Client Owner</label>
+                      <select
+                        value={formData.clientId}
+                        onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                        className="w-full bg-background border border-accent/20 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white shadow-lg shadow-accent/5"
+                      >
+                        <option value="">Select Client...</option>
+                        {(formData.inventorySegment === 'SaaS' ? saasClientsForInventorySelect : businessClientsForInventorySelect).map(c => (
+                          <option key={String(c.id)} value={c.id}>{c.companyName || c.business_name || c.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </>
               )}
 
               <div className="space-y-1">

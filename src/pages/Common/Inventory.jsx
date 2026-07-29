@@ -39,6 +39,7 @@ function isSaaSPortfolioClient(c) {
 
 const compressImageFile = (file, maxWidth = 400, quality = 0.7) => {
   return new Promise((resolve) => {
+    if (!file) return resolve(null);
     const reader = new FileReader();
     reader.readAsDataURL(file);
     reader.onload = (event) => {
@@ -431,9 +432,7 @@ const Inventory = () => {
             try {
               const uploadData = new FormData();
               uploadData.append('image', imageFile);
-              const uploadRes = await realApi.post('/items/upload-image', uploadData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-              });
+              const uploadRes = await realApi.post('/items/upload-image', uploadData);
               const urlFromApi = uploadRes.data?.data?.url || uploadRes.data?.url;
               if (urlFromApi) {
                 uploadedImageUrl = urlFromApi;
@@ -462,6 +461,8 @@ const Inventory = () => {
           console.log('[REAL_API_SUCCESS] Item created successfully via real API');
           res = { ok: true, data: apiRes.data };
           await queryClient.invalidateQueries({ queryKey: ['items'] });
+          swalSuccess('Asset Created', `Successfully added "${formData.item.trim()}" to stock ledger.`);
+          setIsModalOpen(false);
         } catch (e) {
           console.warn('[REAL_API_FAILED] Item creation via real API failed', e);
           const serverErr = e.response?.data?.message || e.response?.data?.error || e.message || 'Failed to create item';
@@ -469,6 +470,7 @@ const Inventory = () => {
         }
         if (!res?.ok) {
           swalError('Save failed', res?.error || 'Stock entry could not be saved.');
+          setIsSaving(false);
           return;
         }
       } else if (modalType === 'issue') {
@@ -637,9 +639,7 @@ const Inventory = () => {
             try {
               const uploadData = new FormData();
               uploadData.append('image', imageFile);
-              const uploadRes = await realApi.post('/items/upload-image', uploadData, {
-                headers: { 'Content-Type': 'multipart/form-data' }
-              });
+              const uploadRes = await realApi.post('/items/upload-image', uploadData);
               const urlFromApi = uploadRes.data?.data?.url || uploadRes.data?.url;
               if (urlFromApi) {
                 uploadedImageUrl = urlFromApi;
@@ -758,6 +758,7 @@ const Inventory = () => {
           <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center relative">
             {img ? (
               <img
+                key={img}
                 src={toAbsoluteImageUrl(img)}
                 alt={item.name || "Product"}
                 className="w-full h-full object-cover"

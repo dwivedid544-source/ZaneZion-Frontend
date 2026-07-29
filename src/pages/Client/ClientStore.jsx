@@ -12,6 +12,28 @@ import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
 import { toAbsoluteImageUrl } from '../../utils/apiHelpers.js';
 import { Image as ImageIcon } from 'lucide-react';
 
+const ProductImage = ({ src, alt, className, iconSize = 64 }) => {
+  const [hasError, setHasError] = useState(false);
+  const imageUrl = toAbsoluteImageUrl(src);
+
+  React.useEffect(() => {
+    setHasError(false);
+  }, [src]);
+
+  if (!imageUrl || hasError) {
+    return <Package size={iconSize} className="text-accent/10 group-hover:text-accent/20 group-hover:scale-110 transition-all duration-700" />;
+  }
+
+  return (
+    <img
+      src={imageUrl}
+      alt={alt || "Product"}
+      className={className || "w-full h-full object-cover group-hover:scale-110 transition-all duration-700"}
+      onError={() => setHasError(true)}
+    />
+  );
+};
+
 const DEFAULT_TRANSPORT_EXTRA_FEE = {
     Road: 0,
     Sea: 150,
@@ -744,18 +766,7 @@ const ClientStore = () => {
                                             className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] overflow-hidden group hover:border-accent/30 transition-all duration-500 shadow-2xl flex flex-col"
                                         >
                                             <div className="aspect-square bg-white/5 border-b border-white/5 flex items-center justify-center relative overflow-hidden">
-                                                {item.image && (
-                                                    <img
-                                                        key={item.image}
-                                                        src={toAbsoluteImageUrl(item.image)}
-                                                        alt={item.name}
-                                                        className="w-full h-full object-cover group-hover:scale-110 transition-all duration-700"
-                                                        onError={(e) => { e.currentTarget.style.display = 'none'; e.currentTarget.nextSibling.style.display = 'block'; }}
-                                                    />
-                                                )}
-                                                <div className={item.image ? "hidden" : "block"}>
-                                                    <Package size={64} className="text-accent/10 group-hover:text-accent/20 group-hover:scale-110 transition-all duration-700" />
-                                                </div>
+                                                <ProductImage src={item.image || item.image_url || item.imageUrl} alt={item.name} iconSize={64} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-700" />
                                                 <div className="absolute top-6 right-6 px-4 py-2 bg-background/90 backdrop-blur-md border border-accent/20 rounded-2xl text-sm font-black text-accent shadow-2xl z-10">
                                                     ${parseFloat(item.price).toLocaleString()}
                                                 </div>

@@ -63,8 +63,26 @@ const compressImageFile = (file, maxWidth = 400, quality = 0.7) => {
         resolve(event.target.result);
       };
     };
-    reader.onerror = () => resolve(null);
-  });
+const ProductImage = ({ src, alt, className, iconSize = 16 }) => {
+  const [hasError, setHasError] = useState(false);
+  const imageUrl = toAbsoluteImageUrl(src);
+
+  React.useEffect(() => {
+    setHasError(false);
+  }, [src]);
+
+  if (!imageUrl || hasError) {
+    return <Package size={iconSize} className="text-muted/40" />;
+  }
+
+  return (
+    <img
+      src={imageUrl}
+      alt={alt || "Product"}
+      className={className || "w-full h-full object-cover"}
+      onError={() => setHasError(true)}
+    />
+  );
 };
 
 const Inventory = () => {
@@ -752,32 +770,11 @@ const Inventory = () => {
     {
       header: "Photo",
       accessor: "image",
-      render: (item) => {
-        const img = item.image || item.image_url || item.imageUrl;
-        return (
-          <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center relative">
-            {img ? (
-              <img
-                key={img}
-                src={toAbsoluteImageUrl(img)}
-                alt={item.name || "Product"}
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  e.currentTarget.style.display = 'none';
-                  const parent = e.currentTarget.parentElement;
-                  if (parent) {
-                    const fallback = parent.querySelector('.photo-fallback');
-                    if (fallback) fallback.classList.remove('hidden');
-                  }
-                }}
-              />
-            ) : null}
-            <div className={`photo-fallback ${img ? 'hidden' : 'block'}`}>
-              <ImageIcon size={16} className="text-muted/40" />
-            </div>
-          </div>
-        );
-      }
+      render: (item) => (
+        <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center relative">
+          <ProductImage src={item.image || item.image_url || item.imageUrl} alt={item.name} iconSize={16} />
+        </div>
+      )
     },
     { header: "Product Name", accessor: "name" },
     { header: "Category", accessor: "category", render: (item) => typeof item.category === 'object' && item.category !== null ? item.category.name : (item.category || '—') },

@@ -70,6 +70,16 @@ export function roleCanUpdateOrderStatus(role) {
 }
 
 /**
+ * Full CRUD permission check for Inventory, Vendors, and Warehouses modules.
+ * Returns true ONLY for Admin, SaaS Client / Business Client, and Procurement roles.
+ * All other roles (Inventory, Logistics, Customer, Operations, etc.) have read-only access.
+ */
+export function roleCanManageInventoryVendorsWarehouses(role) {
+    const key = normalizeRole(role);
+    return ['superadmin', 'admin', 'saas_client', 'client', 'procurement'].includes(key);
+}
+
+/**
  * Vendor rows shown in shared UI (marketplace checkout, order vendor pickers, inventory partner pickers).
  * Super Admin sees every row (pending, active, blacklisted). All other roles only see HQ-approved
  * partners (`status === 'active'`). Blacklisted is never shown outside Super Admin.

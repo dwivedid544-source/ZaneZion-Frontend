@@ -5,17 +5,19 @@ import { useWarehouses, useCreateWarehouse, useUpdateWarehouse, useDeleteWarehou
 import { motion, AnimatePresence } from 'framer-motion';
 import { createPortal } from 'react-dom';
 
+import { roleCanManageInventoryVendorsWarehouses } from '../../utils/authUtils';
+
 const EMPTY_FORM = { name: '', location: '', capacity: '', manager_id: '', status: 'active' };
 
 const Warehouses = () => {
   const { hasMenuPermission, users, fetchStaff, currentUser } = useData();
   const userRole = (currentUser?.role?.name || currentUser?.role || '').toUpperCase();
-  const isInventoryStaff = userRole === 'INVENTORY' || userRole === 'INVENTORY_STAFF';
-  const canEditManager = !isInventoryStaff;
+  const canManage = roleCanManageInventoryVendorsWarehouses(currentUser?.role);
+  const canEditManager = canManage;
 
-  const canAdd = hasMenuPermission('Warehouses', 'can_add');
-  const canEdit = hasMenuPermission('Warehouses', 'can_edit');
-  const canDelete = hasMenuPermission('Warehouses', 'can_delete');
+  const canAdd = canManage && hasMenuPermission('Warehouses', 'can_add');
+  const canEdit = canManage && hasMenuPermission('Warehouses', 'can_edit');
+  const canDelete = canManage && hasMenuPermission('Warehouses', 'can_delete');
 
   const { data: whData, isLoading, error } = useWarehouses();
   // API returns: { success, data: { warehouses: [], total, page, totalPages } }

@@ -12,7 +12,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { CLIENTS as CLIENTS_SEED, marketplaceCategorySelectOptions, normalizeToMarketplaceCategory, canonicalMarketplaceCategory } from '../../utils/data';
 import { useLocation } from 'react-router-dom';
 import { toAbsoluteImageUrl } from '../../utils/apiHelpers.js';
-import { normalizeRole } from '../../utils/authUtils';
+import { normalizeRole, roleCanManageInventoryVendorsWarehouses } from '../../utils/authUtils';
 import { useItems, useWarehouses, useItemCategories, useItemUnits } from '../../hooks/api/useInventory';
 import realApi from '../../services/api/setupAxios';
 
@@ -194,7 +194,8 @@ const Inventory = () => {
     [clientListForSelect],
   );
 
-  const isAdmin = ['superadmin', 'admin', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge', 'conciergemanager'].includes(userRoleNorm);
+  const canManageInventory = roleCanManageInventoryVendorsWarehouses(currentUser?.role);
+  const isAdmin = canManageInventory;
 
   const isB2BClient = userRoleNorm === 'client';
 
@@ -225,6 +226,7 @@ const Inventory = () => {
   React.useEffect(() => {
     const q = new URLSearchParams(location.search);
     if (q.get('action') !== 'entry') return;
+    if (!canManageInventory) return;
     const mode = q.get('type');
     const isSaaS = mode === 'SaaS';
     const isBusiness = mode === 'Business';
@@ -243,8 +245,7 @@ const Inventory = () => {
   const inboundAssets = purchaseRequests.filter(pr => pr.status === 'Approved' || pr.status === 'Ordered');
 
   const handleAction = (type, item, projectContext = null, prContext = null) => {
-    const isB2BClient = userRoleNorm === 'client';
-    if (!isAdmin && !(['issue', 'loss', 'view'].includes(type) && isB2BClient) && type !== 'view') return;
+    if (type !== 'view' && !canManageInventory) return;
     setSelectedItem(item);
     setModalType(type);
     setImageFile(null);
@@ -719,7 +720,7 @@ const Inventory = () => {
           <p className="text-secondary mt-1 font-medium">Precision stock orchestration and institutional supply chain visibility.</p>
         </div>
         <div className="flex gap-3">
-          {(isAdmin || isB2BClient) && (
+          {canManageInventory && (
             <>
               <button className="btn-secondary flex items-center gap-2 border-danger/20 text-danger hover:bg-danger/10" onClick={() => handleAction('loss', {})}>
                 <AlertTriangle size={16} /> Record Loss
@@ -727,11 +728,9 @@ const Inventory = () => {
               <button className="btn-secondary flex items-center gap-2 border-accent/20 text-accent" onClick={() => handleAction('issue', {})}>
                 <Box size={16} /> Stock Issue
               </button>
-              {isAdmin && (
-                <button className="btn-primary flex items-center gap-2 shadow-xl shadow-accent/10" onClick={() => handleAction('entry', {})}>
-                  <Plus size={16} /> Stock Entry
-                </button>
-              )}
+              <button className="btn-primary flex items-center gap-2 shadow-xl shadow-accent/10" onClick={() => handleAction('entry', {})}>
+                <Plus size={16} /> Stock Entry
+              </button>
             </>
           )}
         </div>

@@ -10,6 +10,7 @@ import {
 import { useData } from '../../context/GlobalDataContext';
 import { useNavigate } from 'react-router-dom';
 import DepartmentWorkflowSection from '../../components/DepartmentWorkflowSection';
+import { roleCanManageInventoryVendorsWarehouses } from '../../utils/authUtils';
 
 
 /** Parse qty whether API returns number or string like "50 units". */
@@ -29,7 +30,10 @@ const InventoryDashboardRole = () => {
     fetchInventoryAlerts,
     warehouses,
     fetchWarehouses,
+    currentUser,
   } = useData();
+
+  const canManage = roleCanManageInventoryVendorsWarehouses(currentUser?.role);
 
   React.useEffect(() => {
     fetchInventory();
@@ -97,13 +101,15 @@ const InventoryDashboardRole = () => {
           >
             <ClipboardList size={16} /> Alerts &amp; thresholds
           </Link>
-          <button
-            type="button"
-            className="btn-primary flex-1 sm:flex-none flex items-center justify-center gap-2 text-[10px] sm:text-xs py-3 px-6"
-            onClick={() => navigate('/dashboard/inventory?action=entry&type=Marketplace')}
-          >
-            <Plus size={16} /> New stock entry
-          </button>
+          {canManage && (
+            <button
+              type="button"
+              className="btn-primary flex-1 sm:flex-none flex items-center justify-center gap-2 text-[10px] sm:text-xs py-3 px-6"
+              onClick={() => navigate('/dashboard/inventory?action=entry&type=Marketplace')}
+            >
+              <Plus size={16} /> New stock entry
+            </button>
+          )}
         </div>
       </div>
 

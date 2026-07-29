@@ -5,13 +5,13 @@ import OrderModal from '../../components/OrderModal';
 import { useData } from '../../context/GlobalDataContext';
 import { Store, Search, Star, Phone, Mail, Plus, ShieldCheck, CheckCircle } from 'lucide-react';
 import { swalSuccess, swalWarning } from '../../utils/swal';
-import { normalizeRole } from '../../utils/authUtils';
+import { normalizeRole, roleCanManageInventoryVendorsWarehouses } from '../../utils/authUtils';
 import realApi from '../../services/api/setupAxios';
 
 const Vendors = () => {
   const { vendors: mockVendors, addVendor: mockAddVendor, updateVendor: mockUpdateVendor, deleteVendor: mockDeleteVendor, addOrder, fetchVendors, hasMenuPermission, currentUser } = useData();
   const [realVendors, setRealVendors] = useState([]);
-  const isVendorAdmin = ['superadmin', 'admin', 'procurement', 'saas_client'].includes(normalizeRole(currentUser?.role));
+  const isVendorAdmin = roleCanManageInventoryVendorsWarehouses(currentUser?.role);
 
   React.useEffect(() => {
     const refreshData = async () => {

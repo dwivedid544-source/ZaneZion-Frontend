@@ -397,11 +397,29 @@ const Inventory = () => {
 
         let res;
         try {
+          let uploadedImageUrl = formData.image || null;
+          if (imageFile) {
+            try {
+              const uploadData = new FormData();
+              uploadData.append('image', imageFile);
+              const uploadRes = await realApi.post('/items/upload-image', uploadData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              const urlFromApi = uploadRes.data?.data?.url || uploadRes.data?.url;
+              if (urlFromApi) {
+                uploadedImageUrl = urlFromApi;
+              }
+            } catch (err) {
+              console.warn('[IMAGE_UPLOAD_FAILED] Image upload to Cloudinary failed:', err);
+            }
+          }
+
           const apiPayload = {
             name: formData.item.trim(),
             categoryId: catId,
             unitId: uId,
             description: formData.description || '',
+            image: uploadedImageUrl,
             inventoryType: formData.inventoryType === 'Marketplace' ? 'MARKETPLACE' : 'INTERNAL',
             clientId: (formData.inventoryType === 'Client' && isCustomer && myClient) ? myClient.id : (parseInt(formData.clientId) || null),
             qty: Number(formData.qty) || 0,
@@ -581,6 +599,23 @@ const Inventory = () => {
         const whId = whObj ? whObj.id : (formData.warehouseId || formData.warehouse_id || 1);
 
         try {
+          let uploadedImageUrl = formData.image || null;
+          if (imageFile) {
+            try {
+              const uploadData = new FormData();
+              uploadData.append('image', imageFile);
+              const uploadRes = await realApi.post('/items/upload-image', uploadData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+              const urlFromApi = uploadRes.data?.data?.url || uploadRes.data?.url;
+              if (urlFromApi) {
+                uploadedImageUrl = urlFromApi;
+              }
+            } catch (err) {
+              console.warn('[IMAGE_UPLOAD_FAILED] Image upload to Cloudinary failed:', err);
+            }
+          }
+
           const apiPayload = {
             name: formData.item.trim(),
             description: formData.description || '',
@@ -588,6 +623,7 @@ const Inventory = () => {
             qty: Number(formData.qty) || 0,
             warehouseId: Number(whId)
           };
+          if (uploadedImageUrl) apiPayload.image = uploadedImageUrl;
           if (!isNaN(catId) && catId > 0) apiPayload.categoryId = catId;
           if (!isNaN(uId) && uId > 0) apiPayload.unitId = uId;
 

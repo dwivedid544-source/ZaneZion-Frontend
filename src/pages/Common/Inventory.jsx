@@ -63,6 +63,9 @@ const compressImageFile = (file, maxWidth = 400, quality = 0.7) => {
         resolve(event.target.result);
       };
     };
+    reader.onerror = () => resolve(null);
+  });
+};
 const ProductImage = ({ src, alt, className, iconSize = 16 }) => {
   const [hasError, setHasError] = useState(false);
   const imageUrl = toAbsoluteImageUrl(src);

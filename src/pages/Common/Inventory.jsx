@@ -77,6 +77,7 @@ const ProductImage = ({ src, alt, className, iconSize = 16 }) => {
 
   return (
     <img
+      key={imageUrl}
       src={imageUrl}
       alt={alt || "Product"}
       className={className || "w-full h-full object-cover"}
@@ -489,6 +490,7 @@ const Inventory = () => {
           console.log('🎉 [FRONTEND_CREATE_ITEM_SUCCESS]', apiRes.data);
           res = { ok: true, data: apiRes.data };
           await queryClient.invalidateQueries({ queryKey: ['items'] });
+          await queryClient.refetchQueries({ queryKey: ['items'] });
           swalSuccess('Asset Created', `Successfully added "${formData.item.trim()}" to stock ledger.`);
           setIsModalOpen(false);
         } catch (e) {
@@ -704,6 +706,7 @@ const Inventory = () => {
           const updateRes = await realApi.put(`/items/${formData.id}`, apiPayload);
           console.log('🎉 [FRONTEND_UPDATE_ITEM_SUCCESS]', updateRes.data);
           await queryClient.invalidateQueries({ queryKey: ['items'] });
+          await queryClient.refetchQueries({ queryKey: ['items'] });
           swalSuccess('Success', 'Item updated successfully.');
         } catch (e) {
           console.error('💥 [FRONTEND_UPDATE_ITEM_FAILED]', e?.response?.data || e?.message || e);

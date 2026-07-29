@@ -208,6 +208,8 @@ const Inventory = () => {
     c.name === currentUser?.name
   ) : null;
 
+  const isSaaSPortal = userRoleNorm === 'saas_client' || userRoleNorm === 'client';
+
   const displayedInventory = inventory.filter(i => {
     if (isCustomer) {
       // Customer sees only their own Client inventory
@@ -215,6 +217,10 @@ const Inventory = () => {
         (myClient && (String(i.clientId) === String(myClient.id))) ||
         i.issuedTo === currentUser?.name
       );
+    }
+    if (isSaaSPortal) {
+      // SaaS Client portal displays all inventory items belonging to their tenant
+      return true;
     }
     if (activeTab === 'Marketplace') return (i.type || 'Marketplace') === 'Marketplace';
     const owner = clientListForSelect.find((c) => String(c.id) === String(i.clientId));
@@ -802,7 +808,7 @@ const Inventory = () => {
           <div className="glass-card p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <h3 className="text-sm font-bold text-white uppercase tracking-widest">Warehouse Ledger</h3>
-              {isAdmin && (
+              {isAdmin && !isSaaSPortal && (
                 <div className="flex bg-black/40 rounded-xl p-1 border border-white/5 w-full sm:w-auto overflow-x-auto whitespace-nowrap hide-scrollbar">
                   {['Marketplace', 'Business' /*, 'SaaS' */].map((tab) => (
                     <button

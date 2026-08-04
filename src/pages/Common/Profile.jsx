@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/GlobalDataContext';
 import { User, Mail, Phone, Lock, Save, Shield, Calendar, CreditCard, Hash, Briefcase, TrendingUp, Eye, EyeOff } from 'lucide-react';
+import { normalizeRole } from '../../utils/authUtils';
 
 const Profile = () => {
     const { currentUser, updateUser } = useData();
+    const isStaff = Boolean(currentUser && normalizeRole(currentUser.role) === 'staff');
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -242,93 +244,97 @@ const Profile = () => {
                             </div>
                         </div>
 
-                        {/* Banking & NIB section */}
-                        <div className="mt-10 mb-6 pb-4 border-b border-white/5">
-                            <h3 className="text-lg font-black text-white">Banking & Identity</h3>
-                            <p className="text-xs text-secondary mt-1">Financial details for payroll and verification purposes. Stored securely.</p>
-                        </div>
+                        {/* Banking & NIB section - Field Staff Only */}
+                        {isStaff && (
+                            <>
+                                <div className="mt-10 mb-6 pb-4 border-b border-white/5">
+                                    <h3 className="text-lg font-black text-white">Banking & Identity</h3>
+                                    <p className="text-xs text-secondary mt-1">Financial details for payroll and verification purposes. Stored securely.</p>
+                                </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-secondary uppercase tracking-widest block">Banking Institution</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
-                                        <Briefcase size={16} />
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-secondary uppercase tracking-widest block">Banking Institution</label>
+                                        <div className="relative">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
+                                                <Briefcase size={16} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                name="bankName"
+                                                value={formData.bankName}
+                                                onChange={handleChange}
+                                                placeholder="e.g. First Caribbean Bank"
+                                                className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
+                                            />
+                                        </div>
                                     </div>
-                                    <input
-                                        type="text"
-                                        name="bankName"
-                                        value={formData.bankName}
-                                        onChange={handleChange}
-                                        placeholder="e.g. First Caribbean Bank"
-                                        className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
-                                    />
-                                </div>
-                            </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-secondary uppercase tracking-widest block">Account Number</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
-                                        <CreditCard size={16} />
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-secondary uppercase tracking-widest block">Account Number</label>
+                                        <div className="relative">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
+                                                <CreditCard size={16} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                name="accountNumber"
+                                                value={formData.accountNumber}
+                                                onChange={handleChange}
+                                                placeholder="••••••••"
+                                                className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
+                                            />
+                                        </div>
                                     </div>
-                                    <input
-                                        type="text"
-                                        name="accountNumber"
-                                        value={formData.accountNumber}
-                                        onChange={handleChange}
-                                        placeholder="••••••••"
-                                        className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
-                                    />
-                                </div>
-                            </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-secondary uppercase tracking-widest block">Routing Number</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
-                                        <Hash size={16} />
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-secondary uppercase tracking-widest block">Routing Number</label>
+                                        <div className="relative">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
+                                                <Hash size={16} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                name="routingNumber"
+                                                value={formData.routingNumber}
+                                                onChange={handleChange}
+                                                placeholder="Routing / Transit number"
+                                                className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
+                                            />
+                                        </div>
                                     </div>
-                                    <input
-                                        type="text"
-                                        name="routingNumber"
-                                        value={formData.routingNumber}
-                                        onChange={handleChange}
-                                        placeholder="Routing / Transit number"
-                                        className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
-                                    />
-                                </div>
-                            </div>
 
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-secondary uppercase tracking-widest block">NIB Number</label>
-                                <div className="relative">
-                                    <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
-                                        <Shield size={16} />
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-secondary uppercase tracking-widest block">NIB Number</label>
+                                        <div className="relative">
+                                            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-muted">
+                                                <Shield size={16} />
+                                            </div>
+                                            <input
+                                                type="text"
+                                                name="nibNumber"
+                                                value={formData.nibNumber}
+                                                onChange={handleChange}
+                                                placeholder="National Insurance Board number"
+                                                className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
+                                            />
+                                        </div>
                                     </div>
-                                    <input
-                                        type="text"
-                                        name="nibNumber"
-                                        value={formData.nibNumber}
-                                        onChange={handleChange}
-                                        placeholder="National Insurance Board number"
-                                        className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
-                                    />
                                 </div>
-                            </div>
-                        </div>
 
-                        {/* Vacation Balance — read-only display */}
-                        {(currentUser?.vacationBalance !== undefined || currentUser?.vacation_balance !== undefined) && (
-                            <div className="mt-6 p-4 bg-info/5 border border-info/20 rounded-xl flex items-center gap-4">
-                                <TrendingUp size={20} className="text-info shrink-0" />
-                                <div>
-                                    <p className="text-[10px] font-black text-secondary uppercase tracking-widest">Vacation Balance</p>
-                                    <p className="text-lg font-black text-white mt-0.5">
-                                        {currentUser?.vacationBalance ?? currentUser?.vacation_balance ?? 0} <span className="text-sm text-secondary font-bold">days remaining</span>
-                                    </p>
-                                </div>
-                            </div>
+                                {/* Vacation Balance — read-only display */}
+                                {(currentUser?.vacationBalance !== undefined || currentUser?.vacation_balance !== undefined) && (
+                                    <div className="mt-6 p-4 bg-info/5 border border-info/20 rounded-xl flex items-center gap-4">
+                                        <TrendingUp size={20} className="text-info shrink-0" />
+                                        <div>
+                                            <p className="text-[10px] font-black text-secondary uppercase tracking-widest">Vacation Balance</p>
+                                            <p className="text-lg font-black text-white mt-0.5">
+                                                {currentUser?.vacationBalance ?? currentUser?.vacation_balance ?? 0} <span className="text-sm text-secondary font-bold">days remaining</span>
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
+                            </>
                         )}
 
                         <div className="mt-8 flex justify-end">

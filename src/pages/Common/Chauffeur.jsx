@@ -160,6 +160,7 @@ const Chauffeur = () => {
 
     const [showModal, setShowModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [bookingTab, setBookingTab] = useState('active'); // 'active' | 'history'
 
     const [modalType, setModalType] = useState('create'); // create, edit, view
     const [serviceType, setServiceType] = useState('One Way');
@@ -229,6 +230,12 @@ const Chauffeur = () => {
         isAdmin && (!isClientAdmin || req?.userId !== currentUser?.id) && req && !req.driverName && !req.adminApproved && ['pending', 'pending_review'].includes(chauffeurStatusKey(req.status));
 
     const filteredRequests = chauffeurRequests;
+
+    /** Active: any status that is NOT completed/cancelled – stays visible until service is done. */
+    const DONE_STATUSES = ['completed', 'delivered', 'cancelled', 'done'];
+    const activeBookings = filteredRequests.filter(r => !DONE_STATUSES.includes(chauffeurStatusKey(r.status)));
+    const historyBookings = filteredRequests.filter(r => DONE_STATUSES.includes(chauffeurStatusKey(r.status)));
+    const tabData = bookingTab === 'active' ? activeBookings : historyBookings;
 
     const toggleAmenity = (item) => {
         setAmenities(prev =>
@@ -473,9 +480,9 @@ const Chauffeur = () => {
 
             {/* List/Table Section */}
             <div className="glass-card p-6">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                     <h2 className="text-[10px] font-black text-muted uppercase tracking-[0.3em]">
-                        {isClientAdmin ? 'My Chauffeur Bookings' : (isAdmin ? 'Fleet Manifest Intelligence' : 'Booking History')}
+                        {isClientAdmin ? 'My Chauffeur Bookings' : (isAdmin ? 'Fleet Manifest Intelligence' : 'Chauffeur Bookings')}
                     </h2>
                     <div className="relative w-full md:w-64">
                         <input
@@ -532,14 +539,49 @@ const Chauffeur = () => {
                         )}
                     </>
                 ) : (
+                    <>
+                        {/* Active / History tabs for personal client / customer view */}
+                        <div className="flex bg-background border border-border p-1 rounded-xl w-fit mb-6 gap-1">
+                            <button
+                                type="button"
+                                onClick={() => setBookingTab('active')}
+                                className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                    bookingTab === 'active' ? 'bg-accent text-black shadow' : 'text-muted hover:text-white'
+                                }`}
+                            >
+                                Active Bookings
+                                {activeBookings.length > 0 && (
+                                    <span className={`ml-2 inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black ${
+                                        bookingTab === 'active' ? 'bg-black/20 text-black' : 'bg-accent/20 text-accent'
+                                    }`}>{activeBookings.length}</span>
+                                )}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setBookingTab('history')}
+                                className={`px-5 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
+                                    bookingTab === 'history' ? 'bg-white/10 text-white shadow' : 'text-muted hover:text-white'
+                                }`}
+                            >
+                                Order History
+                                {historyBookings.length > 0 && (
+                                    <span className={`ml-2 inline-flex items-center justify-center w-4 h-4 rounded-full text-[9px] font-black ${
+                                        bookingTab === 'history' ? 'bg-white/20 text-white' : 'bg-white/10 text-muted'
+                                    }`}>{historyBookings.length}</span>
+                                )}
+                            </button>
+                        </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {filteredRequests.length === 0 ? (
+                        {tabData.length === 0 ? (
                             <div className="col-span-2 glass-card p-12 text-center border-dashed border-2 border-white/5">
                                 <Car size={48} className="text-muted mx-auto mb-4 opacity-20" />
-                                <p className="text-secondary font-bold uppercase tracking-widest text-xs italic">No active bookings detected</p>
+                                <p className="text-secondary font-bold uppercase tracking-widest text-xs italic">
+                                    {bookingTab === 'active' ? 'No active bookings. Completed rides move to Order History.' : 'No completed bookings yet.'}
+                                </p>
                             </div>
                         ) : (
-                            filteredRequests.map((req, i) => (
+                            tabData.map((req, i) => (
                                 <motion.div
                                     key={req.id}
                                     initial={{ opacity: 0, x: -20 }}
@@ -627,6 +669,7 @@ const Chauffeur = () => {
                             ))
                         )}
                     </div>
+                    </>
                 )}
             </div>
 

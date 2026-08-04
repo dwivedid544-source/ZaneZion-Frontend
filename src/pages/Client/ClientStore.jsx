@@ -51,12 +51,13 @@ const CHAUFFEUR_BILLING_MODE = String(import.meta.env?.VITE_CHAUFFEUR_BILLING_MO
     : 'separate';
 
 const ClientStore = () => {
-    const { inventory, cart, addToCart, removeFromCart, clearCart, addOrder, currentUser, clients, vendors, marketplaceVendors, shippingModePricing, fetchInventory, fetchVendors, systemSettings, fetchSystemSettings, deliveryPricing } = useData();
+    const { inventory, cart, addToCart, removeFromCart, clearCart, addOrder, currentUser, clients, vendors, marketplaceVendors, shippingModePricing, fetchInventory, fetchVendors, systemSettings, fetchSystemSettings, deliveryPricing, fetchOrders } = useData();
     const location = useLocation();
     const navigate = useNavigate();
     /** Simplified: primary marketplace + optional custom request for personal accounts */
     const [activeTab, setActiveTab] = useState('catalog');
     const [addedItems, setAddedItems] = useState({});
+    const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
     const handleAddItemToOrder = (item, group) => {
         const itemPayload = {
@@ -435,6 +436,8 @@ const ClientStore = () => {
     });
 
     const handleCheckout = async () => {
+        if (isPlacingOrder) return;
+
         let items = activeTab === 'catalog'
             ? cart.map(i => ({ name: i.name || 'Unknown Item', qty: i.qty || 1, price: i.price || 0, vendorName: i.vendorName }))
             : customItems.filter(i => i?.name?.trim() !== '').map(i => ({ name: i.name, qty: parseInt(i.qty) || 1, price: parseFloat(i.price || 0), custom: true }));
@@ -477,13 +480,6 @@ const ClientStore = () => {
             swalWarning('Select transport asset', `Choose a ${deliveryMode === 'Sea' ? 'boat' : 'airplane'} option or describe a custom vessel / aircraft below.`);
             return;
         }
-        /* 
-        // Island/Location and Transport Asset details are now optional per user request to streamline marketplace checkout.
-        if ((deliveryMode === 'Sea' || deliveryMode === 'Air') && !String(islandLocation || '').trim()) {
-            swalWarning('Island/Location required', 'For sea/air dispatch, please enter the island or delivery location.');
-            return;
-        }
-        */
 
         const orderKind = isBespoke ? 'custom_request' : 'marketplace';
         const typeLabel = isBespoke
@@ -560,36 +556,49 @@ const ClientStore = () => {
             return;
         }
 
-        const result = await addOrder(orderPayload, { silentUi: true, customerCheckout: true });
-        if (!result?.ok) {
-            swalError('Checkout failed', result?.error || 'Could not create order.');
-            return;
-        }
+        setIsPlacingOrder(true);
 
-        if (activeTab === 'catalog') clearCart();
-        else {
-            setCustomItems([{ name: '', qty: 1, price: 0 }]);
-            setCustomRequestDistanceKm('');
-        }
-
-        setIsCartOpen(false);
-
-        const totalStr = `$${estimatedGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
-
-        if (isRetailPersonal) {
-            if (result?.charged === false) {
-                swalWarning(
-                    'Order placed, payment pending',
-                    `Order #${result.id} was created but auto-charge did not complete via ${paymentMethod}. ${result?.chargeError || 'Please complete payment from billing.'}`
-                );
-            } else {
-                swalSuccess('Order placed & charged', `Payment authorised via ${paymentMethod} (${totalStr}) for order #${result.id}. Chauffeur and membership fees bill separately where applicable.`);
+        try {
+            const result = await addOrder(orderPayload, { silentUi: true, customerCheckout: true });
+            if (!result?.ok) {
+                setIsPlacingOrder(false);
+                swalError('Checkout failed', result?.error || 'Could not create order.');
+                return;
             }
-        } else {
-            swalSuccess('Order submitted', `Order #${result.id} sent for fulfilment (${totalStr}).`);
-        }
 
-        /* Stay on marketplace — fulfilment choices were confirmed in-checkout; My Orders available from the menu when needed */
+            if (fetchOrders) {
+                await fetchOrders();
+            }
+
+            if (activeTab === 'catalog') clearCart();
+            else {
+                setCustomItems([{ name: '', qty: 1, price: 0 }]);
+                setCustomRequestDistanceKm('');
+            }
+
+            setIsCartOpen(false);
+            setIsPlacingOrder(false);
+
+            const totalStr = `$${estimatedGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
+
+            if (isRetailPersonal) {
+                if (result?.charged === false) {
+                    await swalWarning(
+                        'Order placed, payment pending',
+                        `Order #${result.id} was created but auto-charge did not complete via ${paymentMethod}. ${result?.chargeError || 'Please complete payment from billing.'}`
+                    );
+                } else {
+                    await swalSuccess('Order Placed Successfully!', `Payment authorised via ${paymentMethod} (${totalStr}) for order #${result.id}.`);
+                }
+            } else {
+                await swalSuccess('Order Submitted Successfully!', `Order #${result.id} sent for fulfilment (${totalStr}).`);
+            }
+
+            navigate('/dashboard/client-orders');
+        } catch (err) {
+            setIsPlacingOrder(false);
+            swalError('Checkout Error', err?.message || 'An error occurred while placing your order.');
+        }
     };
 
     return (
@@ -1231,13 +1240,23 @@ const ClientStore = () => {
                         <button
                             onClick={handleCheckout}
                             disabled={
-                                isRetailPersonal
+                                isPlacingOrder ||
+                                (isRetailPersonal
                                     ? !String(personalNotes || '').trim() || !customRequestSubtype
-                                    : customItems.every(i => i.name.trim() === '')
+                                    : customItems.every(i => i.name.trim() === ''))
                             }
                             className="w-full xl:w-auto px-14 py-6 bg-accent text-black rounded-[2.2rem] font-black uppercase tracking-[0.3em] text-xs hover:shadow-[0_25px_50px_-12px_rgba(200,169,106,0.6)] active:scale-[0.98] transition-all disabled:opacity-20 flex items-center justify-center gap-5 group"
                         >
-                            {isRetailPersonal ? 'Checkout & pay' : 'Submit requisition'} <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                            {isPlacingOrder ? (
+                                <>
+                                    <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                                    Placing Order...
+                                </>
+                            ) : (
+                                <>
+                                    {isRetailPersonal ? 'Checkout & pay' : 'Submit requisition'} <ChevronRight size={20} className="group-hover:translate-x-1 transition-transform" />
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>
@@ -1553,14 +1572,59 @@ const ClientStore = () => {
                                 <button
                                     type="button"
                                     onClick={handleCheckout}
-                                    disabled={cart.length === 0 || !String(catalogDeliveryAddress || '').trim() || (isRetailPersonal && !authorizeCharge)}
+                                    disabled={isPlacingOrder || cart.length === 0 || !String(catalogDeliveryAddress || '').trim() || (isRetailPersonal && !authorizeCharge)}
                                     className="w-full py-5 bg-accent text-black rounded-[1.8rem] font-black uppercase tracking-[0.3em] text-[11px] hover:shadow-[0_20px_40px_-10px_rgba(200,169,106,0.4)] transition-all disabled:opacity-20 active:scale-[0.98] flex items-center justify-center gap-4 group"
                                 >
-                                    {isRetailPersonal ? 'Place order & pay' : 'Confirm dispatch'} <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                    {isPlacingOrder ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                                            Placing Order...
+                                        </>
+                                    ) : (
+                                        <>
+                                            {isRetailPersonal ? 'Place order & pay' : 'Confirm dispatch'} <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                        </>
+                                    )}
                                 </button>
                             </div>
                         </motion.div>
                     </>
+                )}
+            </AnimatePresence>
+
+            {/* Loading Modal Popup Overlay while order is being processed */}
+            <AnimatePresence>
+                {isPlacingOrder && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/85 backdrop-blur-md p-4"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-[#121215] border border-accent/40 rounded-3xl p-8 max-w-md w-full text-center space-y-6 shadow-[0_0_50px_rgba(200,169,106,0.3)] relative overflow-hidden"
+                        >
+                            <div className="absolute -top-12 -right-12 w-32 h-32 bg-accent/10 rounded-full blur-2xl pointer-events-none" />
+                            <div className="relative w-20 h-20 mx-auto flex items-center justify-center">
+                                <div className="absolute inset-0 rounded-full border-4 border-accent/20 border-t-accent animate-spin" />
+                                <ShoppingCart size={32} className="text-accent animate-pulse" />
+                            </div>
+                            <div className="space-y-2">
+                                <h3 className="text-xl font-black text-white uppercase tracking-tight italic">Processing Order</h3>
+                                <p className="text-sm text-secondary font-medium leading-relaxed">
+                                    Placing your order... Please wait and do not close this window.
+                                </p>
+                            </div>
+                            <div className="pt-2">
+                                <div className="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+                                    <div className="bg-accent h-full w-2/3 animate-pulse rounded-full" />
+                                </div>
+                            </div>
+                        </motion.div>
+                    </motion.div>
                 )}
             </AnimatePresence>
         </div>

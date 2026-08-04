@@ -184,6 +184,8 @@ const Login = ({ onLogin }) => {
       setEmail(credentials.email);
       setPassword(credentials.password);
       setError(null);
+      // Auto-submit immediately with the credentials
+      performLogin(credentials.email, credentials.password);
     } else {
       setError(`Credentials for ${role} not found.`);
     }

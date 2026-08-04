@@ -135,6 +135,13 @@ const PersonalClientDashboard = () => {
   const activeDeliveries = deliveries.filter(d => d.status !== 'Delivered' && clientOrders.some(o => o.id === d.orderId));
   const unpaidInvoices = clientInvoices.filter(inv => inv.status !== 'Paid');
 
+  // Chauffeur bookings: only show active (not completed/cancelled) in the Active Bookings widget.
+  // Completed rides are accessible from the full Chauffeur page under "Order History".
+  const CHAUFFEUR_DONE = ['completed', 'delivered', 'cancelled', 'done'];
+  const activeChauffeurBookings = clientChauffeurRequests.filter(
+    req => !CHAUFFEUR_DONE.includes(String(req.status || '').toLowerCase().replace(/\s+/g, '_'))
+  );
+
   const handleAction = (type, order) => {
     setSelectedOrder(order);
     setModalType(type);
@@ -219,9 +226,9 @@ const PersonalClientDashboard = () => {
             </SectionCard>
 
             {/* Chauffeur Bookings */}
-            <SectionCard title="Chauffeur Bookings" icon={Car} viewAllPath="/dashboard/chauffeur" navigate={navigate}>
+            <SectionCard title="Active Chauffeur Bookings" icon={Car} viewAllPath="/dashboard/chauffeur" navigate={navigate}>
               <div className="space-y-3">
-                {clientChauffeurRequests.slice(0, 3).map((req, i) => (
+                {activeChauffeurBookings.slice(0, 3).map((req, i) => (
                   <div key={i} className="p-4 bg-white/5 border border-border rounded-xl">
                     <div className="flex justify-between items-start">
                       <div>
@@ -234,7 +241,12 @@ const PersonalClientDashboard = () => {
                     <p className="text-[10px] text-muted font-bold mt-1">{req.dueDate || req.requestDate || ''} @ {req.pickupTime || ''}</p>
                   </div>
                 ))}
-                {clientChauffeurRequests.length === 0 && <EmptyState text="No active chauffeur protocols." />}
+                {activeChauffeurBookings.length === 0 && (
+                  <div className="py-6 text-center border border-dashed border-white/5 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-muted italic">No active chauffeur bookings.</p>
+                    <p className="text-[9px] text-muted/60 mt-1 font-bold">Completed rides appear under Order History on the Chauffeur page.</p>
+                  </div>
+                )}
                 <button onClick={() => navigate('/dashboard/chauffeur')} className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">Manage Protocols</button>
               </div>
             </SectionCard>

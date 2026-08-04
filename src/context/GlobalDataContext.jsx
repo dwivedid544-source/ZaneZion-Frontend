@@ -4017,18 +4017,17 @@ export const GlobalDataProvider = ({ children }) => {
       ).toLowerCase();
       const isCustomRequestOrder =
         orderKindNorm === "custom_request" || customCategory !== "";
-      /** Marketplace customer checkout: route via operations first so create payload does not imply dispatch yet (`logistics` route can coerce order status to Out for Delivery on some backends). Custom requests: always concierge routing after admin (not straight to operation/procurement). */
+      /** Marketplace orders bypass admin_review stage and route directly to operations queue so Field Staff can accept immediately. Custom requests route to concierge triage after admin approve. */
       const routedDepartment = (() => {
         if (isCustomRequestOrder) return "concierge";
-        if (customerCheckout) return "operations";
-        return "logistics";
+        return "operations";
       })();
-      /** Marketplace + bespoke: start in `admin_review`. Custom requests must not default to `operation`/`procurement` at create — concierge triage comes after admin approve. */
+
       const requestedStatus =
         normalizeOrderStatusForApi(order.status) ||
         (isCustomRequestOrder
           ? "admin_review"
-          : normalizeOrderStatusForApi("pending_review") || "admin_review");
+          : "operation");
       const totalAmountVal = (() => {
         const direct = parseFloat(
           order.estimated_total ?? order.total_amount ?? order.total ?? 0,
@@ -4107,8 +4106,8 @@ export const GlobalDataProvider = ({ children }) => {
         }
       }
 
-      /** Staff-created orders: enqueue delivery + field task immediately. Marketplace checkout: defer until admin workflow reaches logistics (see `assignOrderToStage`) so customer-facing status stays admin_review / not "Out for Delivery". */
-      if (!isCustomRequestOrder && newId != null && !customerCheckout) {
+      /** Marketplace orders (including Personal Client customer checkout): enqueue delivery + field task immediately so Field Staff can accept mission directly from Operational / Open Delivery Queue without admin approval. */
+      if (!isCustomRequestOrder && newId != null) {
         try {
           await addDelivery({
             orderId: newId,
@@ -4129,7 +4128,7 @@ export const GlobalDataProvider = ({ children }) => {
             status: "Pending Pickup",
             delivery_instructions:
               order.delivery_instructions || order.deliveryInstructions || null,
-            delivery_fee: 0, // Staff payout is set separately in Deliveries form (distance × rate/km)
+            delivery_fee: parseFloat(order.tier_delivery_fee || order.tierDeliveryFee || 0),
           });
         } catch (queueErr) {
           console.warn(

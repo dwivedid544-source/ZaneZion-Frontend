@@ -84,6 +84,7 @@ const PersonalClientDashboard = () => {
     guestRequests = [],
     luxuryItems = [],
     fetchLuxuryItems,
+    syncGlobalState
   } = useData();
   const navigate = useNavigate();
 
@@ -97,7 +98,12 @@ const PersonalClientDashboard = () => {
     if (fetchTickets) fetchTickets();
     if (fetchChauffeurRequests) fetchChauffeurRequests();
     if (fetchLuxuryItems) fetchLuxuryItems();
-  }, []);
+
+    const interval = setInterval(() => {
+      if (syncGlobalState) syncGlobalState();
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [syncGlobalState]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('add');

@@ -4490,23 +4490,32 @@ export const GlobalDataProvider = ({ children }) => {
       console.log('PUT response:', res.data);
 
       await syncGlobalState();
-      if (updated.status === "Delivered" || updated.status === "Completed") {
-        // Auto-update the linked order status to 'delivered'
-        const numericOrderId =
-          updated.order_id_raw ||
-          (updated.orderId
-            ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10)
-            : null);
-        if (numericOrderId && !isNaN(numericOrderId)) {
+      const numericOrderId =
+        updated.order_id_raw ||
+        (updated.orderId
+          ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10)
+          : null);
+      if (numericOrderId && !isNaN(numericOrderId)) {
+        let newOrderStatus = null;
+        const delSt = String(updated.status || '').toLowerCase();
+        if (['delivered', 'completed'].includes(delSt)) {
+          newOrderStatus = 'completed';
+        } else if (['assigned', 'en_route', 'in_transit', 'dispatched', 'shipped', 'picked_up', 'accepted'].includes(delSt)) {
+          newOrderStatus = 'logistics';
+        }
+
+        if (newOrderStatus) {
           try {
             await api.patch(`/orders/${numericOrderId}/status`, {
-              status: "completed",
+              status: newOrderStatus,
             });
           } catch (e) {
             console.warn("Could not auto-update order status:", e.message);
           }
         }
-        await syncGlobalState();
+      }
+
+      if (updated.status === "Delivered" || updated.status === "Completed") {
         const rawId =
           updated.order_id_raw ||
           (updated.orderId
@@ -4520,9 +4529,8 @@ export const GlobalDataProvider = ({ children }) => {
             await generateInvoiceFromOrder(matchingOrder);
           }
         }
-      } else {
-        await syncGlobalState();
       }
+      await syncGlobalState();
     } catch (error) {
       console.error(
         "Delivery status API failed:",

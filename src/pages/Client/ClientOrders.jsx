@@ -31,14 +31,17 @@ const ClientOrders = () => {
         events = [],
         guestRequests = [],
         luxuryItems = [],
+        deliveries = [],
         currentUser,
         clients = [],
         addOrder,
         fetchOrders,
         fetchClients,
+        fetchDeliveries,
         fetchChauffeurRequests,
         fetchLuxuryItems,
-        fetchTickets
+        fetchTickets,
+        syncGlobalState
     } = useData();
 
     const userRole = localStorage.getItem('userRole') || 'client';
@@ -49,10 +52,16 @@ const ClientOrders = () => {
     useEffect(() => {
         fetchOrders();
         fetchClients();
+        if (fetchDeliveries) fetchDeliveries();
         if (fetchChauffeurRequests) fetchChauffeurRequests();
         if (fetchLuxuryItems) fetchLuxuryItems();
         if (fetchTickets) fetchTickets();
-    }, [fetchOrders, fetchClients, fetchChauffeurRequests, fetchLuxuryItems, fetchTickets]);
+
+        const interval = setInterval(() => {
+            if (syncGlobalState) syncGlobalState();
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [fetchOrders, fetchClients, fetchDeliveries, fetchChauffeurRequests, fetchLuxuryItems, fetchTickets, syncGlobalState]);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
@@ -109,6 +118,27 @@ const ClientOrders = () => {
         (orders || []).filter(isMyRecord).forEach(o => {
             const isCustom = o.order_kind === 'custom_request' || o.orderKind === 'custom_request' || String(o.type || '').toLowerCase().includes('custom');
             const items = typeof o.items === 'string' ? (JSON.parse(o.items) || []) : (Array.isArray(o.items) ? o.items : []);
+
+            // Check linked delivery for live status & driver assignment from Field Staff workflow
+            const linkedDelivery = (deliveries || []).find(d =>
+                String(d.orderId) === String(o.id) ||
+                String(d.order_id_raw) === String(o.id) ||
+                String(d.orderId) === `ORD-${String(o.id).padStart(3, '0')}` ||
+                String(d.orderId) === `ORD-${o.id}`
+            );
+
+            let effectiveStatus = o.status || 'pending';
+            if (linkedDelivery) {
+                const delSt = String(linkedDelivery.status || '').toLowerCase();
+                if (['delivered', 'completed'].includes(delSt)) {
+                    effectiveStatus = 'completed';
+                } else if (['in_transit'].includes(delSt)) {
+                    effectiveStatus = 'in_transit';
+                } else if (['assigned', 'en_route', 'accepted'].includes(delSt) || linkedDelivery.driver) {
+                    effectiveStatus = 'assigned';
+                }
+            }
+
             unified.push({
                 id: o.id ? (String(o.id).startsWith('ORD-') ? o.id : `ORD-${o.id}`) : 'ORD-000',
                 rawId: o.id,
@@ -118,8 +148,9 @@ const ClientOrders = () => {
                 total: parseFloat(o.total ?? o.total_amount ?? o.estimated_total ?? o.amount ?? 0),
                 requestDate: o.order_date || o.created_at || o.requestDate || o.createdAt || o.date,
                 dueDate: o.due_date || o.dueDate || null,
-                status: o.status || 'pending',
-                location: o.deliveryAddress || o.location || 'Client Address',
+                status: effectiveStatus,
+                location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || 'Client Address',
+                driverName: linkedDelivery?.driver || o.driverName || null,
                 source: 'orders',
                 originalRecord: o
             });

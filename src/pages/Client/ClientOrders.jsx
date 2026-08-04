@@ -84,12 +84,18 @@ const ClientOrders = () => {
         if (!item) return false;
         const itemClientId = String(item.clientId || item.client_id || item.companyId || item.company_id || '');
         const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || '');
-        const itemClientName = String(item.client || item.clientName || item.customer_name || '').toLowerCase();
+        const itemClientName = String(item.client || item.clientName || item.customer_name || item.client_name || '').toLowerCase();
+        const itemEmail = String(item.email || item.client_email || item.customer_email || '').toLowerCase();
 
-        if (myClientId && (itemClientId === String(myClientId) || itemCustId === String(myClientId))) return true;
-        if (currentUser?.id && itemCustId === String(currentUser.id)) return true;
-        if (myEmail && String(item.email || '').toLowerCase() === myEmail) return true;
-        if (myName && itemClientName && itemClientName === myName) return true;
+        const myUserId = String(currentUser?.id || '');
+        const myClientIdStr = String(myClientId || '');
+        const myEmailStr = String(myEmail || '').toLowerCase();
+        const myNameStr = String(myName || '').toLowerCase();
+
+        if (myUserId && (itemCustId === myUserId || itemClientId === myUserId)) return true;
+        if (myClientIdStr && (itemClientId === myClientIdStr || itemCustId === myClientIdStr)) return true;
+        if (myEmailStr && itemEmail && itemEmail === myEmailStr) return true;
+        if (myNameStr && itemClientName && itemClientName === myNameStr) return true;
 
         // Fallback for customer portal
         return portalRole === 'customer' || portalRole === 'client';
@@ -197,14 +203,33 @@ const ClientOrders = () => {
             });
         });
 
-        // Deduplicate and sort newest first
+        // Deduplicate and sort newest first (by timestamp, then rawId descending)
+        const getTimeScore = (tx) => {
+            const rawCreated = tx.originalRecord?.createdAt || tx.originalRecord?.created_at || tx.originalRecord?.order_date || tx.originalRecord?.date || tx.requestDate;
+            if (rawCreated) {
+                const d = new Date(rawCreated);
+                if (!isNaN(d.getTime())) return d.getTime();
+            }
+            return 0;
+        };
+
+        const getIdScore = (tx) => {
+            const rawId = tx.rawId || tx.id;
+            const num = parseInt(String(rawId).replace(/\D/g, ''), 10);
+            return !isNaN(num) ? num : 0;
+        };
+
         const seen = new Set();
         return unified.filter(tx => {
             const key = `${tx.source}-${tx.id}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
-        }).sort((a, b) => new Date(b.requestDate || 0) - new Date(a.requestDate || 0));
+        }).sort((a, b) => {
+            const timeDiff = getTimeScore(b) - getTimeScore(a);
+            if (timeDiff !== 0) return timeDiff;
+            return getIdScore(b) - getIdScore(a);
+        });
     }, [orders, chauffeurRequests, events, guestRequests, luxuryItems, myClientId, myName, myEmail, portalRole]);
 
     // Filter transactions based on category, status, and search query

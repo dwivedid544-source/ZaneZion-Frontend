@@ -116,12 +116,40 @@ const PersonalClientDashboard = () => {
     c.name === currentUser?.name
   ) || currentUser || { id: 'GUEST', name: 'Guest' };
 
-  const clientOrders = (orders || []).filter(o =>
-    o.companyId === clientData.id || o.company_id === clientData.id ||
-    o.clientId === clientData.id || o.client === clientData.name
-  );
+  const isMyOrder = (o) => {
+    if (!o) return false;
+    const orderClientId = String(o.clientId || o.client_id || o.companyId || o.company_id || '');
+    const orderCustId = String(o.customer_id || o.customerId || o.created_by || o.createdById || o.userId || o.user_id || '');
+    const orderEmail = String(o.email || o.client_email || o.customer_email || '').toLowerCase();
+    const orderClientName = String(o.client || o.clientName || o.customer_name || o.client_name || '').toLowerCase();
+
+    const myUserId = String(currentUser?.id || '');
+    const myClientId = String(clientData?.id || currentUser?.clientId || '');
+    const myEmail = String(currentUser?.email || clientData?.email || '').toLowerCase();
+    const myName = String(currentUser?.name || clientData?.name || '').toLowerCase();
+
+    if (myUserId && (orderCustId === myUserId || orderClientId === myUserId)) return true;
+    if (myClientId && (orderClientId === myClientId || orderCustId === myClientId)) return true;
+    if (myEmail && orderEmail && orderEmail === myEmail) return true;
+    if (myName && orderClientName && orderClientName === myName) return true;
+
+    const role = normalizeRole(currentUser?.role);
+    if (role === 'customer' || role === 'client') return true;
+
+    return false;
+  };
+
+  const clientOrders = (orders || []).filter(isMyOrder).sort((a, b) => {
+    const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
+    const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
+    if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
+    const numA = parseInt(String(a.rawId || a.id).replace(/\D/g, ''), 10) || 0;
+    const numB = parseInt(String(b.rawId || b.id).replace(/\D/g, ''), 10) || 0;
+    return numB - numA;
+  });
   const clientInvoices = (invoices || []).filter(inv =>
-    inv.clientId === clientData.id || inv.company_id === clientData.id || inv.client === clientData.name
+    inv.clientId === clientData.id || inv.company_id === clientData.id || inv.client === clientData.name ||
+    (inv.userId && String(inv.userId) === String(currentUser?.id))
   );
   const clientChauffeurRequests = (chauffeurRequests || []).filter(req =>
     String(req.clientId) === String(clientData.id) ||
@@ -131,9 +159,12 @@ const PersonalClientDashboard = () => {
     (normalizeRole(currentUser?.role) === 'customer' || normalizeRole(currentUser?.role) === 'client')
   );
 
-  const activeOrders = clientOrders.filter(o => !['Delivered', 'Cancelled', 'Completed'].includes(o.status));
-  const activeDeliveries = deliveries.filter(d => d.status !== 'Delivered' && clientOrders.some(o => o.id === d.orderId));
-  const unpaidInvoices = clientInvoices.filter(inv => inv.status !== 'Paid');
+  const DONE_STATUSES = ['delivered', 'cancelled', 'completed', 'done'];
+  const isDoneOrder = (s) => DONE_STATUSES.includes(String(s || '').toLowerCase().replace(/\s+/g, '_'));
+
+  const activeOrders = clientOrders.filter(o => !isDoneOrder(o.status));
+  const activeDeliveries = deliveries.filter(d => !isDoneOrder(d.status) && clientOrders.some(o => String(o.id) === String(d.orderId) || String(o.id) === String(d.order_id_raw)));
+  const unpaidInvoices = clientInvoices.filter(inv => String(inv.status || '').toLowerCase() !== 'paid');
 
   // Chauffeur bookings: only show active (not completed/cancelled) in the Active Bookings widget.
   // Completed rides are accessible from the full Chauffeur page under "Order History".
@@ -197,7 +228,7 @@ const PersonalClientDashboard = () => {
                 ))}
               </div>
               <div className="space-y-3">
-                {clientOrders.filter(o => orderTab === 'open' ? !['Delivered', 'Completed'].includes(o.status) : ['Delivered', 'Completed'].includes(o.status)).slice(0, 5).map((order, idx) => (
+                {clientOrders.filter(o => orderTab === 'open' ? !isDoneOrder(o.status) : isDoneOrder(o.status)).slice(0, 5).map((order, idx) => (
                   <div key={idx} className="group bg-white/[0.02] border border-white/5 rounded-2xl p-5 hover:border-accent/30 hover:bg-white/[0.04] transition-all duration-300">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4 flex-1">
@@ -221,7 +252,7 @@ const PersonalClientDashboard = () => {
                     </div>
                   </div>
                 ))}
-                {clientOrders.filter(o => orderTab === 'open' ? !['Delivered', 'Completed'].includes(o.status) : ['Delivered', 'Completed'].includes(o.status)).length === 0 && (<EmptyState text="No Requisition Logs Found" />)}
+                {clientOrders.filter(o => orderTab === 'open' ? !isDoneOrder(o.status) : isDoneOrder(o.status)).length === 0 && (<EmptyState text="No Requisition Logs Found" />)}
               </div>
             </SectionCard>
 

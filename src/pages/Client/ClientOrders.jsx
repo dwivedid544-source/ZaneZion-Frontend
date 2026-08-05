@@ -117,7 +117,52 @@ const ClientOrders = () => {
         // 1. Marketplace & Custom Orders
         (orders || []).filter(isMyRecord).forEach(o => {
             const isCustom = o.order_kind === 'custom_request' || o.orderKind === 'custom_request' || String(o.type || '').toLowerCase().includes('custom');
-            const items = typeof o.items === 'string' ? (JSON.parse(o.items) || []) : (Array.isArray(o.items) ? o.items : []);
+
+            // Robustly parse items from all possible locations
+            let rawItems = o.items;
+            if (typeof rawItems === 'string') {
+                try { rawItems = JSON.parse(rawItems); } catch { rawItems = []; }
+            }
+            if (!Array.isArray(rawItems) || rawItems.length === 0) {
+                let meta = o.metadata;
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch { meta = {}; }
+                }
+                meta = meta || {};
+                rawItems = meta.customItems || meta.custom_items || meta.manifestItems || meta.items || meta.cart || o.customItems || [];
+            }
+
+            const orderTotal = parseFloat(o.total ?? o.total_amount ?? o.totalAmount ?? o.estimated_total ?? o.amount ?? 0);
+
+            // Normalize each item: extract name, qty, and unit price
+            let normalizedItems = (Array.isArray(rawItems) ? rawItems : []).map((itm, idx) => {
+                const name = itm.name || itm.item?.name || itm.itemName || itm.title || itm.description || `Item ${idx + 1}`;
+                const qty = parseInt(itm.qty || itm.quantity || 1) || 1;
+                // unitPrice from DB OrderItem row uses unitPrice; marketplace cart may use price
+                const unitPrice = parseFloat(
+                    itm.unitPrice !== undefined ? itm.unitPrice :
+                    itm.price !== undefined ? itm.price :
+                    itm.unit_price !== undefined ? itm.unit_price :
+                    itm.chauffeurFee !== undefined ? itm.chauffeurFee :
+                    itm.chauffeur_fee !== undefined ? itm.chauffeur_fee : 0
+                ) || 0;
+                return { name, qty, price: unitPrice };
+            });
+
+            // If we have no line items, create one entry using product name or generic item name
+            if (normalizedItems.length === 0) {
+                let meta = o.metadata;
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch { meta = {}; }
+                }
+                meta = meta || {};
+                const fallbackName = o.product || meta.product || o.notes || meta.notes || meta.delivery_instructions || o.delivery_instructions || (o.vendor_name ? `${o.vendor_name} Order` : 'Marketplace Item');
+                normalizedItems = [{
+                    name: fallbackName,
+                    qty: 1,
+                    price: orderTotal
+                }];
+            }
 
             // Check linked delivery for live status & driver assignment from Field Staff workflow
             const linkedDelivery = (deliveries || []).find(d =>
@@ -144,8 +189,8 @@ const ClientOrders = () => {
                 rawId: o.id,
                 category: isCustom ? 'Custom Order' : 'Marketplace Order',
                 serviceType: o.type || (isCustom ? 'Custom Requisition' : 'Marketplace Purchase'),
-                items: items.length > 0 ? items : [{ name: o.product || 'Marketplace Item', qty: 1 }],
-                total: parseFloat(o.total ?? o.total_amount ?? o.estimated_total ?? o.amount ?? 0),
+                items: normalizedItems,
+                total: orderTotal,
                 requestDate: o.order_date || o.created_at || o.requestDate || o.createdAt || o.date,
                 dueDate: o.due_date || o.dueDate || null,
                 status: effectiveStatus,
@@ -687,19 +732,33 @@ const ClientOrders = () => {
                                     <div className="space-y-3">
                                         <h4 className="text-xs font-black text-muted uppercase tracking-widest">Itemized Service Breakdown</h4>
                                         <div className="space-y-2">
-                                            {selectedTransaction.items.map((item, idx) => (
-                                                <div key={idx} className="flex items-center justify-between p-3.5 bg-white/[0.03] border border-white/5 rounded-xl">
-                                                    <div className="flex items-center gap-3">
-                                                        <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center text-accent text-xs font-black">
-                                                            {item.qty || 1}x
+                                            {selectedTransaction.items.map((item, idx) => {
+                                                const qty = parseInt(item.qty || 1) || 1;
+                                                const unitPrice = parseFloat(item.price ?? item.unitPrice ?? item.unit_price ?? 0) || 0;
+                                                const lineTotal = unitPrice * qty;
+                                                return (
+                                                    <div key={idx} className="p-3.5 bg-white/[0.03] border border-white/5 rounded-xl">
+                                                        <div className="flex items-center justify-between gap-3">
+                                                            <div className="flex items-center gap-3 min-w-0">
+                                                                <div className="w-8 h-8 shrink-0 rounded-lg bg-accent/10 flex items-center justify-center text-accent text-xs font-black">
+                                                                    {qty}x
+                                                                </div>
+                                                                <span className="text-xs font-bold text-white truncate">{item.name || item.itemName || 'Service Entry'}</span>
+                                                            </div>
+                                                            <div className="text-right shrink-0">
+                                                                {qty > 1 && unitPrice > 0 && (
+                                                                    <p className="text-[10px] text-muted font-bold mb-0.5">
+                                                                        {qty} × ${unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                                    </p>
+                                                                )}
+                                                                <span className="text-xs font-black text-white italic">
+                                                                    ${(lineTotal || unitPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                                                                </span>
+                                                            </div>
                                                         </div>
-                                                        <span className="text-xs font-bold text-white">{item.name || item.itemName || 'Service Entry'}</span>
                                                     </div>
-                                                    <span className="text-xs font-black text-white italic">
-                                                        ${(parseFloat(item.price || item.unitPrice || selectedTransaction.total) || selectedTransaction.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}
-                                                    </span>
-                                                </div>
-                                            ))}
+                                                );
+                                            })}
                                         </div>
                                     </div>
 

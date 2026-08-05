@@ -256,14 +256,21 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                     price: firstCustom.chauffeurFee || firstCustom.chauffeur_fee || 0
                 }];
             } else {
-                parsedItems = rawItems.map(itm => {
-                    const name = itm.name || itm.item?.name || '';
-                    const qty = itm.qty || itm.quantity || 1;
-                    const price = itm.price !== undefined ? itm.price : (itm.unitPrice !== undefined ? itm.unitPrice : '');
+                parsedItems = rawItems.map((itm, idx) => {
+                    // DB OrderItem row: name lives in itm.item.name; marketplace cart uses itm.name directly
+                    const name = itm.name || itm.item?.name || itm.itemName || itm.title || itm.description || `Item ${idx + 1}`;
+                    const qty = parseInt(itm.qty || itm.quantity || 1) || 1;
+                    // DB OrderItem uses unitPrice; marketplace cart uses price; also check totalPrice / unit_price
+                    const price = itm.unitPrice !== undefined ? itm.unitPrice
+                        : itm.price !== undefined ? itm.price
+                        : itm.unit_price !== undefined ? itm.unit_price
+                        : itm.chauffeurFee !== undefined ? itm.chauffeurFee
+                        : itm.chauffeur_fee !== undefined ? itm.chauffeur_fee
+                        : '';
                     return {
                         name,
-                        qty: Number(qty),
-                        price: price !== '' ? Number(price) : ''
+                        qty,
+                        price: price !== '' && price !== null ? Number(price) : ''
                     };
                 });
             }

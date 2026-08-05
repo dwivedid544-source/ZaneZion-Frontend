@@ -212,7 +212,17 @@ const ClientStore = () => {
         }
     }, [location, isRetailPersonal]);
 
-    const marketplaceInventory = inventory.filter(item => item.inventoryType?.toUpperCase() === 'MARKETPLACE' || !item.inventoryType);
+    const marketplaceInventory = inventory.filter(item => {
+        const isCustomAdHoc = Boolean(
+            (Number(item.price) === 0 && (Number(item.qty) === 0 || Number(item.quantity) === 0)) ||
+            item.inventoryType === 'INTERNAL' ||
+            item.inventory_type === 'INTERNAL' ||
+            (item.sku && String(item.sku).startsWith('ITEM-')) ||
+            /\b(delivery|chauffeur|custom order|custom item|document pickup)\b/i.test(item.name || '')
+        );
+        if (isCustomAdHoc) return false;
+        return item.inventoryType?.toUpperCase() === 'MARKETPLACE' || !item.inventoryType;
+    });
 
     const filteredInventory = marketplaceInventory.filter(item => {
         const q = searchTerm.toLowerCase();
@@ -559,6 +569,12 @@ const ClientStore = () => {
         setIsPlacingOrder(true);
 
         try {
+            if (paymentMethod === 'card') {
+                swalInfo('Card Payment Gateway', 'Authorizing card charge via saved wallet... Order will dispatch immediately.');
+            } else if (paymentMethod === 'bank') {
+                swalInfo('Bank Transfer Gateway', 'Initiating direct online banking transfer... Order will dispatch immediately.');
+            }
+
             const result = await addOrder(orderPayload, { silentUi: true, customerCheckout: true });
             if (!result?.ok) {
                 setIsPlacingOrder(false);

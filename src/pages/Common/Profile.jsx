@@ -5,7 +5,13 @@ import { normalizeRole } from '../../utils/authUtils';
 
 const Profile = () => {
     const { currentUser, updateUser } = useData();
-    const isStaff = Boolean(currentUser && normalizeRole(currentUser.role) === 'staff');
+    const roleNorm = currentUser ? normalizeRole(currentUser.role) : '';
+    const isClient = ['customer', 'client', 'saas_client'].includes(roleNorm);
+    const isStaff = Boolean(
+        currentUser &&
+        !isClient &&
+        (currentUser.isFieldStaff || currentUser.is_field_staff || currentUser.is_staff || roleNorm === 'staff' || currentUser.role === 'staff' || currentUser.role === 'driver')
+    );
     const [formData, setFormData] = useState({
         name: '',
         email: '',
@@ -335,6 +341,53 @@ const Profile = () => {
                                     </div>
                                 )}
                             </>
+                        )}
+
+                        {/* Membership & Subscription Management for Personal Clients */}
+                        {isClient && (
+                            <div className="pt-6 border-t border-white/5 space-y-4">
+                                <h3 className="text-xs font-black text-accent uppercase tracking-widest flex items-center gap-2">
+                                    <Shield size={16} /> Membership & Subscription
+                                </h3>
+                                <div className="p-5 bg-white/[0.02] border border-white/5 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                    <div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-black text-white italic">{currentUser?.membershipTier || 'Platinum Personal Membership'}</span>
+                                            <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${currentUser?.membershipStatus === 'cancelled' ? 'bg-danger/20 text-danger' : 'bg-success/20 text-success'}`}>
+                                                {currentUser?.membershipStatus === 'cancelled' ? 'Cancelled' : 'Active'}
+                                            </span>
+                                        </div>
+                                        <p className="text-[10px] text-muted mt-1 font-semibold">Includes priority concierge, 24/7 chauffeur protocol & complimentary marketplace shipping.</p>
+                                    </div>
+                                    <div>
+                                        {currentUser?.membershipStatus === 'cancelled' ? (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    await updateUser({ ...currentUser, membershipStatus: 'active' });
+                                                    setMessage({ type: 'success', text: 'Membership reactivated.' });
+                                                }}
+                                                className="px-4 py-2 bg-success text-black text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-success/80 transition-colors"
+                                            >
+                                                Reactivate Membership
+                                            </button>
+                                        ) : (
+                                            <button
+                                                type="button"
+                                                onClick={async () => {
+                                                    if (window.confirm('Are you sure you want to cancel your membership? You can reactivate anytime.')) {
+                                                        await updateUser({ ...currentUser, membershipStatus: 'cancelled' });
+                                                        setMessage({ type: 'success', text: 'Membership cancelled successfully.' });
+                                                    }
+                                                }}
+                                                className="px-4 py-2 bg-danger/20 text-danger border border-danger/30 text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-danger/30 transition-colors"
+                                            >
+                                                Cancel Membership
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         )}
 
                         <div className="mt-8 flex justify-end">

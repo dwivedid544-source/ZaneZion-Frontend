@@ -36,17 +36,30 @@ const DepartmentWorkflowSection = ({ departmentKey, departmentLabel }) => {
     {
       header: "Client",
       accessor: "client",
-      render: (row) => row.client?.companyName || row.client?.name || row.customer_name || "—"
+      render: (row) => {
+        const compName = row.client?.companyName || row.client?.name;
+        if (compName && String(compName).trim().toLowerCase() !== 'personal client') {
+          return compName;
+        }
+        return row.client?.contactPerson || row.customer_name || row.created_by_name || compName || "Personal Client";
+      }
     },
     {
       header: "Items",
       accessor: "items",
       render: (row) => {
+        const typeUpper = String(row.orderType || row.type || "").toUpperCase();
+        if (typeUpper.includes('CHAUFFEUR')) return "VIP Chauffeur Service";
+        if (typeUpper.includes('CONCIERGE')) return "Bespoke Concierge Request";
+
         let itms = row.items && row.items.length > 0 ? row.items : (row.customItems || []);
-        if (!itms || itms.length === 0) return "No Items";
-        const firstItemName = itms[0]?.item?.name || itms[0]?.name || "Unknown Item";
-        if (itms.length === 1) return firstItemName;
-        return `${firstItemName} (+${itms.length - 1} more)`;
+        if (!itms || itms.length === 0) return row.product || row.type || "VIP Chauffeur Service";
+        const firstItemName = itms[0]?.item?.name || itms[0]?.name;
+        if (firstItemName && firstItemName !== "Unknown Item") {
+          if (itms.length === 1) return firstItemName;
+          return `${firstItemName} (+${itms.length - 1} more)`;
+        }
+        return row.product || row.type || "VIP Chauffeur Service";
       }
     },
     {

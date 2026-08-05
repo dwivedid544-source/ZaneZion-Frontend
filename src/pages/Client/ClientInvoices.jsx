@@ -18,14 +18,21 @@ const ClientInvoices = () => {
     const getOrderName = (orderId) => {
         const order = (orders || []).find(o => String(o.id) === String(orderId));
         if (!order) return '';
+        const typeUpper = String(order.orderType || order.type || "").toUpperCase();
+        if (typeUpper.includes('CHAUFFEUR')) return "VIP Chauffeur Service";
+        if (typeUpper.includes('CONCIERGE')) return "Bespoke Concierge Request";
+
         let itms = order.items && order.items.length > 0 ? order.items : (order.customItems || []);
         if (typeof itms === 'string') {
             try { itms = JSON.parse(itms); } catch { itms = []; }
         }
-        if (!itms || itms.length === 0) return order.product || 'General Item';
-        const firstItemName = itms[0]?.item?.name || itms[0]?.name || "Unknown Item";
-        if (itms.length === 1) return firstItemName;
-        return `${firstItemName} (+${itms.length - 1} more)`;
+        if (!itms || itms.length === 0) return order.product || order.type || 'General Item';
+        const firstItemName = itms[0]?.item?.name || itms[0]?.name;
+        if (firstItemName && firstItemName !== "Unknown Item") {
+            if (itms.length === 1) return firstItemName;
+            return `${firstItemName} (+${itms.length - 1} more)`;
+        }
+        return order.product || order.type || 'General Item';
     };
 
     const getOrderType = (orderId) => {

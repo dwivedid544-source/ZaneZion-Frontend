@@ -75,16 +75,20 @@ const ClientEvents = () => {
             ? formData.location
             : formData.locationType;
 
+        const displayClientName = (companyName && companyName.toLowerCase() !== 'personal client')
+            ? companyName
+            : (currentUser?.name || 'Personal Client');
+
         if (modalType === 'add') {
             const payload = {
                 title: formData.title,
                 date: formatDateForApi(formData.date),
                 location: normalizedLocation,
                 guestCount: formData.guests || formData.guestCount || 0,
-                plannerName: formData.plannerName || '',
+                plannerName: formData.plannerName || currentUser?.name || '',
                 specialRequests: formData.specialRequests || '',
                 moodBoardUrl: formData.moodBoard || '',
-                client: companyName || clientName,
+                client: displayClientName,
                 client_id: companyIntId,
                 status: 'planned',
             };

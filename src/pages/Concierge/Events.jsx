@@ -127,9 +127,62 @@ const Events = () => {
 
   const columns = [
     { header: "Event ID", accessor: "id" },
-    { header: "Client / Customer", accessor: "client_name", render: (row) => row.client_name || row.client || "Self / Individual" },
+    {
+      header: "Client / Customer",
+      accessor: "client_name",
+      render: (row) => {
+        const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
+        const plannerStr = String(row.plannerName || row.planner_name || '').trim().toLowerCase();
+
+        const matchedClient = (clients || []).find(c => String(c.id).replace('CLT-', '') === String(row.clientId || row.client_id).replace('CLT-', ''));
+        const matchedUser = (customerUsers || []).find(u => String(u.id) === String(row.managerId || row.manager_id || row.clientId || row.client_id || row.userId || row.user_id));
+
+        let clientName = null;
+        if (!isGeneric(row.manager?.name)) {
+          clientName = row.manager.name;
+        } else if (matchedUser && !isGeneric(matchedUser.name || matchedUser.full_name)) {
+          clientName = matchedUser.name || matchedUser.full_name;
+        } else if (matchedClient && !isGeneric(matchedClient.contactPerson)) {
+          clientName = matchedClient.contactPerson;
+        } else if (!isGeneric(row.client?.contactPerson)) {
+          clientName = row.client.contactPerson;
+        } else if (matchedClient && !isGeneric(matchedClient.name || matchedClient.companyName)) {
+          clientName = matchedClient.name || matchedClient.companyName;
+        } else if (!isGeneric(row.client?.companyName)) {
+          clientName = row.client.companyName;
+        } else if (!isGeneric(row.client_name) && String(row.client_name).trim().toLowerCase() !== plannerStr) {
+          clientName = row.client_name;
+        } else if (!isGeneric(row.client?.name)) {
+          clientName = row.client.name;
+        } else if (!isGeneric(row.manager?.email)) {
+          clientName = row.manager.email;
+        }
+
+        return clientName || "Personal Client";
+      }
+    },
     { header: "Event Title", accessor: "title" },
     { header: "Date", accessor: "date" },
+    {
+      header: "Moodboard Link",
+      accessor: "moodBoardUrl",
+      render: (row) => {
+        const link = (row.moodBoardUrl || row.mood_board_url || '').trim();
+        if (!link) return <span className="text-muted/40 text-xs italic">None</span>;
+        const targetUrl = link.startsWith('http') ? link : `https://${link}`;
+        return (
+          <a
+            href={targetUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1 px-3 py-1 bg-accent/10 border border-accent/30 rounded-lg text-accent text-xs font-black uppercase tracking-wider hover:bg-accent hover:text-black transition-all shadow-sm"
+          >
+            <span>🔗 Open Link ↗</span>
+          </a>
+        );
+      }
+    },
     {
       header: "Status",
       accessor: "status",
@@ -158,6 +211,11 @@ const Events = () => {
       }
     },
   ];
+
+  const activeMoodLink = (formData.moodBoardUrl || formData.mood_board_url || '').trim();
+  const formattedMoodLink = activeMoodLink ? (activeMoodLink.startsWith('http') ? activeMoodLink : `https://${activeMoodLink}`) : '';
+  const isImageDirectLink = activeMoodLink && (/\.(jpeg|jpg|gif|png|webp)(\?.*)?$/i.test(activeMoodLink) || activeMoodLink.includes('unsplash.com') || activeMoodLink.includes('imgur.com') || activeMoodLink.includes('images.') || activeMoodLink.includes('cdn.'));
+  const displayImage = imagePreview || (isImageDirectLink ? formattedMoodLink : null);
 
   return (
     <div className="space-y-8">
@@ -314,19 +372,38 @@ const Events = () => {
                   />
                 </div>
 
-                {/* Image Upload */}
+                {/* Image Upload & Moodboard Auto-Preview */}
                 <div className="col-span-1 md:col-span-2 space-y-1">
                   <label className="text-[10px] font-bold text-muted uppercase">Inspirational Picture / Moodboard</label>
                   {modalType !== 'view' ? (
                     <label className="block border border-dashed border-border rounded-lg p-4 text-center hover:border-accent/50 cursor-pointer transition-colors relative">
-                      {imagePreview ? (
+                      {displayImage ? (
                         <div className="space-y-2">
-                          <img src={imagePreview} alt="Preview" className="max-h-32 mx-auto rounded-lg object-cover" />
-                          <p className="text-[10px] text-accent font-bold uppercase">Click to change image</p>
+                          <img src={displayImage} alt="Preview" className="max-h-40 mx-auto rounded-lg object-cover border border-white/10 shadow-lg" />
+                          <p className="text-[10px] text-accent font-bold uppercase">Click to change local image</p>
+                        </div>
+                      ) : formattedMoodLink ? (
+                        <div className="p-4 bg-accent/5 border border-accent/20 rounded-xl space-y-2 text-left">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black text-accent uppercase tracking-wider flex items-center gap-1.5">
+                              🔗 External Mood Board Link Attached
+                            </span>
+                            <a
+                              href={formattedMoodLink}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="px-3 py-1.5 bg-accent text-black font-black text-[10px] uppercase tracking-wider rounded-lg hover:bg-accent/80 transition-all shadow-md"
+                            >
+                              Open Link in New Tab ↗
+                            </a>
+                          </div>
+                          <p className="text-xs text-secondary truncate font-mono">{activeMoodLink}</p>
+                          <p className="text-[10px] text-muted italic">Click container below if you wish to upload an explicit image file override.</p>
                         </div>
                       ) : (
                         <div className="py-4">
-                          <p className="text-xs text-secondary italic">Click to upload image (JPG, PNG, GIF)</p>
+                          <p className="text-xs text-secondary italic">Click to upload image (JPG, PNG, GIF) or paste Mood Board Link below</p>
                           <p className="text-[10px] text-muted mt-1">Max 5MB</p>
                         </div>
                       )}
@@ -343,38 +420,52 @@ const Events = () => {
                         }}
                       />
                     </label>
-                  ) : imagePreview ? (
-                    <img src={imagePreview} alt="Event" className="max-h-40 rounded-lg object-cover" />
+                  ) : displayImage ? (
+                    <img src={displayImage} alt="Event" className="max-h-48 rounded-lg object-cover border border-white/10 shadow-lg" />
+                  ) : formattedMoodLink ? (
+                    <div className="p-4 bg-accent/5 border border-accent/20 rounded-xl flex items-center justify-between gap-4">
+                      <div className="min-w-0">
+                        <p className="text-xs font-bold text-accent uppercase tracking-wider">🔗 Mood Board Link</p>
+                        <p className="text-xs text-secondary truncate mt-0.5">{activeMoodLink}</p>
+                      </div>
+                      <a
+                        href={formattedMoodLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-4 py-2 bg-accent text-black font-black text-xs uppercase tracking-wider rounded-lg hover:bg-accent/80 transition-all shrink-0 shadow-md"
+                      >
+                        Open ↗
+                      </a>
+                    </div>
                   ) : (
-                    <p className="text-xs text-muted italic p-4 bg-white/5 rounded-lg">No image uploaded</p>
+                    <p className="text-xs text-muted italic p-4 bg-white/5 rounded-lg">No image or moodboard link provided</p>
                   )}
                 </div>
 
                 {/* Client Mood Board Link */}
-                {(formData.moodBoardUrl || formData.mood_board_url || modalType !== 'view') && (
-                  <div className="col-span-1 md:col-span-2 space-y-1">
-                    <label className="text-[10px] font-bold text-muted uppercase">Mood Board Link</label>
-                    {modalType === 'view' ? (
+                <div className="col-span-1 md:col-span-2 space-y-1">
+                  <label className="text-[10px] font-bold text-muted uppercase">Mood Board Link</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.moodBoardUrl || formData.mood_board_url || ''}
+                      onChange={(e) => setFormData({ ...formData, moodBoardUrl: e.target.value })}
+                      placeholder="https://pinterest.com/..."
+                      className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
+                      disabled={modalType === 'view'}
+                    />
+                    {formattedMoodLink && (
                       <a
-                        href={(formData.moodBoardUrl || formData.mood_board_url || '').trim().startsWith('http') ? (formData.moodBoardUrl || formData.mood_board_url).trim() : `https://${(formData.moodBoardUrl || formData.mood_board_url || '').trim()}`}
+                        href={formattedMoodLink}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="block w-full bg-accent/5 border border-accent/20 rounded-xl px-4 py-3 text-sm font-bold text-accent hover:bg-accent/10 transition-all truncate"
-                        onClick={(e) => e.stopPropagation()}
+                        className="px-4 py-2 bg-accent text-black font-black text-xs uppercase tracking-wider rounded-lg hover:bg-accent/80 transition-all flex items-center gap-1 shrink-0 shadow-md"
                       >
-                        🔗 {(formData.moodBoardUrl || formData.mood_board_url || '').trim()}
+                        Open ↗
                       </a>
-                    ) : (
-                      <input
-                        type="text"
-                        value={formData.moodBoardUrl || formData.mood_board_url || ''}
-                        onChange={(e) => setFormData({ ...formData, moodBoardUrl: e.target.value })}
-                        placeholder="https://pinterest.com/..."
-                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
-                      />
                     )}
                   </div>
-                )}
+                </div>
 
                 <div className="col-span-1 md:col-span-2 space-y-1">
                   <label className="text-[10px] font-bold text-muted uppercase">Special Requests & Notes</label>

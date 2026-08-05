@@ -2455,12 +2455,22 @@ export const GlobalDataProvider = ({ children }) => {
       if (eventsData.data?.success) {
         const eventsList = Array.isArray(eventsData.data.data) ? eventsData.data.data : [];
         const mappedEvents = eventsList.map((e) => {
-          const clientName = e.client_name || e.client?.companyName || e.client?.name || "";
+          const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
+
+          let clientCandidate = null;
+          if (!isGeneric(e.client?.contactPerson)) clientCandidate = e.client.contactPerson;
+          else if (!isGeneric(e.manager?.name)) clientCandidate = e.manager.name;
+          else if (!isGeneric(e.client?.companyName)) clientCandidate = e.client.companyName;
+          else if (!isGeneric(e.client_name)) clientCandidate = e.client_name;
+          else if (!isGeneric(e.client?.name)) clientCandidate = e.client.name;
+          else if (!isGeneric(e.manager?.email)) clientCandidate = e.manager.email;
+
+          const rawClient = clientCandidate || "Personal Client";
           return {
             ...e,
             title: e.name || e.title,
-            client_name: clientName,
-            client: clientName || e.client,
+            client_name: rawClient,
+            client: rawClient,
             date: e.event_date ? e.event_date.split("T")[0] : e.date ? e.date.split("T")[0] : "",
             imageUrl: e.image_url || e.imageUrl,
             plannerName: e.planner_name || e.plannerName,
@@ -5921,6 +5931,17 @@ export const GlobalDataProvider = ({ children }) => {
           const compId = order.companyId || order.company_id || order.clientId || order.client_id || detail?.companyId || detail?.company_id || detail?.clientId || null;
           const usrId = order.createdById || order.created_by || order.userId || order.user_id || detail?.userId || detail?.created_by || null;
           
+          // Cross-reference with deliveries array to get live assigned driver and pickup status
+          const matchingDelivery = (deliveries || []).find(d => 
+            String(d.orderId || '').includes(String(order.id)) || 
+            String(d.order_id_raw) === String(order.id) ||
+            String(d.db_id) === String(order.id)
+          );
+
+          const liveStatus = matchingDelivery?.status || order.status;
+          const liveDriver = matchingDelivery?.driver || order.driverName || detail?.driverName || null;
+          const liveVehicle = matchingDelivery?.vehicleId || order.plateNumber || detail?.plateNumber || null;
+
           const baseMapped = {
             id: order.id,
             db_id: order.id,
@@ -5931,17 +5952,17 @@ export const GlobalDataProvider = ({ children }) => {
             user_id: usrId,
             userId: usrId,
             clientName: order.client?.companyName || order.client?.name || detail?.clientName || 'Guest Client',
-            driverName: order.driverName || detail?.driverName || null,
-            plateNumber: order.plateNumber || detail?.plateNumber || null,
+            driverName: liveDriver,
+            plateNumber: liveVehicle,
             driverPhotoUrl: detail?.driverPhotoUrl || null,
-            driver_user_id: order.driver_user_id || detail?.driver_user_id || null,
+            driver_user_id: order.driver_user_id || detail?.driver_user_id || matchingDelivery?.driverId || null,
             serviceType: detail?.serviceType || "One Way",
-            pickupLocation: detail?.pickupLocation || "Nassau Area",
-            dropLocation: detail?.dropLocation || "Destination",
+            pickupLocation: matchingDelivery?.pickupLocation || detail?.pickupLocation || "Nassau Area",
+            dropLocation: matchingDelivery?.dropLocation || detail?.dropLocation || "Destination",
             dueDate: detail?.eta || detail?.dueDate || null,
             pickupDate: detail?.eta || detail?.dueDate || null,
             pickupTime: detail?.pickupTime || null,
-            status: order.status,
+            status: liveStatus,
             chauffeurFee: parseFloat(detail?.chauffeurFee ?? detail?.chauffeur_fee ?? 0) || 0,
             chauffeur_fee_mode: detail?.chauffeur_fee_mode || "separate",
             numberOfPassengers: detail?.numberOfPassengers || 1,
@@ -5952,7 +5973,7 @@ export const GlobalDataProvider = ({ children }) => {
             passenger_info: detail,
             _passengerInfo: detail,
             remarks: JSON.stringify(detail),
-            adminApproved: !!detail?.adminApproved,
+            adminApproved: !!detail?.adminApproved || !!matchingDelivery?.driver,
           };
 
           const overlay = updatedMap[String(order.id)] || {};
@@ -6384,7 +6405,15 @@ export const GlobalDataProvider = ({ children }) => {
         companyId: compId,
         orderType: "CHAUFFEUR",
         status: reqData.status,
-        items: [passengerPayload]
+        totalAmount: fee,
+        total_amount: fee,
+        chauffeurFee: fee,
+        items: [{
+          ...passengerPayload,
+          name: "VIP Chauffeur Service",
+          price: fee,
+          chauffeurFee: fee
+        }]
       });
 
       const newId = res.data?.data?.id || res.data?.id || Date.now();
@@ -6587,9 +6616,13 @@ export const GlobalDataProvider = ({ children }) => {
         event.client_id ||
         clients.find((c) => c.name === event.client)?.id ||
         null;
-      const clientId = rawClientId
-        ? String(rawClientId).replace("CLT-", "")
-        : "";
+      const parsedCid = rawClientId ? parseInt(String(rawClientId).replace("CLT-", ""), 10) : null;
+      const clientId = Number.isFinite(parsedCid) && parsedCid > 0 ? parsedCid : null;
+
+      let moodBoard = (event.moodBoardUrl || event.moodBoard || "").trim();
+      if (moodBoard && !moodBoard.startsWith("http://") && !moodBoard.startsWith("https://")) {
+        moodBoard = `https://${moodBoard}`;
+      }
 
       const payload = {
         title: event.title || "",
@@ -6602,7 +6635,7 @@ export const GlobalDataProvider = ({ children }) => {
         special_requests: event.specialRequests || "",
         planner_name: event.plannerName || "",
         guest_count: event.guestCount || event.guests || 0,
-        mood_board_url: event.moodBoardUrl || ""
+        mood_board_url: moodBoard
       };
 
       const res = await api.post("/support/events", payload);

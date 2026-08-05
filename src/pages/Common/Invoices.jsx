@@ -21,14 +21,30 @@ const Invoices = () => {
     const getOrderDetails = (orderId) => {
         const order = (orders || []).find(o => String(o.id) === String(orderId));
         if (!order) return null;
-        let itms = order.items && order.items.length > 0 ? order.items : (order.customItems || []);
-        if (typeof itms === 'string') {
-            try { itms = JSON.parse(itms); } catch { itms = []; }
-        }
-        const orderName = (itms && itms.length > 0)
-            ? (itms[0]?.item?.name || itms[0]?.name || 'Unknown Item') + (itms.length > 1 ? ` (+${itms.length - 1} more)` : '')
-            : (order.product || 'General Item');
         const orderTypeStr = order.orderType || order.type || 'Custom Order';
+        const typeUpper = String(orderTypeStr).toUpperCase();
+        let orderName = "General Item";
+        if (typeUpper.includes('CHAUFFEUR')) {
+            orderName = "VIP Chauffeur Service";
+        } else if (typeUpper.includes('CONCIERGE')) {
+            orderName = "Bespoke Concierge Request";
+        } else {
+            let itms = order.items && order.items.length > 0 ? order.items : (order.customItems || []);
+            if (typeof itms === 'string') {
+                try { itms = JSON.parse(itms); } catch { itms = []; }
+            }
+            if (itms && itms.length > 0) {
+                const first = itms[0];
+                const fname = first?.item?.name || first?.name || first?.itemName || first?.description;
+                if (fname && fname !== 'Unknown Item') {
+                    orderName = fname + (itms.length > 1 ? ` (+${itms.length - 1} more)` : '');
+                } else {
+                    orderName = order.product || order.type || 'General Order';
+                }
+            } else {
+                orderName = order.product || order.type || 'General Order';
+            }
+        }
         return { name: orderName, type: orderTypeStr };
     };
 

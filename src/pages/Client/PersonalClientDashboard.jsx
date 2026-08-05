@@ -224,41 +224,98 @@ const PersonalClientDashboard = () => {
         <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 sm:gap-8">
           {/* Left Column */}
           <div className="xl:col-span-8 space-y-6 sm:space-y-8">
-            {/* Recent Orders */}
-            <SectionCard title="Recent Orders" icon={History} viewAllPath="/dashboard/orders" navigate={navigate}>
-              <div className="flex bg-background border border-border p-1 rounded-xl w-fit mb-6">
-                {['open', 'fulfilled'].map(tab => (
+            {/* Unified Order & Transaction History Proof Ledger */}
+            <SectionCard title="Unified Order & Transaction History" icon={History} viewAllPath="/dashboard/orders" navigate={navigate}>
+              <div className="flex bg-background border border-border p-1 rounded-xl w-fit mb-6 overflow-x-auto max-w-full">
+                {['all', 'open', 'fulfilled', 'chauffeur', 'invoices'].map(tab => (
                   <button key={tab} onClick={() => setOrderTab(tab)}
-                    className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all ${orderTab === tab ? 'bg-accent text-black' : 'text-muted hover:text-white'}`}
+                    className={`px-4 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap ${orderTab === tab ? 'bg-accent text-black' : 'text-muted hover:text-white'}`}
                   >{tab}</button>
                 ))}
               </div>
+
+              {/* Transaction Ledger Table / Cards */}
               <div className="space-y-3">
-                {clientOrders.filter(o => orderTab === 'open' ? !isDoneOrder(o.status) : isDoneOrder(o.status)).slice(0, 5).map((order, idx) => (
-                  <div key={idx} className="group bg-white/[0.02] border border-white/5 rounded-2xl p-5 hover:border-accent/30 hover:bg-white/[0.04] transition-all duration-300">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="w-12 h-12 bg-background border border-white/10 rounded-xl flex items-center justify-center text-accent/40 group-hover:text-accent transition-colors"><Package size={22} /></div>
-                        <div>
-                          <p className="font-black text-white text-sm group-hover:text-accent transition-colors italic">{order.type || 'Custom Requisition'}</p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className="text-[10px] font-black text-muted uppercase tracking-widest italic">ORD-{order.id}</span>
-                            <span className="text-muted/30">•</span>
-                            <span className="text-[10px] font-black text-muted uppercase tracking-widest italic">{order.date}</span>
+                {(() => {
+                  const combinedHistory = [
+                    ...clientOrders.map(o => ({
+                      txId: `ORD-${o.id}`,
+                      type: o.orderType || o.type || 'Marketplace Requisition',
+                      date: o.date || o.createdAt?.split('T')[0] || 'N/A',
+                      amount: parseFloat(o.totalAmount || o.total || o.total_amount || 0),
+                      status: o.status,
+                      proofRef: `PROOF-ORD-${o.id}`,
+                      raw: o,
+                      category: 'order',
+                      isDone: isDoneOrder(o.status)
+                    })),
+                    ...clientChauffeurRequests.map(r => ({
+                      txId: `CH-${r.id}`,
+                      type: `VIP Chauffeur (${r.serviceType || 'One Way'})`,
+                      date: r.dueDate || r.requestDate || 'N/A',
+                      amount: parseFloat(r.chauffeurFee || r.chauffeur_fee || 120),
+                      status: r.status,
+                      proofRef: `PROOF-CH-${r.id}`,
+                      raw: r,
+                      category: 'chauffeur',
+                      isDone: CHAUFFEUR_DONE.includes(String(r.status || '').toLowerCase().replace(/\s+/g, '_'))
+                    })),
+                    ...clientInvoices.filter(i => String(i.status || '').toLowerCase() === 'paid').map(i => ({
+                      txId: `INV-${i.id}`,
+                      type: `Settled Invoice Payment`,
+                      date: i.date || 'N/A',
+                      amount: parseFloat(i.totalAmount || 0),
+                      status: 'Paid',
+                      proofRef: `PAYMENT-WIRE-${i.id}`,
+                      raw: i,
+                      category: 'invoices',
+                      isDone: true
+                    }))
+                  ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+                  const filteredTx = combinedHistory.filter(tx => {
+                    if (orderTab === 'open') return !tx.isDone;
+                    if (orderTab === 'fulfilled') return tx.isDone && tx.category === 'order';
+                    if (orderTab === 'chauffeur') return tx.category === 'chauffeur';
+                    if (orderTab === 'invoices') return tx.category === 'invoices';
+                    return true; // 'all'
+                  });
+
+                  return filteredTx.slice(0, 6).map((tx, idx) => (
+                    <div key={idx} className="group bg-white/[0.02] border border-white/5 rounded-2xl p-5 hover:border-accent/30 hover:bg-white/[0.04] transition-all duration-300">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div className="flex items-center gap-4 flex-1">
+                          <div className="w-12 h-12 bg-background border border-white/10 rounded-xl flex items-center justify-center text-accent/40 group-hover:text-accent transition-colors">
+                            {tx.category === 'chauffeur' ? <Car size={20} /> : tx.category === 'invoices' ? <CreditCard size={20} /> : <Package size={20} />}
+                          </div>
+                          <div>
+                            <p className="font-black text-white text-sm group-hover:text-accent transition-colors italic">{tx.type}</p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span className="text-[10px] font-black text-accent uppercase tracking-widest italic">{tx.txId}</span>
+                              <span className="text-muted/30">•</span>
+                              <span className="text-[10px] font-black text-muted uppercase tracking-widest italic">{tx.date}</span>
+                              <span className="text-muted/30">•</span>
+                              <span className="text-[9px] font-bold text-secondary/60 uppercase tracking-wider">{tx.proofRef}</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto">
-                        <div className="text-right">
-                          <p className="text-lg font-black text-white font-heading italic tracking-tighter">${parseFloat(order.total || 0).toLocaleString()}</p>
-                          <StatusBadge status={order.status} />
+                        <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto">
+                          <div className="text-right">
+                            <p className="text-lg font-black text-white font-heading italic tracking-tighter">${tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                            <StatusBadge status={tx.status} />
+                          </div>
+                          <button onClick={() => {
+                            if (tx.category === 'order') handleAction('view', tx.raw);
+                            else if (tx.category === 'chauffeur') navigate('/dashboard/chauffeur');
+                            else navigate('/dashboard/invoices');
+                          }} className="w-12 h-12 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center hover:bg-accent hover:text-black hover:border-accent transition-all shadow-lg">
+                            <ArrowUpRight size={20} />
+                          </button>
                         </div>
-                        <button onClick={() => handleAction('view', order)} className="w-12 h-12 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-center hover:bg-accent hover:text-black hover:border-accent transition-all shadow-lg"><ArrowUpRight size={20} /></button>
                       </div>
                     </div>
-                  </div>
-                ))}
-                {clientOrders.filter(o => orderTab === 'open' ? !isDoneOrder(o.status) : isDoneOrder(o.status)).length === 0 && (<EmptyState text="No Requisition Logs Found" />)}
+                  ));
+                })()}
               </div>
             </SectionCard>
 

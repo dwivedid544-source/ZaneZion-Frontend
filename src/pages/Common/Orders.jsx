@@ -187,7 +187,14 @@ const Orders = () => {
     {
       header: "Client",
       accessor: "client",
-      render: (row) => row.client?.companyName || row.client?.name || (typeof row.client === 'string' ? row.client : null) || row.customer_name || row.created_by_name || "—"
+      render: (row) => {
+        const meta = typeof row.metadata === 'string' ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })() : (row.metadata || {});
+        const compName = row.client?.companyName || row.client?.name || (typeof row.client === 'string' ? row.client : null);
+        if (compName && String(compName).trim().toLowerCase() !== 'personal client') {
+          return compName;
+        }
+        return row.client?.contactPerson || row.customer_name || row.created_by_name || meta.clientName || meta.client || row.user?.name || compName || "Personal Client";
+      }
     },
     {
       header: "Order Type",
@@ -202,14 +209,36 @@ const Orders = () => {
       header: "Items",
       accessor: "items",
       render: (row) => {
+        const typeUpper = String(row.orderType || row.type || "").toUpperCase();
+        if (typeUpper.includes('CHAUFFEUR')) return "VIP Chauffeur Service";
+        if (typeUpper.includes('CONCIERGE')) return "Bespoke Concierge Request";
+
         let itms = row.items && row.items.length > 0 ? row.items : (row.customItems || []);
         if (typeof itms === 'string') {
           try { itms = JSON.parse(itms); } catch { itms = []; }
         }
-        if (!itms || itms.length === 0) return row.product || "No Items";
-        const firstItemName = itms[0]?.item?.name || itms[0]?.name || "Unknown Item";
-        if (itms.length === 1) return firstItemName;
-        return `${firstItemName} (+${itms.length - 1} more)`;
+
+        if (Array.isArray(itms) && itms.length > 0) {
+          const first = itms[0];
+          const name = first?.item?.name || first?.name || first?.itemName || first?.title || first?.description;
+          if (name && String(name).trim() && name !== 'Unknown Item') {
+            return itms.length > 1 ? `${name} (+${itms.length - 1} more)` : name;
+          }
+        }
+
+        const meta = typeof row.metadata === 'string'
+          ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })()
+          : (row.metadata || {});
+
+        const metaItems = meta.customItems || meta.manifestItems || [];
+        if (Array.isArray(metaItems) && metaItems.length > 0) {
+          const mName = metaItems[0]?.name || metaItems[0]?.title || metaItems[0]?.itemName;
+          if (mName && String(mName).trim() && mName !== 'Unknown Item') {
+            return metaItems.length > 1 ? `${mName} (+${metaItems.length - 1} more)` : mName;
+          }
+        }
+
+        return row.product || row.type || "VIP Chauffeur Service";
       }
     },
     { header: "Vendor", accessor: "vendor", render: (row) => row.vendor_name || row.vendor?.name || row.vendor?.companyName || (typeof row.vendor === 'string' ? row.vendor : null) || "N/A" },
@@ -217,12 +246,31 @@ const Orders = () => {
       header: "Total Value",
       accessor: "totalAmount",
       render: (row) => {
-        const itms = row.items && row.items.length > 0 ? row.items : (row.customItems || []);
-        let total = row.totalAmount || row.total_amount || row.estimated_total || row.amount || row.total || 0;
-        if (total === 0 && itms && itms.length > 0) {
-          total = itms.reduce((acc, i) => acc + (parseFloat(i.price || i.unitPrice || 0) * parseInt(i.qty || i.quantity || 0)), 0);
+        const meta = typeof row.metadata === 'string'
+          ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })()
+          : (row.metadata || {});
+
+        const itms = row.items && row.items.length > 0 ? row.items : (row.customItems || meta.customItems || []);
+
+        let total = parseFloat(
+          row.totalAmount ||
+          row.total_amount ||
+          row.estimated_total ||
+          row.amount ||
+          row.total ||
+          row.chauffeurFee ||
+          row.chauffeur_fee ||
+          meta.chauffeurFee ||
+          meta.chauffeur_fee ||
+          meta.total_amount ||
+          (itms[0] && (itms[0].chauffeurFee || itms[0].chauffeur_fee || itms[0].price || itms[0].fee || itms[0].unitPrice)) ||
+          0
+        );
+
+        if (total === 0 && Array.isArray(itms) && itms.length > 0) {
+          total = itms.reduce((acc, i) => acc + (parseFloat(i.price || i.unitPrice || i.chauffeurFee || i.chauffeur_fee || 0) * parseInt(i.qty || i.quantity || 1)), 0);
         }
-        return <span className="font-black text-accent">${parseFloat(total).toLocaleString()}</span>;
+        return <span className="font-black text-accent">${parseFloat(total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
       }
     },
     {

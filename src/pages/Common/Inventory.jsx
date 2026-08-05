@@ -263,6 +263,16 @@ const Inventory = () => {
   const isSaaSPortal = userRoleNorm === 'saas_client' || userRoleNorm === 'client';
 
   const displayedInventory = inventory.filter(i => {
+    // Exclude custom orders, ad-hoc deliveries, and zero-price internal items from inventory catalog
+    const isCustomAdHoc = Boolean(
+      (Number(i.price) === 0 && (Number(i.qty) === 0 || Number(i.quantity) === 0)) ||
+      i.inventoryType === 'INTERNAL' ||
+      i.inventory_type === 'INTERNAL' ||
+      (i.sku && String(i.sku).startsWith('ITEM-')) ||
+      /\b(delivery|chauffeur|custom order|custom item|document pickup)\b/i.test(i.name || '')
+    );
+    if (isCustomAdHoc) return false;
+
     if (isCustomer) {
       // Customer sees only their own Client inventory
       return i.inventoryType === 'Client' && (

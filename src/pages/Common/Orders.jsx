@@ -189,11 +189,34 @@ const Orders = () => {
       accessor: "client",
       render: (row) => {
         const meta = typeof row.metadata === 'string' ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })() : (row.metadata || {});
-        const compName = row.client?.companyName || row.client?.name || (typeof row.client === 'string' ? row.client : null);
-        if (compName && String(compName).trim().toLowerCase() !== 'personal client') {
-          return compName;
+        const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
+
+        const matchedClient = (clients || []).find(c => String(c.id).replace('CLT-', '') === String(row.clientId || row.client_id).replace('CLT-', ''));
+
+        let resolvedName = null;
+        if (!isGeneric(row.client?.contactPerson)) {
+          resolvedName = row.client.contactPerson;
+        } else if (matchedClient && !isGeneric(matchedClient.contactPerson)) {
+          resolvedName = matchedClient.contactPerson;
+        } else if (matchedClient && !isGeneric(matchedClient.companyName || matchedClient.name)) {
+          resolvedName = matchedClient.companyName || matchedClient.name;
+        } else if (!isGeneric(row.customer_name)) {
+          resolvedName = row.customer_name;
+        } else if (!isGeneric(row.created_by_name)) {
+          resolvedName = row.created_by_name;
+        } else if (!isGeneric(meta.clientName || meta.client_name || meta.client)) {
+          resolvedName = meta.clientName || meta.client_name || meta.client;
+        } else if (!isGeneric(row.user?.name)) {
+          resolvedName = row.user.name;
+        } else if (!isGeneric(row.client?.companyName)) {
+          resolvedName = row.client.companyName;
+        } else if (!isGeneric(row.client?.name)) {
+          resolvedName = row.client.name;
+        } else if (!isGeneric(row.user?.email || row.client?.email)) {
+          resolvedName = row.user?.email || row.client?.email;
         }
-        return row.client?.contactPerson || row.customer_name || row.created_by_name || meta.clientName || meta.client || row.user?.name || compName || "Personal Client";
+
+        return resolvedName || "Personal Client";
       }
     },
     {

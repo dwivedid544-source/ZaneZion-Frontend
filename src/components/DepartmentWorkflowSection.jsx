@@ -37,11 +37,14 @@ const DepartmentWorkflowSection = ({ departmentKey, departmentLabel }) => {
       header: "Client",
       accessor: "client",
       render: (row) => {
-        const compName = row.client?.companyName || row.client?.name;
-        if (compName && String(compName).trim().toLowerCase() !== 'personal client') {
-          return compName;
-        }
-        return row.client?.contactPerson || row.customer_name || row.created_by_name || compName || "Personal Client";
+        const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
+        let name = null;
+        if (!isGeneric(row.client?.contactPerson)) name = row.client.contactPerson;
+        else if (!isGeneric(row.customer_name)) name = row.customer_name;
+        else if (!isGeneric(row.created_by_name)) name = row.created_by_name;
+        else if (!isGeneric(row.client?.companyName)) name = row.client.companyName;
+        else if (!isGeneric(row.client?.name)) name = row.client.name;
+        return name || "Personal Client";
       }
     },
     {

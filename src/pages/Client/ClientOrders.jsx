@@ -27,6 +27,8 @@ const ClientOrders = () => {
     const navigate = useNavigate();
     const {
         orders = [],
+        projects = [],
+        missions = [],
         chauffeurRequests = [],
         events = [],
         guestRequests = [],
@@ -36,6 +38,8 @@ const ClientOrders = () => {
         clients = [],
         addOrder,
         fetchOrders,
+        fetchProjects,
+        fetchMissions,
         fetchClients,
         fetchDeliveries,
         fetchChauffeurRequests,
@@ -52,16 +56,29 @@ const ClientOrders = () => {
     useEffect(() => {
         fetchOrders();
         fetchClients();
+        if (fetchProjects) fetchProjects();
+        if (fetchMissions) fetchMissions();
         if (fetchDeliveries) fetchDeliveries();
         if (fetchChauffeurRequests) fetchChauffeurRequests();
         if (fetchLuxuryItems) fetchLuxuryItems();
         if (fetchTickets) fetchTickets();
 
+        const handleStateChanged = () => {
+            fetchOrders();
+            if (fetchProjects) fetchProjects();
+            if (fetchMissions) fetchMissions();
+            if (fetchDeliveries) fetchDeliveries();
+        };
+        window.addEventListener('app:state-changed', handleStateChanged);
+
         const interval = setInterval(() => {
             if (syncGlobalState) syncGlobalState();
-        }, 5000);
-        return () => clearInterval(interval);
-    }, [fetchOrders, fetchClients, fetchDeliveries, fetchChauffeurRequests, fetchLuxuryItems, fetchTickets, syncGlobalState]);
+        }, 3000);
+        return () => {
+            window.removeEventListener('app:state-changed', handleStateChanged);
+            clearInterval(interval);
+        };
+    }, [fetchOrders, fetchClients, fetchProjects, fetchMissions, fetchDeliveries, fetchChauffeurRequests, fetchLuxuryItems, fetchTickets, syncGlobalState]);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
@@ -114,8 +131,11 @@ const ClientOrders = () => {
     const allTransactions = useMemo(() => {
         const unified = [];
 
-        // 1. Marketplace & Custom Orders
-        (orders || []).filter(isMyRecord).forEach(o => {
+        // 1. Marketplace & Custom Orders (Exclude internal Project records)
+        (orders || []).filter(o => {
+            const typeStr = String(o.orderType || o.type || '').toUpperCase();
+            return typeStr !== 'PROJECT' && isMyRecord(o);
+        }).forEach(o => {
             const isCustom = o.order_kind === 'custom_request' || o.orderKind === 'custom_request' || String(o.type || '').toLowerCase().includes('custom');
 
             // Robustly parse items from all possible locations
@@ -138,7 +158,6 @@ const ClientOrders = () => {
             let normalizedItems = (Array.isArray(rawItems) ? rawItems : []).map((itm, idx) => {
                 const name = itm.name || itm.item?.name || itm.itemName || itm.title || itm.description || `Item ${idx + 1}`;
                 const qty = parseInt(itm.qty || itm.quantity || 1) || 1;
-                // unitPrice from DB OrderItem row uses unitPrice; marketplace cart may use price
                 const unitPrice = parseFloat(
                     itm.unitPrice !== undefined ? itm.unitPrice :
                     itm.price !== undefined ? itm.price :
@@ -149,7 +168,6 @@ const ClientOrders = () => {
                 return { name, qty, price: unitPrice };
             });
 
-            // If we have no line items, create one entry using product name or generic item name
             if (normalizedItems.length === 0) {
                 let meta = o.metadata;
                 if (typeof meta === 'string') {
@@ -164,23 +182,83 @@ const ClientOrders = () => {
                 }];
             }
 
-            // Check linked delivery for live status & driver assignment from Field Staff workflow
-            const linkedDelivery = (deliveries || []).find(d =>
-                String(d.orderId) === String(o.id) ||
-                String(d.order_id_raw) === String(o.id) ||
-                String(d.orderId) === `ORD-${String(o.id).padStart(3, '0')}` ||
-                String(d.orderId) === `ORD-${o.id}`
-            );
+            // Collect all identifiers & item titles for Order o
+            const oIdStr = String(o.id || '');
+            const oRawIdStr = String(o.rawId || o.id || '').replace(/\D/g, '');
+            const firstItemName = (normalizedItems?.[0]?.name || o.product || '').toLowerCase().trim();
+
+            // 1. Find linked projects (by orderRef, orderId, or item name match)
+            const linkedProjects = (projects || []).filter(p => {
+                const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
+                const pName = String(p.name || '').toLowerCase();
+                const pId = String(p.id || '');
+                return (
+                    (pRef && (pRef === oIdStr || pRef === oRawIdStr || pRef === `ORD-${oIdStr}` || pRef === `ORD-${oRawIdStr}`)) ||
+                    (pId && (pId === oIdStr || pId === oRawIdStr)) ||
+                    (firstItemName && firstItemName.length > 3 && pName.includes(firstItemName))
+                );
+            });
+            const linkedProjectIds = linkedProjects.map(p => String(p.id));
+
+            // 2. Find linked mission (by orderId, projectId, or project match)
+            const linkedMission = (missions || []).find(m => {
+                const mOrderId = String(m.orderId || m.order_id || m.order_id_raw || m.metadata?.orderId || m.metadata?.orderRef || '');
+                const mProjectId = String(m.projectId || m.project_id || m.metadata?.projectId || m.metadata?.projectRef || '');
+                return (
+                    mOrderId === oIdStr ||
+                    mOrderId === oRawIdStr ||
+                    mOrderId === `ORD-${oIdStr}` ||
+                    mOrderId === `ORD-${oRawIdStr}` ||
+                    linkedProjectIds.includes(mOrderId) ||
+                    linkedProjectIds.includes(mProjectId)
+                );
+            });
+
+            // 3. Find linked delivery (by orderId, missionId, or project match)
+            const linkedDelivery = (deliveries || []).find(d => {
+                const dOrderId = String(d.orderId || d.order_id_raw || d.order_id || '');
+                const dMissionId = String(d.mission_id || d.missionId || '');
+                return (
+                    dOrderId === oIdStr ||
+                    dOrderId === oRawIdStr ||
+                    dOrderId === `ORD-${oIdStr}` ||
+                    dOrderId === `ORD-${oRawIdStr}` ||
+                    linkedProjectIds.includes(dOrderId) ||
+                    (linkedMission && (dMissionId === String(linkedMission.id) || dOrderId === String(linkedMission.orderId)))
+                );
+            });
 
             let effectiveStatus = o.status || 'pending';
+
+            // Resolve status hierarchy: Delivery > Mission > Project > Order Status
             if (linkedDelivery) {
                 const delSt = String(linkedDelivery.status || '').toLowerCase();
                 if (['delivered', 'completed'].includes(delSt)) {
                     effectiveStatus = 'completed';
-                } else if (['in_transit'].includes(delSt)) {
+                } else if (['in_transit', 'en_route', 'on_way'].includes(delSt)) {
                     effectiveStatus = 'in_transit';
-                } else if (['assigned', 'en_route', 'accepted'].includes(delSt) || linkedDelivery.driver) {
+                } else if (['assigned', 'accepted'].includes(delSt) || linkedDelivery.driver) {
                     effectiveStatus = 'assigned';
+                } else {
+                    effectiveStatus = 'logistics';
+                }
+            } else if (linkedMission) {
+                const misSt = String(linkedMission.status || '').toLowerCase();
+                if (['delivered', 'completed', 'done'].includes(misSt)) {
+                    effectiveStatus = 'completed';
+                } else if (['in_transit', 'en_route', 'dispatched'].includes(misSt)) {
+                    effectiveStatus = 'in_transit';
+                } else if (['assigned', 'accepted', 'in_progress'].includes(misSt)) {
+                    effectiveStatus = 'assigned';
+                } else {
+                    effectiveStatus = 'logistics';
+                }
+            } else if (linkedProjects.length > 0) {
+                const hasCompletedPrj = linkedProjects.some(p => ['completed', 'delivered'].includes(String(p.status || '').toLowerCase()));
+                if (hasCompletedPrj) {
+                    effectiveStatus = 'completed';
+                } else {
+                    effectiveStatus = 'logistics';
                 }
             }
 
@@ -191,7 +269,7 @@ const ClientOrders = () => {
                 serviceType: o.type || (isCustom ? 'Custom Requisition' : 'Marketplace Purchase'),
                 items: normalizedItems,
                 total: orderTotal,
-                requestDate: o.order_date || o.created_at || o.requestDate || o.createdAt || o.date,
+                requestDate: o.createdAt || o.created_at || o.order_date || o.requestDate || o.date,
                 dueDate: o.due_date || o.dueDate || null,
                 status: effectiveStatus,
                 location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || 'Client Address',
@@ -210,7 +288,7 @@ const ClientOrders = () => {
                 serviceType: `Chauffeur Protocol (${req.serviceType || 'VIP Service'})`,
                 items: [{ name: `VIP Chauffeur Service (${req.serviceType || 'One Way'}) - Pickup: ${req.pickupLocation || 'Nassau'}`, qty: 1 }],
                 total: parseFloat(req.chauffeurFee ?? req.chauffeur_fee ?? req.total_amount ?? 120),
-                requestDate: req.requestDate || req.created_at || req.createdAt || req.dueDate,
+                requestDate: req.createdAt || req.created_at || req.requestDate || req.dueDate,
                 dueDate: req.dueDate || req.returnDate || null,
                 status: req.status || req.chauffeur_status || 'pending',
                 location: req.pickupLocation ? `${req.pickupLocation} -> ${req.dropLocation || 'Destination'}` : 'Nassau Hub',
@@ -231,7 +309,7 @@ const ClientOrders = () => {
                 serviceType: evt.locationType || 'Private Residence Event',
                 items: [{ name: evt.title || evt.request || evt.name || 'Concierge Event Coordination', qty: 1 }],
                 total: parseFloat(evt.budget || evt.total || evt.estimatedCost || 0),
-                requestDate: evt.date || evt.createdAt || evt.created_at,
+                requestDate: evt.createdAt || evt.created_at || evt.date,
                 dueDate: evt.date || null,
                 status: evt.status || 'planned',
                 location: evt.location || 'Private Residence',
@@ -251,7 +329,7 @@ const ClientOrders = () => {
                 serviceType: 'Concierge Guest Service',
                 items: [{ name: gr.request || gr.title || gr.details || 'Guest Service Protocol', qty: 1 }],
                 total: parseFloat(gr.cost || gr.total || gr.estimatedCost || 0),
-                requestDate: gr.date || gr.created_at || gr.createdAt,
+                requestDate: gr.createdAt || gr.created_at || gr.date,
                 dueDate: gr.dueDate || gr.date || null,
                 status: gr.status || 'pending',
                 location: gr.location || 'Concierge Desk',
@@ -270,7 +348,7 @@ const ClientOrders = () => {
                 serviceType: 'Luxury Item Sourcing',
                 items: [{ name: lux.itemName || lux.name || lux.title || 'Exclusive Sourcing Request', qty: 1 }],
                 total: parseFloat(lux.price || lux.cost || lux.total || 0),
-                requestDate: lux.date || lux.created_at || lux.createdAt,
+                requestDate: lux.createdAt || lux.created_at || lux.date,
                 dueDate: lux.dueDate || lux.date || null,
                 status: lux.status || 'pending',
                 location: lux.location || 'Global Procurement Hub',
@@ -281,7 +359,8 @@ const ClientOrders = () => {
 
         // Deduplicate and sort newest first (by timestamp, then rawId descending)
         const getTimeScore = (tx) => {
-            const rawCreated = tx.originalRecord?.createdAt || tx.originalRecord?.created_at || tx.originalRecord?.order_date || tx.originalRecord?.date || tx.requestDate;
+            const orig = tx.originalRecord || {};
+            const rawCreated = orig.createdAt || orig.created_at || orig.updatedAt || orig.updated_at || tx.requestDate || orig.order_date || orig.date;
             if (rawCreated) {
                 const d = new Date(rawCreated);
                 if (!isNaN(d.getTime())) return d.getTime();
@@ -434,8 +513,142 @@ const ClientOrders = () => {
     };
 
     const handlePrintProof = () => {
-        window.print();
+        if (!selectedTransaction) return;
+
+        const tx = selectedTransaction;
+        const itemsHtml = (tx.items || []).map((item, idx) => {
+            const qty = parseInt(item.qty || 1) || 1;
+            const unitPrice = parseFloat(item.price ?? item.unitPrice ?? item.unit_price ?? 0) || 0;
+            const lineTotal = unitPrice * qty;
+            return `
+                <tr>
+                    <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#111827;font-size:13px;">${idx + 1}. ${item.name || item.itemName || 'Service Entry'}</td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:center;color:#374151;font-size:13px;">${qty}</td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;color:#374151;font-size:13px;">$${unitPrice.toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                    <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;color:#111827;font-size:13px;">$${(lineTotal || unitPrice || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                </tr>`;
+        }).join('');
+
+        const printHtml = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8"/>
+    <title>Proof of Transaction — ${tx.id}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', Arial, sans-serif; color: #111827; background: #fff; padding: 40px; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 2px solid #111827; }
+        .brand { font-size: 22px; font-weight: 900; letter-spacing: -0.5px; text-transform: uppercase; }
+        .brand span { color: #b8860b; }
+        .doc-title { text-align: right; }
+        .doc-title h1 { font-size: 16px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; color: #111; }
+        .doc-title p { font-size: 11px; color: #6b7280; margin-top: 2px; }
+        .section { margin-bottom: 24px; }
+        .section-title { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #6b7280; margin-bottom: 10px; }
+        .info-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px; }
+        .info-cell label { display: block; font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: #9ca3af; margin-bottom: 4px; }
+        .info-cell p { font-size: 13px; font-weight: 700; color: #111827; }
+        .ref-box { background: #fffbeb; border: 1px solid #f59e0b; border-radius: 8px; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; }
+        .ref-box .ref-id { font-size: 22px; font-weight: 900; color: #111827; }
+        .ref-box .ref-label { font-size: 9px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; color: #b8860b; margin-bottom: 4px; }
+        .ref-box .cat-label { font-size: 11px; font-weight: 700; color: #374151; }
+        table { width: 100%; border-collapse: collapse; }
+        thead th { background: #111827; color: #fff; padding: 10px 12px; font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; text-align: left; }
+        thead th:nth-child(2) { text-align: center; }
+        thead th:nth-child(3), thead th:nth-child(4) { text-align: right; }
+        .total-row { background: #f9fafb; }
+        .total-row td { padding: 14px 12px; font-size: 15px; font-weight: 900; }
+        .status-badge { display: inline-block; padding: 3px 10px; border-radius: 4px; font-size: 11px; font-weight: 700; background: #dcfce7; color: #166534; text-transform: uppercase; }
+        .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e5e7eb; display: flex; justify-content: space-between; align-items: center; }
+        .footer p { font-size: 10px; color: #9ca3af; }
+        .verified-stamp { border: 2px solid #166534; border-radius: 6px; padding: 6px 14px; color: #166534; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 2px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="brand">ZANE<span>ZION</span><br/><span style="font-size:11px;font-weight:400;letter-spacing:3px;color:#6b7280;">PLATFORM MANAGEMENT SYSTEM</span></div>
+        <div class="doc-title">
+            <h1>Official Proof of Transaction</h1>
+            <p>Verified Institutional Record</p>
+            <p style="margin-top:6px;font-size:11px;color:#374151;">Printed: ${new Date().toLocaleString('en-US', { dateStyle: 'long', timeStyle: 'short' })}</p>
+        </div>
+    </div>
+
+    <div class="ref-box">
+        <div>
+            <div class="ref-label">Transaction Reference</div>
+            <div class="ref-id">${tx.id}</div>
+        </div>
+        <div style="text-align:right;">
+            <div class="ref-label">Category</div>
+            <div class="cat-label">${tx.category || '—'}</div>
+            <div style="margin-top:8px;"><span class="status-badge">${tx.status || 'N/A'}</span></div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Transaction Overview</div>
+        <div class="info-grid">
+            <div class="info-cell">
+                <label>Client Name</label>
+                <p>${tx.client || tx.clientName || '—'}</p>
+            </div>
+            <div class="info-cell">
+                <label>Request Date</label>
+                <p>${tx.requestDate ? new Date(tx.requestDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}</p>
+            </div>
+            <div class="info-cell">
+                <label>Due / Service Date</label>
+                <p>${tx.dueDate ? new Date(tx.dueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}</p>
+            </div>
+            ${tx.location ? `<div class="info-cell" style="grid-column:span 3;"><label>Service / Delivery Location</label><p>${tx.location}</p></div>` : ''}
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">Itemized Service Breakdown</div>
+        <table>
+            <thead>
+                <tr>
+                    <th>Description</th>
+                    <th>Qty</th>
+                    <th>Unit Price</th>
+                    <th>Line Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${itemsHtml}
+                <tr class="total-row">
+                    <td colspan="3" style="text-align:right;color:#6b7280;font-size:12px;font-weight:600;padding:14px 12px;">Total Settled Fiscal Amount</td>
+                    <td style="text-align:right;color:#111827;padding:14px 12px;">$${tx.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="footer">
+        <div>
+            <p>ZaneZion Platform Management System</p>
+            <p>This document is system-generated and serves as an official proof of transaction.</p>
+        </div>
+        <div class="verified-stamp">✓ Verified Record</div>
+    </div>
+</body>
+</html>`;
+
+        const printWindow = window.open('', '_blank', 'width=900,height=700');
+        if (!printWindow) {
+            window.print();
+            return;
+        }
+        printWindow.document.write(printHtml);
+        printWindow.document.close();
+        printWindow.focus();
+        setTimeout(() => {
+            printWindow.print();
+        }, 500);
     };
+
 
     return (
         <div className="space-y-10 animate-fade-in pb-10">

@@ -1446,76 +1446,92 @@ export const GlobalDataProvider = ({ children }) => {
   );
 
   const fetchInventory = React.useCallback(async () => {
+    let itemsArr = [];
+    try {
+      const itemsRes = await api.get("/items", { params: { limit: 500 } });
+      const rawItems = itemsRes.data?.data;
+      itemsArr = Array.isArray(rawItems) ? rawItems : (Array.isArray(rawItems?.items) ? rawItems.items : []);
+    } catch (e) {
+      console.warn("Fetch /items failed:", e.message);
+    }
+
     let stockArr = [];
     try {
-      // Try real DB stock endpoint first
       const res = await api.get("/stock", { params: { limit: 500 } });
       const raw = res.data?.data;
-      // real API: { stock: [...], total: N } or just an array
       stockArr = Array.isArray(raw) ? raw : (Array.isArray(raw?.stock) ? raw.stock : []);
     } catch (e) {
-      console.warn("Fetch real stock API failed (possibly 403), falling back to /inventory", e.message);
+      console.warn("Fetch real stock API failed:", e.message);
     }
 
-    try {
-      if (stockArr.length > 0) {
-        setInventory(
-          stockArr.map((i) => ({
-            ...i,
-            id: i.id,
-            name: i.item?.name || i.name || "",
-            image: inventoryImageFromApiRow(i) || "",
-            qty: i.quantity ?? i.qty ?? 0,
-            quantity: i.quantity ?? i.qty ?? 0,
-            location: i.warehouse?.name || i.warehouse_name || i.location || "",
-            warehouse_name: i.warehouse?.name || i.warehouse_name || "",
-            warehouseId: i.warehouseId || i.warehouse_id || null,
-            itemId: i.itemId || i.item_id || null,
-            inventoryType: i.item?.inventoryType || i.inventory_type || i.inventoryType || "Marketplace",
-            clientId: i.item?.clientId || i.client_id || i.clientId || null,
-            clientName: i.item?.client?.companyName || i.client_name || i.clientName || "",
-            vendor_id: i.vendor_id ?? i.vendorId ?? null,
-            vendorName: i.vendor_name || i.vendorName || i.vendor || "",
-            category: canonicalMarketplaceCategory(
-              i.item?.category?.name || i.category?.name || i.category || ""
-            ),
-            sku: i.item?.sku || i.sku || "",
-            price: i.item?.price || i.price || 0,
-            size: i.size || "",
-            color: i.color || "",
-            material: i.material || "",
-            specifications: i.specifications || "",
-            description: i.item?.description || i.description || "",
-            status:
-              i.quantity <= 0
-                ? "Critical"
-                : i.item?.reorderLevel && i.quantity <= i.item.reorderLevel
-                  ? "Warning"
-                  : i.status === "in_stock"
-                    ? "Normal"
-                    : i.status === "low_stock"
-                      ? "Warning"
-                      : i.status === "out_of_stock"
-                        ? "Critical"
-                        : i.status || "Normal",
-          }))
-        );
-        return;
-      }
-    } catch (e) {
-      console.error("Mapping stock failed", e);
+    let inventoryData = [];
+
+    if (itemsArr.length > 0) {
+      inventoryData = itemsArr.map((i) => {
+        let totalQty = i.qty ?? i.quantity ?? 0;
+        if (i.inventoryStock && Array.isArray(i.inventoryStock) && i.inventoryStock.length > 0) {
+          totalQty = i.inventoryStock.reduce((sum, stock) => sum + (stock.quantity || 0), 0);
+        }
+        return {
+          ...i,
+          id: i.id,
+          name: i.name || "",
+          image: inventoryImageFromApiRow(i) || "",
+          qty: totalQty,
+          quantity: totalQty,
+          location: i.location || i.warehouse_name || (i.inventoryStock?.[0]?.warehouseId ? `Warehouse ${i.inventoryStock[0].warehouseId}` : "General Storage"),
+          inventoryType: i.inventoryType === 'MARKETPLACE' ? 'Marketplace' : (i.inventoryType || (i.clientId ? "Client" : "Marketplace")),
+          clientId: i.clientId || i.client_id || null,
+          clientName: i.client_name || i.clientName || "",
+          vendor_id: i.vendor_id ?? i.vendorId ?? null,
+          vendorName: i.vendor_name || i.vendorName || i.vendor || "",
+          category: canonicalMarketplaceCategory(i.category?.name || i.category || ""),
+          sku: i.sku || "",
+          price: parseFloat(i.price ?? i.unit_price ?? i.unitPrice ?? 0) || 0,
+          description: i.description || "",
+          status: totalQty <= 0 ? "Critical" : (i.status || "Normal"),
+        };
+      });
     }
 
-    // Fallback to mock /inventory endpoint if real stock is empty or failed
-    try {
-      const res2 = await api.get("/inventory");
-      const data = res2.data?.success
-        ? res2.data.data
-        : Array.isArray(res2.data)
-          ? res2.data
-          : [];
-      setInventory(
-        data.map((i) => ({
+    if (stockArr.length > 0) {
+      const stockMapped = stockArr.map((i) => ({
+        ...i,
+        id: i.id || i.itemId,
+        name: i.item?.name || i.name || "",
+        image: inventoryImageFromApiRow(i) || "",
+        qty: i.quantity ?? i.qty ?? 0,
+        quantity: i.quantity ?? i.qty ?? 0,
+        location: i.warehouse?.name || i.warehouse_name || i.location || "",
+        warehouse_name: i.warehouse?.name || i.warehouse_name || "",
+        warehouseId: i.warehouseId || i.warehouse_id || null,
+        itemId: i.itemId || i.item_id || null,
+        inventoryType: i.item?.inventoryType || i.inventory_type || i.inventoryType || "Marketplace",
+        clientId: i.item?.clientId || i.client_id || i.clientId || null,
+        clientName: i.item?.client?.companyName || i.client_name || i.clientName || "",
+        vendor_id: i.vendor_id ?? i.vendorId ?? null,
+        vendorName: i.vendor_name || i.vendorName || i.vendor || "",
+        category: canonicalMarketplaceCategory(
+          i.item?.category?.name || i.category?.name || i.category || ""
+        ),
+        sku: i.item?.sku || i.sku || "",
+        price: parseFloat(i.item?.price || i.price || 0) || 0,
+        description: i.item?.description || i.description || "",
+        status: i.quantity <= 0 ? "Critical" : (i.status || "Normal"),
+      }));
+
+      stockMapped.forEach(sItem => {
+        if (!inventoryData.some(existing => existing.id === sItem.id || existing.name === sItem.name)) {
+          inventoryData.push(sItem);
+        }
+      });
+    }
+
+    if (inventoryData.length === 0) {
+      try {
+        const res2 = await api.get("/inventory");
+        const data = res2.data?.success ? res2.data.data : (Array.isArray(res2.data) ? res2.data : []);
+        inventoryData = data.map((i) => ({
           ...i,
           image: inventoryImageFromApiRow(i) || "",
           qty: i.quantity ?? i.qty ?? 0,
@@ -1526,25 +1542,17 @@ export const GlobalDataProvider = ({ children }) => {
           vendor_id: i.vendor_id ?? i.vendorId ?? null,
           vendorName: i.vendor_name || i.vendorName || i.vendor || "",
           category: canonicalMarketplaceCategory(i.category),
-          size: i.size || "",
-          color: i.color || "",
-          material: i.material || "",
-          specifications: i.specifications || "",
+          price: parseFloat(i.price || 0) || 0,
           description: i.description || "",
-          status:
-            i.status === "in_stock"
-              ? "Normal"
-              : i.status === "low_stock"
-                ? "Warning"
-                : i.status === "out_of_stock"
-                  ? "Critical"
-                  : i.status || "Normal",
-        }))
-      );
-    } catch (e) {
-      console.error("Fetch /inventory failed, using default mock data", e);
-      setInventory(INVENTORY);
+          status: i.status || "Normal",
+        }));
+      } catch (e) {
+        console.error("Fetch /inventory fallback failed, using default mock data", e);
+        inventoryData = INVENTORY;
+      }
     }
+
+    setInventory(inventoryData);
   }, []);
 
   const fetchStockMovements = React.useCallback(async () => {
@@ -2198,6 +2206,14 @@ export const GlobalDataProvider = ({ children }) => {
           delivery_mode: transportMode,
           mode: transportMode,
         };
+      });
+      mappedOrders.sort((a, b) => {
+        const timeA = new Date(a.createdAt || a.created_at || a.updatedAt || a.updated_at || a.order_date || a.date || 0).getTime();
+        const timeB = new Date(b.createdAt || b.created_at || b.updatedAt || b.updated_at || b.order_date || b.date || 0).getTime();
+        if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
+        const numA = parseInt(String(a.id || a.rawId || 0).replace(/\D/g, ''), 10) || 0;
+        const numB = parseInt(String(b.id || b.rawId || 0).replace(/\D/g, ''), 10) || 0;
+        return numB - numA;
       });
       setOrders(mappedOrders);
       return mappedOrders;
@@ -3822,8 +3838,10 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       const res = await api.post(`/orders/convert/${orderId}`, projectData);
       if (res.data?.success) {
+        try { await api.put(`/orders/${orderId}/status`, { status: 'logistics' }); } catch (_) {}
         await fetchOrders();
         await fetchProjects();
+        window.dispatchEvent(new CustomEvent('app:state-changed'));
         addLog({
           action: "Project Launched",
           detail: `Order ${orderId} converted to Project ${res.data.data.id}.`,
@@ -3843,8 +3861,15 @@ export const GlobalDataProvider = ({ children }) => {
         missionData,
       );
       if (res.data?.success) {
+        const prj = (projects || []).find(p => String(p.id) === String(projectId));
+        const orderRef = prj?.orderRef || prj?.order_ref || prj?.orderId || prj?.order_id;
+        if (orderRef) {
+          try { await api.put(`/orders/${orderRef}/status`, { status: 'logistics' }); } catch (_) {}
+        }
         await fetchProjects();
         await fetchMissions();
+        await fetchOrders();
+        window.dispatchEvent(new CustomEvent('app:state-changed'));
         addLog({
           action: "Mission Launched",
           detail: `Project ${projectId} converted to Mission ${res.data.data.id}.`,
@@ -3860,6 +3885,33 @@ export const GlobalDataProvider = ({ children }) => {
   const updateMissionStatus = async (id, status) => {
     try {
       await api.put(`/missions/${id}/status`, { status });
+
+      const normSt = String(status).toLowerCase();
+      const targetMission = (missions || []).find((m) =>
+        String(m.id) === String(id) || String(m.missionNumber) === String(id) || String(m.db_id) === String(id)
+      );
+
+      if (targetMission) {
+        const mOrderId = targetMission.orderId || targetMission.order_id;
+        const linkedPrj = (projects || []).find(p => String(p.id) === String(mOrderId) || String(p.orderId) === String(mOrderId));
+        const orderRef = linkedPrj?.orderRef || linkedPrj?.order_ref || linkedPrj?.orderId || mOrderId;
+
+        let targetOrderStatus = null;
+        if (['completed', 'delivered', 'done'].includes(normSt)) {
+          targetOrderStatus = 'completed';
+        } else if (['en_route', 'in_transit', 'dispatched'].includes(normSt)) {
+          targetOrderStatus = 'in_transit';
+        } else if (['assigned', 'accepted', 'in_progress'].includes(normSt)) {
+          targetOrderStatus = 'logistics';
+        }
+
+        if (targetOrderStatus) {
+          const idsToUpdate = [mOrderId, orderRef, linkedPrj?.id].filter(Boolean);
+          for (const targetId of new Set(idsToUpdate)) {
+            try { await api.put(`/orders/${targetId}/status`, { status: targetOrderStatus }); } catch (_) {}
+          }
+        }
+      }
 
       // If mission is dispatched, ensure a delivery row exists for operations tracking.
       if (String(status).toLowerCase() === "en_route") {
@@ -3901,7 +3953,10 @@ export const GlobalDataProvider = ({ children }) => {
           }
         }
       }
-      await fetchMissions();
+
+      await syncGlobalState();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
+
       addLog({
         action: "Mission Update",
         detail: `Mission ${id} status updated to ${status}.`,
@@ -7243,9 +7298,12 @@ export const GlobalDataProvider = ({ children }) => {
       await Promise.allSettled([
         fetchDashboardStats(),
         fetchOrders(),
+        fetchProjects(),
+        fetchMissions(),
         fetchDeliveries(),
         fetchChauffeurRequests(),
         fetchClients(),
+        fetchInventory(),
       ]);
     } catch (err) {
       console.error("Error synchronizing global state:", err);
@@ -7254,9 +7312,12 @@ export const GlobalDataProvider = ({ children }) => {
     queryClient,
     fetchDashboardStats,
     fetchOrders,
+    fetchProjects,
+    fetchMissions,
     fetchDeliveries,
     fetchChauffeurRequests,
     fetchClients,
+    fetchInventory,
   ]);
 
   useEffect(() => {

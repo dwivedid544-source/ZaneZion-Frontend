@@ -101,7 +101,7 @@ const Inventory = () => {
   const { data: unitsData } = useItemUnits();
   const apiUnits = unitsData?.units || unitsData?.itemUnits || (Array.isArray(unitsData) ? unitsData : []);
 
-  const { inventory: mockInventory, addInventory, updateInventory, deleteInventory, users, currentUser, marketplaceVendors = [], stockMovements, lossAssessments, deliveries, addStockEntry, issueStock, projects, purchaseRequests, addPurchaseRequest, updateProject, recordLoss, clients, fetchClients, fetchVendors, hasMenuPermission, fetchPurchaseRequests, fetchStockMovements, fetchLossAssessments, fetchDeliveries, fetchDashboardStats } = useData();
+  const { inventory: mockInventory, addInventory, updateInventory, deleteInventory, users, currentUser, marketplaceVendors = [], stockMovements, lossAssessments, deliveries, addStockEntry, issueStock, projects, purchaseRequests, addPurchaseRequest, updateProject, recordLoss, clients, fetchClients, fetchVendors, hasMenuPermission, fetchPurchaseRequests, fetchStockMovements, fetchLossAssessments, fetchDeliveries, fetchDashboardStats, fetchInventory } = useData();
 
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
@@ -504,6 +504,8 @@ const Inventory = () => {
           res = { ok: true, data: apiRes.data };
           await queryClient.invalidateQueries({ queryKey: ['items'] });
           await queryClient.refetchQueries({ queryKey: ['items'] });
+          if (fetchInventory) await fetchInventory();
+          window.dispatchEvent(new CustomEvent('app:state-changed'));
           swalSuccess('Asset Created', `Successfully added "${formData.item.trim()}" to stock ledger.`);
           setIsModalOpen(false);
         } catch (e) {
@@ -720,6 +722,8 @@ const Inventory = () => {
           console.log('🎉 [FRONTEND_UPDATE_ITEM_SUCCESS]', updateRes.data);
           await queryClient.invalidateQueries({ queryKey: ['items'] });
           await queryClient.refetchQueries({ queryKey: ['items'] });
+          if (fetchInventory) await fetchInventory();
+          window.dispatchEvent(new CustomEvent('app:state-changed'));
           swalSuccess('Success', 'Item updated successfully.');
         } catch (e) {
           console.error('💥 [FRONTEND_UPDATE_ITEM_FAILED]', e?.response?.data || e?.message || e);
@@ -730,6 +734,8 @@ const Inventory = () => {
           await realApi.delete(`/items/${selectedItem.id}`);
           console.log('[REAL_API_SUCCESS] Item deleted successfully via real API');
           queryClient.invalidateQueries({ queryKey: ['items'] });
+          if (fetchInventory) await fetchInventory();
+          window.dispatchEvent(new CustomEvent('app:state-changed'));
         } catch (e) {
           console.warn('[REAL_API_FAILED] Item deletion via real API failed', e);
           swalWarning('Error', 'Failed to delete item.');

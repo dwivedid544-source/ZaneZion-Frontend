@@ -195,7 +195,7 @@ const Chauffeur = () => {
 
     /** Price shown / submitted for retail customers (cannot self-edit) */
     const customerLockedFee = editingRequest
-        ? (Number(editingRequest.chauffeurFee ?? editingRequest.chauffeur_fee ?? editingRequest.total_amount) ?? 0)
+        ? (Number(editingRequest.chauffeurFee ?? editingRequest.chauffeur_fee ?? editingRequest.total_amount ?? 0) || 0)
         : 0;
 
     const mergePassengerPayload = (req, patch = {}) => ({
@@ -297,9 +297,11 @@ const Chauffeur = () => {
                     adminApproved: true
                 };
             })() : (editingRequest?.passenger_info || editingRequest?._passengerInfo || null),
-            status: isClientAdmin
-                ? (editingRequest?.status || 'pending')
-                : (isStaffAdmin ? (formData.get('driverNameSelect') || formData.get('driverName') ? (editingRequest?.status === 'pending' || !editingRequest?.status ? 'assigned' : editingRequest.status) : (editingRequest?.status || 'pending')) : (editingRequest?.status || 'pending')),
+            status: isStaffAdmin
+                ? (formData.get('driverNameSelect') || formData.get('driverName') || formData.get('driverUserId') || editingRequest?.driverName
+                    ? 'assigned'
+                    : (editingRequest?.status || 'pending'))
+                : (editingRequest?.status || 'pending'),
             orderType: 'CHAUFFEUR',
             missionType: 'CHAUFFEUR'
         };
@@ -364,13 +366,23 @@ const Chauffeur = () => {
         setModalType(type);
         if (req) {
             setEditingRequest(req);
-            setServiceType(req.serviceType);
-            setChauffeurQuote(
-                Number(req.chauffeurFee ?? req.chauffeur_fee ?? req.total_amount ?? 0) || 0
-            );
+            setServiceType(req.serviceType || 'One Way');
+            const feeVal = parseFloat(req.chauffeurFee ?? req.chauffeur_fee ?? req.total_amount ?? 0);
+            setChauffeurQuote(Number.isFinite(feeVal) ? feeVal : 0);
             setHasLuggage(req.luggage === 'Yes');
             setHasStops(req.stops === 'Yes');
-            setAmenities(req.amenities || []);
+            let parsedAmenities = [];
+            if (Array.isArray(req.amenities)) {
+                parsedAmenities = req.amenities;
+            } else if (typeof req.amenities === 'string' && req.amenities.trim()) {
+                try {
+                    const parsed = JSON.parse(req.amenities);
+                    parsedAmenities = Array.isArray(parsed) ? parsed : [req.amenities];
+                } catch {
+                    parsedAmenities = req.amenities.split(',').map(s => s.trim()).filter(Boolean);
+                }
+            }
+            setAmenities(parsedAmenities);
             setPickupTimeInput(req.pickupTime || '12:00');
             setReturnTimeInput(req.returnTime || '12:00');
         } else {
@@ -764,11 +776,11 @@ const Chauffeur = () => {
                                                     </div>
                                                     <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
                                                         <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Pickup Vector</p>
-                                                        <p className="text-sm font-bold text-white italic">{editingRequest?.pickupLocation}</p>
+                                                        <p className="text-sm font-bold text-white italic">{editingRequest?.pickupLocation || editingRequest?.pickup_location || 'N/A'}</p>
                                                     </div>
                                                     <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
                                                         <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Destination Vector</p>
-                                                        <p className="text-sm font-bold text-white italic">{editingRequest?.dropLocation}</p>
+                                                        <p className="text-sm font-bold text-white italic">{editingRequest?.dropLocation || editingRequest?.drop_location || editingRequest?.location || editingRequest?.deliveryAddress || editingRequest?.delivery_address || 'N/A'}</p>
                                                     </div>
                                                     <div className="p-4 bg-white/5 rounded-xl border border-border">
                                                         <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Luggage</p>
@@ -795,10 +807,14 @@ const Chauffeur = () => {
                                                             )}
                                                         </p>
                                                     </div>
-                                                    {(editingRequest?.amenities?.length > 0) && (
+                                                    {Boolean(editingRequest?.amenities) && (
                                                         <div className="p-4 bg-white/5 rounded-xl border border-border col-span-2">
                                                             <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Amenities</p>
-                                                            <p className="text-sm font-bold text-white">{editingRequest.amenities.join(', ')}</p>
+                                                            <p className="text-sm font-bold text-white">
+                                                                {Array.isArray(editingRequest.amenities)
+                                                                    ? editingRequest.amenities.join(', ')
+                                                                    : String(editingRequest.amenities)}
+                                                            </p>
                                                         </div>
                                                     )}
                                                 </div>
@@ -898,7 +914,7 @@ const Chauffeur = () => {
                                                         <input
                                                             type="text"
                                                             name="pickupLocation"
-                                                            defaultValue={editingRequest?.pickupLocation}
+                                                            defaultValue={editingRequest?.pickupLocation || editingRequest?.pickup_location || ''}
                                                             required
                                                             className="w-full bg-background border border-border rounded-2xl py-4 pl-14 pr-5 text-sm text-white focus:outline-none focus:border-accent font-bold"
                                                         />
@@ -912,7 +928,7 @@ const Chauffeur = () => {
                                                         <input
                                                             type="text"
                                                             name="dropLocation"
-                                                            defaultValue={editingRequest?.dropLocation}
+                                                            defaultValue={editingRequest?.dropLocation || editingRequest?.drop_location || editingRequest?.location || editingRequest?.deliveryAddress || editingRequest?.delivery_address || ''}
                                                             required
                                                             className="w-full bg-background border border-border rounded-2xl py-4 pl-14 pr-5 text-sm text-white focus:outline-none focus:border-accent font-bold"
                                                         />

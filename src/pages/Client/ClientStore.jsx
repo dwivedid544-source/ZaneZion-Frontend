@@ -51,7 +51,7 @@ const CHAUFFEUR_BILLING_MODE = String(import.meta.env?.VITE_CHAUFFEUR_BILLING_MO
     : 'separate';
 
 const ClientStore = () => {
-    const { inventory, cart, addToCart, removeFromCart, clearCart, addOrder, currentUser, clients, vendors, marketplaceVendors, shippingModePricing, fetchInventory, fetchVendors, systemSettings, fetchSystemSettings, deliveryPricing, fetchOrders } = useData();
+    const { inventory, cart, addToCart, removeFromCart, clearCart, addOrder, currentUser, clients, vendors, marketplaceVendors, shippingModePricing, fetchInventory, fetchVendors, systemSettings, fetchSystemSettings, deliveryPricing, fetchOrders, syncGlobalState } = useData();
     const location = useLocation();
     const navigate = useNavigate();
     /** Simplified: primary marketplace + optional custom request for personal accounts */
@@ -187,6 +187,26 @@ const ClientStore = () => {
         fetchSystemSettings();
     }, [fetchInventory, fetchVendors, fetchSystemSettings]);
 
+    // Listen for admin inventory changes and auto-refresh without page reload
+    React.useEffect(() => {
+        const handleInventoryChange = () => {
+            if (fetchInventory) fetchInventory();
+        };
+        window.addEventListener('app:state-changed', handleInventoryChange);
+        return () => window.removeEventListener('app:state-changed', handleInventoryChange);
+    }, [fetchInventory]);
+
+    // Poll every 5 seconds for new inventory silently
+    React.useEffect(() => {
+        const syncRef = { fn: fetchInventory };
+        syncRef.fn = fetchInventory;
+        const interval = setInterval(() => {
+            if (syncRef.fn) syncRef.fn();
+        }, 5000);
+        return () => clearInterval(interval);
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+
     const userPortalRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '');
     const isRetailPersonal = userPortalRole === 'customer';
     const roleKey = normalizeRole(currentUser?.role);
@@ -214,14 +234,14 @@ const ClientStore = () => {
 
     const marketplaceInventory = inventory.filter(item => {
         const isCustomAdHoc = Boolean(
-            (Number(item.price) === 0 && (Number(item.qty) === 0 || Number(item.quantity) === 0)) ||
             item.inventoryType === 'INTERNAL' ||
             item.inventory_type === 'INTERNAL' ||
-            (item.sku && String(item.sku).startsWith('ITEM-')) ||
             /\b(delivery|chauffeur|custom order|custom item|document pickup)\b/i.test(item.name || '')
         );
         if (isCustomAdHoc) return false;
-        return item.inventoryType?.toUpperCase() === 'MARKETPLACE' || !item.inventoryType;
+        const invType = String(item.inventoryType || item.inventory_type || '').toUpperCase();
+        // Show items that are marketplace type, or have no type assigned (newly created items default to marketplace)
+        return invType === 'MARKETPLACE' || invType === '' || !item.inventoryType;
     });
 
     const filteredInventory = marketplaceInventory.filter(item => {

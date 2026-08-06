@@ -140,11 +140,11 @@ const ClientDashboard = () => {
   };
 
   const clientOrders = (orders || []).filter(isMyOrder).sort((a, b) => {
-    const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
-    const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
+    const timeA = new Date(a.createdAt || a.created_at || a.updatedAt || a.updated_at || a.order_date || a.date || 0).getTime();
+    const timeB = new Date(b.createdAt || b.created_at || b.updatedAt || b.updated_at || b.order_date || b.date || 0).getTime();
     if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
-    const numA = parseInt(String(a.rawId || a.id).replace(/\D/g, ''), 10) || 0;
-    const numB = parseInt(String(b.rawId || b.id).replace(/\D/g, ''), 10) || 0;
+    const numA = parseInt(String(a.rawId || a.id || 0).replace(/\D/g, ''), 10) || 0;
+    const numB = parseInt(String(b.rawId || b.id || 0).replace(/\D/g, ''), 10) || 0;
     return numB - numA;
   });
   const clientInvoices = (invoices || []).filter(inv =>

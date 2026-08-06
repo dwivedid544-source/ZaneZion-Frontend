@@ -92,8 +92,30 @@ const Projects = () => {
     return out.sort((a, b) => a.label.localeCompare(b.label));
   }, [clients, customerUsers, currentUser?.company_id, currentUser?.companyId]);
 
+  // Deduplicate: keep only the latest (highest id) project per orderRef to avoid duplicate entries from multi-click
+  const deduplicatedProjects = React.useMemo(() => {
+    const seen = new Map(); // orderRef -> project (keeping highest id)
+    const noRef = [];
+    for (const p of (projects || [])) {
+      const ref = p.orderRef || p.order_ref || p.orderId || p.order_id;
+      if (ref) {
+        const existing = seen.get(String(ref));
+        const pId = parseInt(String(p.id || 0).replace(/\D/g, ''), 10) || 0;
+        const existId = existing ? (parseInt(String(existing.id || 0).replace(/\D/g, ''), 10) || 0) : -1;
+        if (!existing || pId > existId) seen.set(String(ref), p);
+      } else {
+        noRef.push(p);
+      }
+    }
+    return [...seen.values(), ...noRef].sort((a, b) => {
+      const idA = parseInt(String(a.id || 0).replace(/\D/g, ''), 10) || 0;
+      const idB = parseInt(String(b.id || 0).replace(/\D/g, ''), 10) || 0;
+      return idB - idA;
+    });
+  }, [projects]);
+
   // All filtering done on frontend for consistency
-  const filteredProjects = projects.filter(p => {
+  const filteredProjects = deduplicatedProjects.filter(p => {
     const term = searchTerm.toLowerCase().trim();
     const matchesSearch = !term ||
       (p.name || '').toLowerCase().includes(term) ||
@@ -189,16 +211,44 @@ const Projects = () => {
     }
   };
 
+  const resolveClientName = (item) => {
+    const genericNames = ['personal client', 'personal', 'guest', 'client', 'guest client', 'unknown client', ''];
+    const isGeneric = (s) => !s || genericNames.includes(String(s).trim().toLowerCase());
+
+    // Try to look up from clients list by clientId / companyId / customerId
+    const ids = [
+      item.clientId, item.client_id,
+      item.companyId, item.company_id,
+      item.customerId, item.customer_id
+    ].filter(Boolean).map(String);
+
+    for (const cid of ids) {
+      const found = clients.find(c =>
+        String(c.id) === cid ||
+        String(c.id).replace('CLT-', '') === cid.replace('CLT-', '')
+      );
+      if (found) {
+        const name = found.companyName || found.business_name || found.name || found.email;
+        if (name && !isGeneric(name)) return name;
+      }
+    }
+
+    // Fallback to stored client string
+    const stored = typeof item.client === 'string'
+      ? item.client
+      : (item.client?.companyName || item.client?.name || item.client_name || '');
+    if (!isGeneric(stored)) return stored;
+
+    return item.client_name || item.clientName || 'Unknown Client';
+  };
+
   const columns = [
     { header: "Project ID", accessor: "id" },
     { header: "Project Name", accessor: "name" },
-    { 
-      header: "Client", 
+    {
+      header: "Client",
       accessor: "client",
-      render: (item) => {
-        if (typeof item.client === 'string') return item.client;
-        return item.client?.name || item.client?.companyName || item.client?.business_name || "—";
-      }
+      render: (item) => resolveClientName(item)
     },
     { header: "Start Date", accessor: "start" },
     { header: "Location", accessor: "location" },

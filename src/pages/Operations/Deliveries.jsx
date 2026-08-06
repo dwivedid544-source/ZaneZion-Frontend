@@ -521,15 +521,80 @@ const Deliveries = () => {
       accessor: "orderId",
       render: (item) => item.order?.orderNumber || item.orderId || '—'
     },
-    { header: "Client", accessor: "client", render: (item) => (typeof item.client === 'object' ? item.client?.companyName : item.client) || item.clientName || '—' },
+    {
+      header: "Client",
+      accessor: "client",
+      render: (item) => {
+        const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
+
+        const clientObj = typeof item.client === 'object' ? item.client : null;
+        const orderClientObj = typeof item.order?.client === 'object' ? item.order.client : null;
+        const matchedClient = (clients || []).find(c =>
+          String(c.id).replace('CLT-', '') === String(item.clientId || item.client_id || item.order?.clientId).replace('CLT-', '')
+        );
+
+        let resolved = null;
+        if (clientObj && !isGeneric(clientObj.contactPerson)) resolved = clientObj.contactPerson;
+        else if (orderClientObj && !isGeneric(orderClientObj.contactPerson)) resolved = orderClientObj.contactPerson;
+        else if (matchedClient && !isGeneric(matchedClient.contactPerson)) resolved = matchedClient.contactPerson;
+        else if (clientObj && !isGeneric(clientObj.companyName || clientObj.name)) resolved = clientObj.companyName || clientObj.name;
+        else if (orderClientObj && !isGeneric(orderClientObj.companyName || orderClientObj.name)) resolved = orderClientObj.companyName || orderClientObj.name;
+        else if (matchedClient && !isGeneric(matchedClient.companyName || matchedClient.name)) resolved = matchedClient.companyName || matchedClient.name;
+        else if (!isGeneric(item.clientName)) resolved = item.clientName;
+        else if (!isGeneric(item.order?.customer_name)) resolved = item.order.customer_name;
+        else if (!isGeneric(item.order?.created_by_name)) resolved = item.order.created_by_name;
+
+        if (!resolved || isGeneric(resolved)) {
+          if (currentUser?.name && !isGeneric(currentUser.name)) {
+            resolved = currentUser.name;
+          } else {
+            resolved = 'Personal Client';
+          }
+        }
+
+        return <span className="font-bold text-white text-xs">{resolved}</span>;
+      }
+    },
     {
       header: "Personnel",
       accessor: "driver",
       render: (item) => {
         if (item.assignee) {
-          return `${item.assignee.firstName} ${item.assignee.lastName}`;
+          const fn = item.assignee.firstName || item.assignee.first_name || '';
+          const ln = item.assignee.lastName || item.assignee.last_name || '';
+          const full = `${fn} ${ln}`.trim();
+          if (full) return <span className="text-xs font-bold text-white">{full}</span>;
         }
-        return item.driver || '—';
+
+        let remarksDriver = null;
+        if (item.remarks) {
+          try {
+            const parsed = JSON.parse(item.remarks);
+            remarksDriver = parsed?.driver || parsed?.assigned_driver || parsed?.driverName;
+          } catch (_) {}
+        }
+
+        let metaDriver = null;
+        if (item.order?.metadata) {
+          const meta = typeof item.order.metadata === 'string'
+            ? (() => { try { return JSON.parse(item.order.metadata); } catch { return {}; } })()
+            : item.order.metadata;
+          metaDriver = meta?.driverName || meta?.driver_name || meta?.driver;
+        }
+
+        const resolvedDriver =
+          item.driver ||
+          item.assigned_driver ||
+          item.order?.driverName ||
+          item.order?.driver_name ||
+          remarksDriver ||
+          metaDriver;
+
+        if (resolvedDriver && String(resolvedDriver).trim() && String(resolvedDriver).trim() !== '—') {
+          return <span className="text-xs font-bold text-white">{resolvedDriver}</span>;
+        }
+
+        return <span className="text-[10px] font-black text-warning/70 uppercase tracking-widest">Unassigned</span>;
       }
     },
     {
@@ -540,20 +605,64 @@ const Deliveries = () => {
         if (item.remarks) {
           try {
             const parsed = JSON.parse(item.remarks);
-            if (parsed && Array.isArray(parsed.manifestItems)) {
+            if (parsed && Array.isArray(parsed.manifestItems) && parsed.manifestItems.length > 0) {
               manifestItems = parsed.manifestItems;
             }
           } catch (e) {}
         }
-        if (manifestItems.length === 0 && item.items) {
-          manifestItems = item.items.map(it => ({ name: it.item?.name || 'Asset', qty: it.quantity }));
+
+        if (manifestItems.length === 0 && item.items && item.items.length > 0) {
+          manifestItems = item.items.map(it => ({
+            name: it.name || it.item?.name || it.itemName || 'Asset',
+            qty: it.qty || it.quantity || 1
+          }));
         }
 
-        if (manifestItems.length === 0) return item.item || "—";
-        const first = manifestItems[0];
-        const name = first.name || first.itemName || 'Asset';
-        if (manifestItems.length === 1) return `${name} (x${first.qty || first.quantity || 1})`;
-        return `${name} (x${first.qty || first.quantity || 1}) (+${manifestItems.length - 1})`;
+        if (manifestItems.length === 0 && item.order) {
+          const ord = item.order;
+          let ordItems = ord.items;
+          if (typeof ordItems === 'string') {
+            try { ordItems = JSON.parse(ordItems); } catch { ordItems = []; }
+          }
+          if (Array.isArray(ordItems) && ordItems.length > 0) {
+            manifestItems = ordItems.map(it => ({
+              name: it.name || it.item?.name || it.itemName || 'Asset',
+              qty: it.qty || it.quantity || 1
+            }));
+          }
+
+          if (manifestItems.length === 0) {
+            let meta = ord.metadata;
+            if (typeof meta === 'string') {
+              try { meta = JSON.parse(meta); } catch { meta = {}; }
+            }
+            meta = meta || {};
+            const custom = meta.customItems || meta.custom_items || meta.manifestItems || ord.customItems || [];
+            if (Array.isArray(custom) && custom.length > 0) {
+              manifestItems = custom.map(it => ({
+                name: it.name || it.item?.name || it.itemName || 'Asset',
+                qty: it.qty || it.quantity || 1
+              }));
+            }
+          }
+        }
+
+        if (manifestItems.length > 0) {
+          const first = manifestItems[0];
+          const name = first.name || first.itemName || 'Asset';
+          const qty = first.qty || first.quantity || 1;
+          if (manifestItems.length === 1) return <span className="text-xs font-bold text-white">{`${name} (x${qty})`}</span>;
+          return <span className="text-xs font-bold text-white">{`${name} (x${qty}) (+${manifestItems.length - 1})`}</span>;
+        }
+
+        const fallbackName =
+          item.item ||
+          item.order?.product ||
+          (item.order?.type ? `${item.order.type}` : null) ||
+          item.order?.notes ||
+          'Delivery Asset';
+
+        return <span className="text-xs font-bold text-white">{fallbackName}</span>;
       }
     },
     {

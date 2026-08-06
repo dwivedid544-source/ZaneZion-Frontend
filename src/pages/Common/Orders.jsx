@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm } from '../../utils/swal';
 import Table from '../../components/Table';
 import { useData } from '../../context/GlobalDataContext';
@@ -82,26 +82,41 @@ const Orders = () => {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false);
   const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState(null);
+  const [routingOrderId, setRoutingOrderId] = useState(null); // tracks which order is being routed
 
   const handleConvertToProject = async (order) => {
-    const projectData = {
-      name: `Project: ${order.items?.[0]?.name || 'Mission'}`,
-      client: order.client || 'Unknown Client',
-      items: order.items || [],
-      orderRef: order.id,
-      start: order.date || new Date().toISOString().split('T')[0],
-      location: order.location || 'Headquarters',
-      status: 'Pending',
-      deliveryType: order.deliveryType || 'Road',
-      managerId: currentUser?.id,
-      companyId: order.company_id || order.client_id
-    };
-    const newProject = await convertOrderToProject(order.id, projectData);
-    if (newProject) {
-      swalSuccess(`System converted Order ${order.id} into a Logistics Project. Redirecting...`);
-      navigate('/dashboard/projects');
-    } else {
-      swalError('Failed to route order. Please see console for details.');
+    // Prevent duplicate calls
+    if (routingOrderId) return;
+
+    const confirm = await swalConfirm(
+      'Route to Project?',
+      `Convert Order #${order.id} ("${order.items?.[0]?.name || 'Mission'}") into a Logistics Project?`
+    );
+    if (!confirm?.isConfirmed) return;
+
+    setRoutingOrderId(order.id);
+    try {
+      const projectData = {
+        name: `Project: ${order.items?.[0]?.name || 'Mission'}`,
+        client: order.client || 'Unknown Client',
+        items: order.items || [],
+        orderRef: order.id,
+        start: order.date || new Date().toISOString().split('T')[0],
+        location: order.location || 'Headquarters',
+        status: 'Pending',
+        deliveryType: order.deliveryType || 'Road',
+        managerId: currentUser?.id,
+        companyId: order.company_id || order.client_id
+      };
+      const newProject = await convertOrderToProject(order.id, projectData);
+      if (newProject) {
+        swalSuccess(`Order #${order.id} routed to Logistics Project successfully. Redirecting...`);
+        navigate('/dashboard/projects');
+      } else {
+        swalError('Failed to route order. Please see console for details.');
+      }
+    } finally {
+      setRoutingOrderId(null);
     }
   };
 
@@ -110,6 +125,8 @@ const Orders = () => {
     if (result.isConfirmed) {
       try {
         await updateOrderStatusMutation.mutateAsync({ id: order.id, status: stage });
+        if (syncGlobalState) await syncGlobalState();
+        window.dispatchEvent(new CustomEvent('app:state-changed'));
         swalSuccess(`Order #${order.id} has been successfully moved to ${stage}.`);
       } catch (err) {
         swalError('Failed to update order status.');
@@ -118,19 +135,30 @@ const Orders = () => {
   };
 
   const currentOrders = (() => {
-    const activeOrders = orders.filter(o => {
-      const status = String(o.status || '').toLowerCase();
-      return status !== 'completed' && status !== 'delivered';
+    // Exclude converted Project records from the Orders list (they belong in Projects view)
+    const nonProjectOrders = orders.filter(o => {
+      const typeStr = String(o.orderType || o.type || '').toUpperCase();
+      return typeStr !== 'PROJECT';
     });
 
-    if (workflowTab === 'history') {
-      return orders.filter(o => {
-        const status = String(o.status || '').toLowerCase();
-        return status === 'completed' || status === 'delivered';
-      });
-    }
+    const list = workflowTab === 'history'
+      ? nonProjectOrders.filter(o => {
+          const status = String(o.status || '').toLowerCase();
+          return status === 'completed' || status === 'delivered';
+        })
+      : nonProjectOrders.filter(o => {
+          const status = String(o.status || '').toLowerCase();
+          return status !== 'completed' && status !== 'delivered';
+        });
 
-    return activeOrders;
+    return [...list].sort((a, b) => {
+      const timeA = new Date(a.createdAt || a.created_at || a.updatedAt || a.updated_at || a.order_date || a.date || 0).getTime();
+      const timeB = new Date(b.createdAt || b.created_at || b.updatedAt || b.updated_at || b.order_date || b.date || 0).getTime();
+      if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
+      const numA = parseInt(String(a.rawId || a.id || 0).replace(/\D/g, ''), 10) || 0;
+      const numB = parseInt(String(b.rawId || b.id || 0).replace(/\D/g, ''), 10) || 0;
+      return numB - numA;
+    });
   })();
 
   const handleAction = (type, order) => {
@@ -190,30 +218,43 @@ const Orders = () => {
       render: (row) => {
         const meta = typeof row.metadata === 'string' ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })() : (row.metadata || {});
         const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
+        const isEmail = (str) => str && String(str).includes('@');
 
-        const matchedClient = (clients || []).find(c => String(c.id).replace('CLT-', '') === String(row.clientId || row.client_id).replace('CLT-', ''));
+        const rowEmail = (row.email || row.user?.email || row.client?.email || meta.email || '').toLowerCase();
+        const rowClientId = String(row.clientId || row.client_id || row.customer_id || row.userId || row.user_id || '').replace('CLT-', '');
+
+        const matchedClient = (clients || []).find(c => {
+          const cId = String(c.id || '').replace('CLT-', '');
+          const cEmail = String(c.email || '').toLowerCase();
+          return (rowClientId && cId === rowClientId) || (rowEmail && cEmail && cEmail === rowEmail);
+        });
 
         let resolvedName = null;
-        if (!isGeneric(row.client?.contactPerson)) {
+        // Priority: real name fields — skip generic terms & email strings as names
+        if (!isGeneric(row.client?.contactPerson) && !isEmail(row.client?.contactPerson)) {
           resolvedName = row.client.contactPerson;
-        } else if (matchedClient && !isGeneric(matchedClient.contactPerson)) {
+        } else if (matchedClient && !isGeneric(matchedClient.name) && !isEmail(matchedClient.name)) {
+          resolvedName = matchedClient.name;
+        } else if (matchedClient && !isGeneric(matchedClient.companyName || matchedClient.business_name) && !isEmail(matchedClient.companyName || matchedClient.business_name)) {
+          resolvedName = matchedClient.companyName || matchedClient.business_name;
+        } else if (matchedClient && !isGeneric(matchedClient.contactPerson) && !isEmail(matchedClient.contactPerson)) {
           resolvedName = matchedClient.contactPerson;
-        } else if (matchedClient && !isGeneric(matchedClient.companyName || matchedClient.name)) {
-          resolvedName = matchedClient.companyName || matchedClient.name;
-        } else if (!isGeneric(row.customer_name)) {
+        } else if (!isGeneric(row.customer_name) && !isEmail(row.customer_name)) {
           resolvedName = row.customer_name;
-        } else if (!isGeneric(row.created_by_name)) {
+        } else if (!isGeneric(row.created_by_name) && !isEmail(row.created_by_name)) {
           resolvedName = row.created_by_name;
-        } else if (!isGeneric(meta.clientName || meta.client_name || meta.client)) {
-          resolvedName = meta.clientName || meta.client_name || meta.client;
-        } else if (!isGeneric(row.user?.name)) {
+        } else if (!isGeneric(meta.clientName || meta.client_name) && !isEmail(meta.clientName || meta.client_name)) {
+          resolvedName = meta.clientName || meta.client_name;
+        } else if (!isGeneric(row.user?.name) && !isEmail(row.user?.name)) {
           resolvedName = row.user.name;
-        } else if (!isGeneric(row.client?.companyName)) {
+        } else if (!isGeneric(row.client?.companyName) && !isEmail(row.client?.companyName)) {
           resolvedName = row.client.companyName;
-        } else if (!isGeneric(row.client?.name)) {
+        } else if (!isGeneric(row.client?.name) && !isEmail(row.client?.name)) {
           resolvedName = row.client.name;
-        } else if (!isGeneric(row.user?.email || row.client?.email)) {
-          resolvedName = row.user?.email || row.client?.email;
+        }
+
+        if (!resolvedName && matchedClient?.email) {
+          resolvedName = matchedClient.email;
         }
 
         return resolvedName || "Personal Client";
@@ -613,10 +654,18 @@ const Orders = () => {
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleConvertToProject(item); }}
-                          className="p-1 px-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20 bg-accent/5 shadow-lg shadow-accent/5"
-                          title="Route to Project"
+                          disabled={!!routingOrderId}
+                          className={`p-1 px-2 rounded-lg transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20 shadow-lg shadow-accent/5 ${
+                            routingOrderId === item.id
+                              ? 'text-accent bg-accent/20 cursor-wait opacity-80'
+                              : routingOrderId
+                              ? 'text-muted/40 bg-white/5 cursor-not-allowed opacity-40'
+                              : 'text-secondary hover:text-accent hover:bg-accent/10 bg-accent/5'
+                          }`}
+                          title={routingOrderId === item.id ? 'Creating project...' : 'Route to Project'}
                         >
-                          <ArrowRightCircle size={13} /> <span>Route to Project</span>
+                          <ArrowRightCircle size={13} />
+                          <span>{routingOrderId === item.id ? 'Routing...' : 'Route to Project'}</span>
                         </button>
                       </>
                     )}

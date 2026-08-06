@@ -59,6 +59,8 @@ const EmptyState = ({ text }) => (
 const PersonalClientDashboard = () => {
   const {
     orders,
+    projects = [],
+    missions = [],
     invoices,
     settleInvoice,
     currentUser,
@@ -68,6 +70,8 @@ const PersonalClientDashboard = () => {
     chauffeurRequests = [],
     fetchChauffeurRequests,
     fetchOrders,
+    fetchProjects,
+    fetchMissions,
     fetchFinance,
     fetchInventory,
     fetchClients,
@@ -94,16 +98,26 @@ const PersonalClientDashboard = () => {
     fetchInventory();
     fetchClients();
     fetchDeliveries();
+    if (fetchProjects) fetchProjects();
+    if (fetchMissions) fetchMissions();
     fetchDashboardStats();
     if (fetchTickets) fetchTickets();
     if (fetchChauffeurRequests) fetchChauffeurRequests();
     if (fetchLuxuryItems) fetchLuxuryItems();
 
+    const handleStateChanged = () => {
+      if (syncGlobalState) syncGlobalState();
+    };
+    window.addEventListener('app:state-changed', handleStateChanged);
+
     const interval = setInterval(() => {
       if (syncGlobalState) syncGlobalState();
-    }, 5000);
-    return () => clearInterval(interval);
-  }, [syncGlobalState]);
+    }, 3000);
+    return () => {
+      window.removeEventListener('app:state-changed', handleStateChanged);
+      clearInterval(interval);
+    };
+  }, [syncGlobalState, fetchOrders, fetchFinance, fetchInventory, fetchClients, fetchDeliveries, fetchProjects, fetchMissions, fetchDashboardStats, fetchTickets, fetchChauffeurRequests, fetchLuxuryItems]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('add');
@@ -115,15 +129,23 @@ const PersonalClientDashboard = () => {
   const [orderTab, setOrderTab] = useState('open');
   const [invoiceTab, setInvoiceTab] = useState('unpaid');
 
-  const tenantId = currentUser?.clientId || currentUser?.companyId || currentUser?.company_id;
-  const clientData = (clients || []).find(c =>
-    c.id === tenantId ||
-    c.email === currentUser?.email ||
-    c.name === currentUser?.name
-  ) || currentUser || { id: 'GUEST', name: 'Guest' };
+  const clientData = useMemo(() => {
+    if (!clients || !currentUser) return {};
+    const found = clients.find(c => c.id === currentUser.company_id || c.email === currentUser.email);
+    return found || {
+      id: currentUser.company_id || currentUser.id,
+      name: currentUser.name || 'Personal Client',
+      email: currentUser.email,
+      address: 'Main Residence',
+      client_type: 'individual'
+    };
+  }, [clients, currentUser]);
 
   const isMyOrder = (o) => {
     if (!o) return false;
+    const typeStr = String(o.orderType || o.type || '').toUpperCase();
+    if (typeStr === 'PROJECT') return false; 
+
     const orderClientId = String(o.clientId || o.client_id || o.companyId || o.company_id || '');
     const orderCustId = String(o.customer_id || o.customerId || o.created_by || o.createdById || o.userId || o.user_id || '');
     const orderEmail = String(o.email || o.client_email || o.customer_email || '').toLowerCase();
@@ -145,12 +167,81 @@ const PersonalClientDashboard = () => {
     return false;
   };
 
+  const resolveLiveOrderStatus = (o) => {
+    if (!o) return 'pending';
+    const oIdStr = String(o.id || '');
+    const oRawIdStr = String(o.rawId || o.id || '').replace(/\D/g, '');
+    const firstItemName = String(o.items?.[0]?.name || o.product || '').toLowerCase().trim();
+
+    // 1. Find linked projects (by orderRef, orderId, or item name match)
+    const linkedProjects = (projects || []).filter(p => {
+      const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
+      const pName = String(p.name || '').toLowerCase();
+      const pId = String(p.id || '');
+      return (
+        (pRef && (pRef === oIdStr || pRef === oRawIdStr || pRef === `ORD-${oIdStr}` || pRef === `ORD-${oRawIdStr}`)) ||
+        (pId && (pId === oIdStr || pId === oRawIdStr)) ||
+        (firstItemName && firstItemName.length > 3 && pName.includes(firstItemName))
+      );
+    });
+    const linkedProjectIds = linkedProjects.map(p => String(p.id));
+
+    // 2. Find linked mission (by orderId, projectId, or project match)
+    const linkedMission = (missions || []).find(m => {
+      const mOrderId = String(m.orderId || m.order_id || m.order_id_raw || m.metadata?.orderId || m.metadata?.orderRef || '');
+      const mProjectId = String(m.projectId || m.project_id || m.metadata?.projectId || m.metadata?.projectRef || '');
+      return (
+        mOrderId === oIdStr ||
+        mOrderId === oRawIdStr ||
+        mOrderId === `ORD-${oIdStr}` ||
+        mOrderId === `ORD-${oRawIdStr}` ||
+        linkedProjectIds.includes(mOrderId) ||
+        linkedProjectIds.includes(mProjectId)
+      );
+    });
+
+    // 3. Find linked delivery (by orderId, missionId, or project match)
+    const linkedDelivery = (deliveries || []).find(d => {
+      const dOrderId = String(d.orderId || d.order_id_raw || d.order_id || '');
+      const dMissionId = String(d.mission_id || d.missionId || '');
+      return (
+        dOrderId === oIdStr ||
+        dOrderId === oRawIdStr ||
+        dOrderId === `ORD-${oIdStr}` ||
+        dOrderId === `ORD-${oRawIdStr}` ||
+        linkedProjectIds.includes(dOrderId) ||
+        (linkedMission && (dMissionId === String(linkedMission.id) || dOrderId === String(linkedMission.orderId)))
+      );
+    });
+
+    if (linkedDelivery) {
+      const delSt = String(linkedDelivery.status || '').toLowerCase();
+      if (['delivered', 'completed'].includes(delSt)) return 'completed';
+      if (['in_transit', 'en_route', 'on_way'].includes(delSt)) return 'in_transit';
+      if (['assigned', 'accepted'].includes(delSt) || linkedDelivery.driver) return 'assigned';
+      return 'logistics';
+    }
+    if (linkedMission) {
+      const misSt = String(linkedMission.status || '').toLowerCase();
+      if (['delivered', 'completed', 'done'].includes(misSt)) return 'completed';
+      if (['in_transit', 'en_route', 'dispatched'].includes(misSt)) return 'in_transit';
+      if (['assigned', 'accepted', 'in_progress'].includes(misSt)) return 'assigned';
+      return 'logistics';
+    }
+    if (linkedProjects.length > 0) {
+      const hasCompletedPrj = linkedProjects.some(p => ['completed', 'delivered'].includes(String(p.status || '').toLowerCase()));
+      if (hasCompletedPrj) return 'completed';
+      return 'logistics';
+    }
+    return o.status || 'pending';
+  };
+
   const clientOrders = (orders || []).filter(isMyOrder).sort((a, b) => {
-    const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
-    const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
+    const timeA = new Date(a.createdAt || a.created_at || a.updatedAt || a.updated_at || a.order_date || a.date || 0).getTime();
+    const timeB = new Date(b.createdAt || b.created_at || b.updatedAt || b.updated_at || b.order_date || b.date || 0).getTime();
     if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
-    const numA = parseInt(String(a.rawId || a.id).replace(/\D/g, ''), 10) || 0;
-    const numB = parseInt(String(b.rawId || b.id).replace(/\D/g, ''), 10) || 0;
+    const numA = parseInt(String(a.rawId || a.id || 0).replace(/\D/g, ''), 10) || 0;
+    const numB = parseInt(String(b.rawId || b.id || 0).replace(/\D/g, ''), 10) || 0;
     return numB - numA;
   });
   const clientInvoices = (invoices || []).filter(inv =>
@@ -238,21 +329,28 @@ const PersonalClientDashboard = () => {
               <div className="space-y-3">
                 {(() => {
                   const combinedHistory = [
-                    ...clientOrders.map(o => ({
-                      txId: `ORD-${o.id}`,
-                      type: o.orderType || o.type || 'Marketplace Requisition',
-                      date: o.date || o.createdAt?.split('T')[0] || 'N/A',
-                      amount: parseFloat(o.totalAmount || o.total || o.total_amount || 0),
-                      status: o.status,
-                      proofRef: `PROOF-ORD-${o.id}`,
-                      raw: o,
-                      category: 'order',
-                      isDone: isDoneOrder(o.status)
-                    })),
+                    ...clientOrders.map(o => {
+                      const liveStatus = resolveLiveOrderStatus(o);
+                      return {
+                        txId: `ORD-${o.id}`,
+                        type: o.orderType || o.type || 'Marketplace Requisition',
+                        date: o.date || o.createdAt?.split('T')[0] || 'N/A',
+                        rawDate: o.createdAt || o.created_at || o.order_date || o.date,
+                        rawId: o.id,
+                        amount: parseFloat(o.totalAmount || o.total || o.total_amount || 0),
+                        status: liveStatus,
+                        proofRef: `PROOF-ORD-${o.id}`,
+                        raw: o,
+                        category: 'order',
+                        isDone: isDoneOrder(liveStatus)
+                      };
+                    }),
                     ...clientChauffeurRequests.map(r => ({
                       txId: `CH-${r.id}`,
                       type: `VIP Chauffeur (${r.serviceType || 'One Way'})`,
                       date: r.dueDate || r.requestDate || 'N/A',
+                      rawDate: r.createdAt || r.created_at || r.requestDate || r.dueDate,
+                      rawId: r.id,
                       amount: parseFloat(r.chauffeurFee || r.chauffeur_fee || 120),
                       status: r.status,
                       proofRef: `PROOF-CH-${r.id}`,
@@ -264,6 +362,8 @@ const PersonalClientDashboard = () => {
                       txId: `INV-${i.id}`,
                       type: `Settled Invoice Payment`,
                       date: i.date || 'N/A',
+                      rawDate: i.createdAt || i.created_at || i.date,
+                      rawId: i.id,
                       amount: parseFloat(i.totalAmount || 0),
                       status: 'Paid',
                       proofRef: `PAYMENT-WIRE-${i.id}`,
@@ -271,7 +371,14 @@ const PersonalClientDashboard = () => {
                       category: 'invoices',
                       isDone: true
                     }))
-                  ].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                  ].sort((a, b) => {
+                    const timeA = new Date(a.rawDate || a.date || 0).getTime();
+                    const timeB = new Date(b.rawDate || b.date || 0).getTime();
+                    if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
+                    const numA = parseInt(String(a.rawId || a.txId || 0).replace(/\D/g, ''), 10) || 0;
+                    const numB = parseInt(String(b.rawId || b.txId || 0).replace(/\D/g, ''), 10) || 0;
+                    return numB - numA;
+                  });
 
                   const filteredTx = combinedHistory.filter(tx => {
                     if (orderTab === 'open') return !tx.isDone;

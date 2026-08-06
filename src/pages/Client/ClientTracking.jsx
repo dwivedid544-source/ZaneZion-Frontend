@@ -5,7 +5,7 @@ import Modal from '../../components/Modal';
 import { Link } from 'react-router-dom';
 
 const ClientTracking = () => {
-    const { deliveries, orders, currentUser, clients, confirmDeliveryReceipt, fetchDeliveries, fetchOrders, fetchClients } = useData();
+    const { deliveries, orders, projects, missions, currentUser, clients, confirmDeliveryReceipt, fetchDeliveries, fetchOrders, fetchClients, fetchProjects, fetchMissions, syncGlobalState } = useData();
     const [manifestModal, setManifestModal] = useState({ isOpen: false, delivery: null });
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, deliveryId: null, name: '' });
     const norm = (v) => String(v ?? '').trim().toLowerCase();
@@ -18,7 +18,26 @@ const ClientTracking = () => {
         fetchDeliveries();
         fetchOrders();
         fetchClients();
-    }, [fetchDeliveries, fetchOrders, fetchClients]);
+        if (fetchProjects) fetchProjects();
+        if (fetchMissions) fetchMissions();
+
+        const handleStateChanged = () => {
+            fetchDeliveries();
+            fetchOrders();
+            if (fetchProjects) fetchProjects();
+            if (fetchMissions) fetchMissions();
+        };
+        window.addEventListener('app:state-changed', handleStateChanged);
+
+        const interval = setInterval(() => {
+            if (syncGlobalState) syncGlobalState();
+        }, 3000);
+
+        return () => {
+            window.removeEventListener('app:state-changed', handleStateChanged);
+            clearInterval(interval);
+        };
+    }, [fetchDeliveries, fetchOrders, fetchClients, fetchProjects, fetchMissions, syncGlobalState]);
 
     // Identify client record for correct order attribution
     const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
@@ -110,6 +129,62 @@ const ClientTracking = () => {
         return ['delivered', 'completed'].includes(k);
     };
 
+    const resolveLiveStatus = (item) => {
+        const rawId = item.order_id_raw || item.orderId || item.id;
+        const oIdStr = String(rawId || '');
+        const oRawIdStr = digits(rawId);
+        const itemFirst = String((item.items || [])[0]?.name || item.item || '').toLowerCase().trim();
+
+        // 1. Check direct delivery status
+        const dSt = String(item.status || '').toLowerCase();
+        if (['delivered', 'completed', 'done'].includes(dSt)) return 'Completed';
+
+        // 2. Find linked order
+        const linkedOrder = (orders || []).find(o => String(o.id) === oIdStr || String(o.id) === oRawIdStr);
+        const orderDbSt = String(linkedOrder?.status || '').toLowerCase();
+        if (['completed', 'delivered', 'done'].includes(orderDbSt)) return 'Completed';
+
+        // 3. Find linked projects
+        const linkedProjects = (projects || []).filter(p => {
+            const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
+            const pName = String(p.name || p.metadata?.name || '').toLowerCase();
+            const pId = String(p.id || '');
+            return (
+                (pRef && (pRef === oIdStr || pRef === oRawIdStr)) ||
+                (pId && (pId === oIdStr || pId === oRawIdStr)) ||
+                (itemFirst && itemFirst.length > 3 && pName.includes(itemFirst))
+            );
+        });
+        const linkedProjectIds = linkedProjects.map(p => String(p.id));
+
+        // 4. Find linked mission
+        const linkedMission = (missions || []).find(m => {
+            const mOrderId = String(m.orderId || m.order_id || m.order_id_raw || m.metadata?.orderId || m.metadata?.orderRef || '');
+            const mProjectId = String(m.projectId || m.project_id || m.metadata?.projectId || m.metadata?.projectRef || '');
+            const mName = String(m.metadata?.project_name || m.route || '').toLowerCase();
+            return (
+                mOrderId === oIdStr ||
+                mOrderId === oRawIdStr ||
+                linkedProjectIds.includes(mOrderId) ||
+                linkedProjectIds.includes(mProjectId) ||
+                (itemFirst && itemFirst.length > 3 && mName.includes(itemFirst))
+            );
+        });
+
+        if (linkedMission) {
+            const misSt = String(linkedMission.status || '').toLowerCase();
+            if (['delivered', 'completed', 'done'].includes(misSt)) return 'Completed';
+            if (['in_transit', 'en_route', 'dispatched'].includes(misSt)) return 'In Transit';
+        }
+
+        if (linkedProjects.some(p => ['completed', 'delivered'].includes(String(p.status).toLowerCase()))) {
+            return 'Completed';
+        }
+
+        if (['in_transit', 'en_route', 'dispatched', 'assigned'].includes(dSt)) return 'In Transit';
+        return item.status || 'Pending';
+    };
+
     return (
         <div className="space-y-8">
             <div>
@@ -133,7 +208,12 @@ const ClientTracking = () => {
                             <p className="text-secondary font-bold">No active deliveries found.</p>
                             <p className="text-muted text-sm mt-1">Place an order to track your shipments here.</p>
                         </div>
-                    ) : visibleDeliveries.map((delivery) => (
+                    ) : visibleDeliveries.map((delivery) => {
+                        const liveSt = resolveLiveStatus(delivery);
+                        const isDone = liveSt === 'Completed' || liveSt === 'Delivered' || delivery.clientConfirmed || isArrived(delivery.status);
+                        const isMovingStatus = isMoving(liveSt) || isMoving(delivery.status) || isDone;
+
+                        return (
                         <div key={delivery.id} className="glass-card p-6 overflow-hidden relative group">
 
                             <div className="flex flex-col md:flex-row justify-between gap-6 mb-8">
@@ -144,40 +224,36 @@ const ClientTracking = () => {
                                     <div>
                                         <span className="text-[10px] font-bold text-accent uppercase tracking-widest">{delivery.id}</span>
                                         <h3 className="text-xl font-bold text-white leading-tight">{delivery.item || 'Bespoke Order'}</h3>
-                                        <p className="text-sm text-secondary">In Transit to {delivery.location || 'Destination'}</p>
+                                        <p className="text-sm text-secondary">
+                                            {isDone ? 'Delivered to ' : 'In Transit to '} {delivery.location || 'Destination'}
+                                        </p>
                                     </div>
                                 </div>
                                 <div className="text-right">
                                     <p className="text-xs text-muted font-bold uppercase mb-1">Status / Arrival</p>
-                                    <p className={`text-lg font-bold ${delivery.status === 'Delivered' || delivery.status === 'Completed' ? 'text-success' : 'text-primary'}`}>
-                                        {delivery.status === 'Delivered' || delivery.status === 'Completed' ? 'Delivered' : (delivery.eta || 'TBD')}
+                                    <p className={`text-lg font-bold ${isDone ? 'text-success' : 'text-primary'}`}>
+                                        {isDone ? 'Delivered & Completed' : (delivery.eta || 'In Transit')}
                                     </p>
                                 </div>
                             </div>
 
-                            {/* Progress Stepper with 4 steps */}
+                            {/* Progress Stepper with 5 steps */}
                             <div className="relative pt-4 pb-8">
                                 <div className="absolute top-5 left-0 w-full h-0.5 bg-border transition-all" />
                                 <div
                                     className="absolute top-5 left-0 h-0.5 bg-accent shadow-[0_0_10px_rgba(200,169,106,0.3)] transition-all duration-700"
                                     style={{
-                                        width: (delivery.clientConfirmed && isArrived(delivery.status))
-                                            ? '100%'
-                                            : delivery.clientConfirmed
-                                                ? '75%'
-                                                : isArrived(delivery.status)
-                                                    ? '50%'
-                                                    : (isMoving(delivery.status) || getStatusKey(delivery.status) === 'pending_pickup') ? '25%' : '0%'
+                                        width: isDone ? '100%' : (isMovingStatus ? '50%' : '25%')
                                     }}
                                 />
 
                                 <div className="relative flex justify-between">
                                     {[
                                         { label: 'Order Dispatched', icon: Box, active: true },
-                                        { label: 'In Transit', icon: Truck, active: isMoving(delivery.status) || getStatusKey(delivery.status) === 'pending_pickup' || isArrived(delivery.status) || delivery.clientConfirmed },
-                                        { label: 'Dispatch Verified', icon: ShieldCheck, active: isArrived(delivery.status) || delivery.clientConfirmed },
-                                        { label: 'Client Acknowledgement', icon: MapPin, active: delivery.clientConfirmed },
-                                        { label: 'Completed', icon: CheckCircle2, active: delivery.clientConfirmed && isArrived(delivery.status) }
+                                        { label: 'In Transit', icon: Truck, active: isMovingStatus || isDone },
+                                        { label: 'Dispatch Verified', icon: ShieldCheck, active: isDone },
+                                        { label: 'Client Acknowledgement', icon: MapPin, active: isDone },
+                                        { label: 'Completed', icon: CheckCircle2, active: isDone }
                                     ].map((step, idx) => (
                                         <div key={idx} className="flex flex-col items-center flex-1">
                                             <div className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-all duration-500 z-10 ${step.active ? 'bg-background border-accent text-accent' : 'bg-background border-border text-muted'
@@ -235,7 +311,8 @@ const ClientTracking = () => {
                                 )}
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 <div className="space-y-6">

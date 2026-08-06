@@ -214,6 +214,9 @@ const PersonalClientDashboard = () => {
       );
     });
 
+    const dbSt = String(o.status || '').toLowerCase();
+    if (['completed', 'delivered', 'done'].includes(dbSt)) return 'completed';
+
     if (linkedDelivery) {
       const delSt = String(linkedDelivery.status || '').toLowerCase();
       if (['delivered', 'completed'].includes(delSt)) return 'completed';
@@ -233,7 +236,7 @@ const PersonalClientDashboard = () => {
       if (hasCompletedPrj) return 'completed';
       return 'logistics';
     }
-    return o.status || 'pending';
+    return dbSt || 'pending';
   };
 
   const clientOrders = (orders || []).filter(isMyOrder).sort((a, b) => {

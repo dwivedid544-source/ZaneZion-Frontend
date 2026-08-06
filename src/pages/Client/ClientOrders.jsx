@@ -228,10 +228,12 @@ const ClientOrders = () => {
                 );
             });
 
-            let effectiveStatus = o.status || 'pending';
+            const dbSt = String(o.status || '').toLowerCase();
+            let effectiveStatus = dbSt || 'pending';
 
-            // Resolve status hierarchy: Delivery > Mission > Project > Order Status
-            if (linkedDelivery) {
+            if (['completed', 'delivered', 'done'].includes(dbSt)) {
+                effectiveStatus = 'completed';
+            } else if (linkedDelivery) {
                 const delSt = String(linkedDelivery.status || '').toLowerCase();
                 if (['delivered', 'completed'].includes(delSt)) {
                     effectiveStatus = 'completed';

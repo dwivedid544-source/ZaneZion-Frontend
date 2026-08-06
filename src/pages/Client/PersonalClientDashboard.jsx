@@ -1,5 +1,5 @@
 // Personal Client Dashboard – distinct from SaaS client dashboard
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { swalSuccess, swalError, swalConfirm } from '../../utils/swal';
 import KpiCard from '../../components/KpiCard';
 import StatusBadge from '../../components/StatusBadge';

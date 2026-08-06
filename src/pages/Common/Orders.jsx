@@ -805,7 +805,8 @@ const Orders = () => {
                       </button>
                     )}
                 </div>
-              ) : null}
+              ) : null;
+            }}
             />
           )}
         </div>

@@ -11,6 +11,7 @@ import Table from '../../components/Table';
 import StatusBadge from '../../components/StatusBadge';
 import Pagination from '../../components/Common/Pagination';
 import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
+import { useQueryClient } from '@tanstack/react-query';
 import { useChauffeurMissions, useCreateChauffeurMission, useUpdateChauffeurMission, useDeleteChauffeurMission } from '../../hooks/api/useChauffeur';
 
 const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
@@ -113,13 +114,30 @@ const Chauffeur = () => {
         updateChauffeurRequest: updateChauffeurRequestCtx,
         deleteChauffeurRequest,
     } = useData();
+    const queryClient = useQueryClient();
     const [editingRequest, setEditingRequest] = useState(null);
     useEffect(() => {
         fetchStaff();
         fetchClients();
         fetchSystemSettings();
         fetchFleet();
-    }, [fetchStaff, fetchClients, fetchSystemSettings, fetchFleet]);
+
+        const handleStateChanged = () => {
+            queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+            if (syncGlobalState) syncGlobalState();
+        };
+        window.addEventListener('app:state-changed', handleStateChanged);
+
+        const interval = setInterval(() => {
+            queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+            if (syncGlobalState) syncGlobalState();
+        }, 3000);
+
+        return () => {
+            window.removeEventListener('app:state-changed', handleStateChanged);
+            clearInterval(interval);
+        };
+    }, [fetchStaff, fetchClients, fetchSystemSettings, fetchFleet, queryClient, syncGlobalState]);
 
     const [currentPage, setCurrentPage] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
@@ -298,9 +316,9 @@ const Chauffeur = () => {
                 };
             })() : (editingRequest?.passenger_info || editingRequest?._passengerInfo || null),
             status: isStaffAdmin
-                ? (formData.get('driverNameSelect') || formData.get('driverName') || formData.get('driverUserId') || editingRequest?.driverName
-                    ? 'assigned'
-                    : (editingRequest?.status || 'pending'))
+                ? (formData.get('overrideStatus') || (formData.get('driverNameSelect') || formData.get('driverName') || formData.get('driverUserId') || editingRequest?.driverName
+                    ? (['completed', 'delivered'].includes(String(editingRequest?.status).toLowerCase()) ? 'completed' : 'assigned')
+                    : (editingRequest?.status || 'pending')))
                 : (editingRequest?.status || 'pending'),
             orderType: 'CHAUFFEUR',
             missionType: 'CHAUFFEUR'
@@ -425,8 +443,52 @@ const Chauffeur = () => {
             header: "Status",
             accessor: "status",
             render: (row) => <StatusBadge status={row.status} />
+        },
+        {
+            header: "Quick Action",
+            accessor: "id",
+            render: (row) => {
+                const normSt = String(row.status || '').toLowerCase();
+                const isCompleted = ['completed', 'delivered', 'done'].includes(normSt);
+                if (isCompleted) {
+                    return (
+                        <span className="text-[10px] font-black text-success uppercase tracking-widest px-2.5 py-1 bg-success/10 border border-success/30 rounded-lg">
+                            Completed
+                        </span>
+                    );
+                }
+                return (
+                    <button
+                        type="button"
+                        onClick={() => handleMarkCompleted(row)}
+                        className="text-[10px] font-black text-accent uppercase tracking-wider bg-accent/10 border border-accent/30 hover:bg-accent hover:text-black px-2.5 py-1 rounded-lg transition-all"
+                    >
+                        Mark Complete
+                    </button>
+                );
+            }
         }
     ];
+
+    const handleMarkCompleted = async (row) => {
+        if ((await swalConfirm('Complete Chauffeur Ride', `Mark Chauffeur booking ${row.id} as completed?`)).isConfirmed) {
+            swalLoading("Updating Status", "Setting chauffeur ride to completed...");
+            const targetId = row.db_id || row.id;
+            const updated = { ...row, status: 'completed' };
+            try {
+                await updateMutation.mutateAsync({ id: targetId, data: updated });
+                if (updateChauffeurRequestCtx) {
+                    try { await updateChauffeurRequestCtx(updated); } catch (_) {}
+                }
+                if (syncGlobalState) await syncGlobalState();
+                swalClose();
+                swalSuccess("Ride Completed", `Chauffeur booking ${row.id} is now marked as Completed!`);
+            } catch (err) {
+                swalClose();
+                swalError("Error", "Failed to update chauffeur status.");
+            }
+        }
+    };
 
     return (
         <div className="space-y-8 pb-20">
@@ -1123,6 +1185,22 @@ const Chauffeur = () => {
                                                                         {v.model} - {v.id}
                                                                     </option>
                                                                 ))}
+                                                            </select>
+                                                        </div>
+
+                                                        {/* Booking Status Override */}
+                                                        <div className="space-y-2">
+                                                            <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Booking Status</label>
+                                                            <select
+                                                                name="overrideStatus"
+                                                                defaultValue={editingRequest?.status || 'pending'}
+                                                                className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
+                                                            >
+                                                                <option value="pending">Pending</option>
+                                                                <option value="assigned">Assigned</option>
+                                                                <option value="in_transit">En Route / In Transit</option>
+                                                                <option value="completed">Completed / Delivered</option>
+                                                                <option value="cancelled">Cancelled</option>
                                                             </select>
                                                         </div>
                                                     </div>

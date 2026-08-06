@@ -29,7 +29,7 @@ function isCustomRequestFlowOrder(order) {
 const Orders = () => {
   const {
     deliveries, purchaseRequests, stockMovements,
-    addProject, invoices, projects, generateInvoiceFromOrder,
+    addProject, invoices, projects, missions, generateInvoiceFromOrder,
     currentUser, launchMissionFromOrder, convertOrderToProject,
     fetchVendors, fetchClients, clients,
     hasMenuPermission

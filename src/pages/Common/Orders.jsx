@@ -84,6 +84,83 @@ const Orders = () => {
   const [selectedOrderForInvoice, setSelectedOrderForInvoice] = useState(null);
   const [routingOrderId, setRoutingOrderId] = useState(null); // tracks which order is being routed
 
+  const resolveLiveOrderStatus = (o) => {
+    if (!o) return 'pending';
+    const oIdStr = String(o.id || '');
+    const oRawIdStr = String(o.rawId || o.id || '').replace(/\D/g, '');
+    let normItems = o.items || o.customItems || [];
+    if (typeof normItems === 'string') { try { normItems = JSON.parse(normItems); } catch { normItems = []; } }
+    const firstItemName = String((normItems?.[0]?.name || normItems?.[0]?.title || o.product || '').toLowerCase()).trim();
+
+    const dbStatus = String(o.status || '').toLowerCase();
+    if (['completed', 'delivered', 'done'].includes(dbStatus)) return 'completed';
+
+    // 1. Find linked projects
+    const linkedProjects = (projects || []).filter(p => {
+      const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
+      const pName = String(p.name || p.metadata?.name || '').toLowerCase();
+      const pId = String(p.id || '');
+      return (
+        (pRef && (pRef === oIdStr || pRef === oRawIdStr || pRef === `ORD-${oIdStr}` || pRef === `ORD-${oRawIdStr}`)) ||
+        (pId && (pId === oIdStr || pId === oRawIdStr)) ||
+        (firstItemName && firstItemName.length > 3 && pName.includes(firstItemName))
+      );
+    });
+    const linkedProjectIds = linkedProjects.map(p => String(p.id));
+
+    // 2. Find linked mission
+    const linkedMission = (missions || []).find(m => {
+      const mOrderId = String(m.orderId || m.order_id || m.order_id_raw || m.metadata?.orderId || m.metadata?.orderRef || m.metadata?.order_ref || '');
+      const mProjectId = String(m.projectId || m.project_id || m.metadata?.projectId || m.metadata?.projectRef || '');
+      const mName = String(m.metadata?.project_name || m.route || '').toLowerCase();
+      return (
+        mOrderId === oIdStr ||
+        mOrderId === oRawIdStr ||
+        mOrderId === `ORD-${oIdStr}` ||
+        mOrderId === `ORD-${oRawIdStr}` ||
+        linkedProjectIds.includes(mOrderId) ||
+        linkedProjectIds.includes(mProjectId) ||
+        (firstItemName && firstItemName.length > 3 && mName.includes(firstItemName))
+      );
+    });
+
+    // 3. Find linked delivery
+    const linkedDelivery = (deliveries || []).find(d => {
+      const dOrderId = String(d.orderId || d.order_id_raw || d.order_id || '');
+      const dMissionId = String(d.mission_id || d.missionId || '');
+      return (
+        dOrderId === oIdStr ||
+        dOrderId === oRawIdStr ||
+        dOrderId === `ORD-${oIdStr}` ||
+        dOrderId === `ORD-${oRawIdStr}` ||
+        linkedProjectIds.includes(dOrderId) ||
+        (linkedMission && (dMissionId === String(linkedMission.id) || dOrderId === String(linkedMission.orderId)))
+      );
+    });
+
+    if (linkedDelivery) {
+      const delSt = String(linkedDelivery.status || '').toLowerCase();
+      if (['delivered', 'completed'].includes(delSt)) return 'completed';
+      if (['in_transit', 'en_route', 'on_way'].includes(delSt)) return 'in_transit';
+      if (['assigned', 'accepted'].includes(delSt) || linkedDelivery.driver) return 'assigned';
+      return 'logistics';
+    }
+    if (linkedMission) {
+      const misSt = String(linkedMission.status || '').toLowerCase();
+      if (['delivered', 'completed', 'done'].includes(misSt)) return 'completed';
+      if (['in_transit', 'en_route', 'dispatched'].includes(misSt)) return 'in_transit';
+      if (['assigned', 'accepted', 'in_progress'].includes(misSt)) return 'assigned';
+      return 'logistics';
+    }
+    if (linkedProjects.length > 0) {
+      const hasCompletedPrj = linkedProjects.some(p => ['completed', 'delivered'].includes(String(p.status || '').toLowerCase()));
+      if (hasCompletedPrj) return 'completed';
+      return 'logistics';
+    }
+
+    return dbStatus || 'pending';
+  };
+
   const handleConvertToProject = async (order) => {
     // Prevent duplicate calls
     if (routingOrderId) return;
@@ -143,11 +220,11 @@ const Orders = () => {
 
     const list = workflowTab === 'history'
       ? nonProjectOrders.filter(o => {
-          const status = String(o.status || '').toLowerCase();
+          const status = resolveLiveOrderStatus(o);
           return status === 'completed' || status === 'delivered';
         })
       : nonProjectOrders.filter(o => {
-          const status = String(o.status || '').toLowerCase();
+          const status = resolveLiveOrderStatus(o);
           return status !== 'completed' && status !== 'delivered';
         });
 
@@ -340,9 +417,22 @@ const Orders = () => {
     {
       header: "Status",
       accessor: "status",
-      render: (row) => (
-        <span className="text-xs font-semibold capitalize">{displayOrderStatus(row.status)}</span>
-      )
+      render: (row) => {
+        const liveSt = resolveLiveOrderStatus(row);
+        const isDone = ['completed', 'delivered'].includes(liveSt);
+        const isTransit = ['in_transit', 'en_route'].includes(liveSt);
+        const isLogistics = liveSt === 'logistics' || liveSt === 'assigned';
+        const badgeCls = isDone ? 'bg-success/20 text-success border border-success/25' :
+          isTransit ? 'bg-info/20 text-info border border-info/25' :
+          isLogistics ? 'bg-accent/20 text-accent border border-accent/25' :
+          'bg-warning/20 text-warning border border-warning/25';
+
+        return (
+          <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${badgeCls}`}>
+            {displayOrderStatus(liveSt)}
+          </span>
+        );
+      }
     },
     {
       header: "Payment",
@@ -546,14 +636,23 @@ const Orders = () => {
               onEdit={(item) => handleAction('edit', item)}
               onDelete={(item) => handleDelete(item.id)}
               canEdit={(row) => {
-                const status = String(row?.status || '').toLowerCase();
+                const status = resolveLiveOrderStatus(row);
                 return (status !== 'completed' && status !== 'delivered') && (hasMenuPermission('Orders', 'can_edit') || isBusinessClient);
               }}
               canDelete={(row) => {
-                const status = String(row?.status || '').toLowerCase();
+                const status = resolveLiveOrderStatus(row);
                 return (status !== 'completed' && status !== 'delivered') && (hasMenuPermission('Orders', 'can_delete') || isBusinessClient);
               }}
-              customAction={(item) => canManageOrders ? (
+              customAction={(item) => {
+                const liveSt = resolveLiveOrderStatus(item);
+                const isCompleted = ['completed', 'delivered'].includes(liveSt);
+                const isLogisticsOrTransit = ['logistics', 'in_transit', 'assigned'].includes(liveSt);
+
+                if (isCompleted || isLogisticsOrTransit) {
+                  return null;
+                }
+
+                return canManageOrders ? (
                 <div className="flex items-center gap-1 flex-wrap">
                   {(['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) || isBusinessClient) &&
                     String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'delivered' && (

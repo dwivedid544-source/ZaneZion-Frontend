@@ -648,8 +648,23 @@ const Orders = () => {
                 const isCompleted = ['completed', 'delivered'].includes(liveSt);
                 const isLogisticsOrTransit = ['logistics', 'in_transit', 'assigned'].includes(liveSt);
 
-                if (isCompleted || isLogisticsOrTransit) {
+                if (isCompleted) {
                   return null;
+                }
+
+                if (isLogisticsOrTransit) {
+                  return (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate('/dashboard/deliveries');
+                      }}
+                      className="btn-secondary text-[10px] font-black uppercase tracking-wider py-1 px-2.5 flex items-center gap-1"
+                    >
+                      <Truck size={12} className="text-accent" /> Dispatch / Fleet
+                    </button>
+                  );
                 }
 
                 return canManageOrders ? (

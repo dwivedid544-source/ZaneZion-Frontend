@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import KpiCard from '../../components/KpiCard';
 import StatusBadge from '../../components/StatusBadge';
 import Modal from '../../components/Modal';
@@ -10,6 +11,7 @@ import {
 import { useData } from '../../context/GlobalDataContext';
 
 const ConciergeDashboard = () => {
+  const navigate = useNavigate();
   const { 
     guestRequests = [], addGuestRequest, events = [], luxuryItems = [], addLuxuryItem, deliveries = [],
     chauffeurRequests = [], fetchChauffeurRequests, clients = [],
@@ -43,8 +45,9 @@ const ConciergeDashboard = () => {
     setLuxuryFormData({ item: '', owner: '', vault: 'Vault Alpha', status: 'Stored', value: '' });
   };
 
-  // Sort and limit for display
-  const activeRequests = (guestRequests || []).filter(r => String(r.status || '').toLowerCase() !== 'completed').slice(0, 5);
+  // Sort and limit for display - include all recent requests so ledger matches the Guest Requests page
+  const recentRequests = (guestRequests || []).slice(0, 5);
+  const activeRequestsCount = (guestRequests || []).filter(r => String(r.status || '').toLowerCase() !== 'completed').length;
   const nextEvents = (events || []).filter(e => String(e.status || '').toLowerCase() !== 'completed').slice(0, 3);
   const highValueAssets = (luxuryItems || []).slice(0, 3);
 
@@ -92,7 +95,7 @@ const ConciergeDashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-4">
-        <KpiCard label="Active Requests" value={(guestRequests || []).filter(r => String(r.status || '').toLowerCase() !== 'completed').length} change="Live" type="increase" icon={Heart} />
+        <KpiCard label="Active Requests" value={activeRequestsCount} change="Live" type="increase" icon={Heart} />
         <KpiCard label="Upcoming Events" value={(events || []).filter(e => String(e.status || '').toLowerCase() !== 'completed').length} change="Next 7 Days" type="neutral" icon={Calendar} />
         <KpiCard
           label="Chauffeur Pending"
@@ -110,10 +113,15 @@ const ConciergeDashboard = () => {
         <div className="lg:col-span-2 glass-card p-4 sm:p-6 border-accent/10">
           <div className="flex items-center justify-between mb-8">
             <h3 className="text-lg font-bold text-white">Guest Requests Ledger</h3>
-            <button className="text-[10px] text-accent font-bold uppercase tracking-widest hover:underline">View All</button>
+            <button 
+              onClick={() => navigate('/dashboard/guest-requests')}
+              className="text-[10px] text-accent font-bold uppercase tracking-widest hover:underline"
+            >
+              View All
+            </button>
           </div>
           <div className="space-y-4">
-            {activeRequests.map((req, idx) => (
+            {recentRequests.map((req, idx) => (
               <div key={idx} className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl hover:border-accent/40 transition-all group">
                 <div className="flex flex-col sm:flex-row flex-wrap sm:items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
@@ -129,13 +137,23 @@ const ConciergeDashboard = () => {
                   </div>
                   <div className="flex items-center justify-between sm:justify-end gap-4 w-full sm:w-auto border-t sm:border-t-0 border-white/5 pt-3 sm:pt-0">
                     <StatusBadge status={req.status} />
-                    <button className="p-2 bg-white/5 hover:bg-accent hover:text-black rounded-xl text-secondary transition-all">
+                    <button 
+                      onClick={() => navigate('/dashboard/guest-requests')}
+                      className="p-2 bg-white/5 hover:bg-accent hover:text-black rounded-xl text-secondary transition-all"
+                    >
                       <Clock size={16} />
                     </button>
                   </div>
                 </div>
               </div>
             ))}
+            {recentRequests.length === 0 && (
+              <div className="p-8 text-center bg-white/[0.01] border border-white/5 rounded-2xl">
+                <Coffee className="mx-auto text-accent/50 mb-3" size={32} />
+                <p className="text-sm font-bold text-white">No active guest requests</p>
+                <p className="text-xs text-secondary mt-1">Click "+ Guest Request" above to log a new requirement.</p>
+              </div>
+            )}
           </div>
         </div>
 

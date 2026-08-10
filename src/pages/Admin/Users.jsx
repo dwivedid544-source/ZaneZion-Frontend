@@ -43,17 +43,19 @@ const Users = () => {
       const uploadData = new FormData();
       uploadData.append('file', file);
 
-      const targetId = userId || formData?.id;
+      const targetId = userId || formData?.id || selectedUser?.id;
       if (!targetId) {
-        // If creating a brand new user not yet saved in DB, set local preview state
+        // If creating a brand new user not yet saved in DB, set local preview state and preserve File object
         const fieldMap = { passport: 'hasPassport', license: 'hasLicense', nib: 'hasNIB', resume: 'hasResume' };
         const urlMap = { passport: 'passportUrl', license: 'licenseUrl', nib: 'nibUrl', resume: 'resumeUrl' };
+        const fileMap = { passport: 'passportFile', license: 'licenseFile', nib: 'nibFile', resume: 'resumeFile' };
         setFormData(prev => ({
           ...prev,
           [fieldMap[docType]]: true,
-          [urlMap[docType]]: URL.createObjectURL(file)
+          [urlMap[docType]]: URL.createObjectURL(file),
+          [fileMap[docType]]: file
         }));
-        swalSuccess('Document Attached', `${docType.toUpperCase()} file selected for new user profile.`);
+        swalSuccess('Document Attached', `${docType.toUpperCase()} file selected for user profile.`);
         return;
       }
 
@@ -257,6 +259,18 @@ const Users = () => {
           nibNumber: fullUser.nibNumber || fullUser.nib_number || '',
           vacationBalance: fullUser.vacationBalance ?? fullUser.vacation_balance ?? 0,
           employmentStatus: fullUser.employmentStatus || fullUser.employment_status || 'Full Time',
+          hasPassport: fullUser.hasPassport ?? fullUser.has_passport ?? !!fullUser.passportUrl,
+          passportUrl: fullUser.passportUrl || fullUser.passport_url || '',
+          hasLicense: fullUser.hasLicense ?? fullUser.has_license ?? !!fullUser.licenseUrl,
+          licenseUrl: fullUser.licenseUrl || fullUser.license_url || '',
+          hasNIB: fullUser.hasNIB ?? fullUser.has_nib ?? !!fullUser.nibUrl,
+          nibUrl: fullUser.nibUrl || fullUser.nib_url || '',
+          hasResume: fullUser.hasResume ?? fullUser.has_resume ?? !!fullUser.resumeUrl,
+          resumeUrl: fullUser.resumeUrl || fullUser.resume_url || '',
+          passportFile: null,
+          licenseFile: null,
+          nibFile: null,
+          resumeFile: null,
           bankingInfo: {
             bank: parsedBankingInfo?.bank || fullUser.bank_name || '',
             account: parsedBankingInfo?.account || fullUser.account_number || '',
@@ -286,6 +300,18 @@ const Users = () => {
           nibNumber: user.nibNumber || user.nib_number || '',
           vacationBalance: user.vacationBalance ?? user.vacation_balance ?? 0,
           employmentStatus: user.employmentStatus || user.employment_status || 'Full Time',
+          hasPassport: user.hasPassport ?? user.has_passport ?? !!user.passportUrl,
+          passportUrl: user.passportUrl || user.passport_url || '',
+          hasLicense: user.hasLicense ?? user.has_license ?? !!user.licenseUrl,
+          licenseUrl: user.licenseUrl || user.license_url || '',
+          hasNIB: user.hasNIB ?? user.has_nib ?? !!user.nibUrl,
+          nibUrl: user.nibUrl || user.nib_url || '',
+          hasResume: user.hasResume ?? user.has_resume ?? !!user.resumeUrl,
+          resumeUrl: user.resumeUrl || user.resume_url || '',
+          passportFile: null,
+          licenseFile: null,
+          nibFile: null,
+          resumeFile: null,
           bankingInfo: {
             bank: parsedBankingInfo?.bank || user.bank_name || '',
             account: parsedBankingInfo?.account || user.account_number || '',
@@ -303,6 +329,10 @@ const Users = () => {
         status: 'Active',
         birthday: '', nibNumber: '', vacationBalance: 0,
         employmentStatus: 'Full Time',
+        hasPassport: false, passportUrl: '', passportFile: null,
+        hasLicense: false, licenseUrl: '', licenseFile: null,
+        hasNIB: false, nibUrl: '', nibFile: null,
+        hasResume: false, resumeUrl: '', resumeFile: null,
         bankingInfo: { bank: '', account: '', routing: '', method: 'Direct Deposit' },
       });
     }
@@ -385,7 +415,32 @@ const Users = () => {
           }
         });
 
-        await createMutation.mutateAsync(payload);
+        const createdRes = await createMutation.mutateAsync(payload);
+        const newUserId = createdRes?.data?.id || createdRes?.id || createdRes?.data?.data?.id;
+
+        if (newUserId) {
+          const pendingDocs = [
+            { type: 'passport', file: formData.passportFile },
+            { type: 'license', file: formData.licenseFile },
+            { type: 'nib', file: formData.nibFile },
+            { type: 'resume', file: formData.resumeFile }
+          ].filter(d => d.file instanceof File);
+
+          for (const doc of pendingDocs) {
+            try {
+              const uploadData = new FormData();
+              uploadData.append('file', doc.file);
+              await api.post(`/users/${newUserId}/documents?type=${doc.type}`, uploadData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+            } catch (docErr) {
+              console.error(`Failed to upload ${doc.type} for new user:`, docErr);
+            }
+          }
+          if (fetchStaff) await fetchStaff();
+        }
+
+        swalSuccess('Success', 'User registered and documents saved successfully.');
         setIsModalOpen(false);
       } catch (err) {
         const errorMsg = err.response?.data?.message || err.message || 'An error occurred';
@@ -458,7 +513,30 @@ const Users = () => {
 
         console.log('[handleSave] calling updateMutation with:', { id: selectedUser.id, data: mergedData });
         const result = await updateMutation.mutateAsync({ id: selectedUser.id, data: mergedData });
-        console.log('[handleSave] updateMutation success:', result);
+        
+        const pendingDocs = [
+          { type: 'passport', file: formData.passportFile },
+          { type: 'license', file: formData.licenseFile },
+          { type: 'nib', file: formData.nibFile },
+          { type: 'resume', file: formData.resumeFile }
+        ].filter(d => d.file instanceof File);
+
+        if (pendingDocs.length > 0) {
+          for (const doc of pendingDocs) {
+            try {
+              const uploadData = new FormData();
+              uploadData.append('file', doc.file);
+              await api.post(`/users/${selectedUser.id}/documents?type=${doc.type}`, uploadData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+              });
+            } catch (docErr) {
+              console.error(`Failed to upload ${doc.type} for user:`, docErr);
+            }
+          }
+          if (fetchStaff) await fetchStaff();
+        }
+
+        swalSuccess('Success', 'User details and documents updated successfully.');
         setIsModalOpen(false);
       } catch (err) {
         console.error('[handleSave] Error during update:', err);

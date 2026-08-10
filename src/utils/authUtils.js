@@ -76,7 +76,7 @@ export function roleCanUpdateOrderStatus(role) {
  */
 export function roleCanManageInventoryVendorsWarehouses(role) {
     const key = normalizeRole(role);
-    return ['superadmin', 'admin', 'saas_client', 'client'].includes(key);
+    return ['superadmin', 'admin', 'saas_client', 'client', 'concierge', 'inventory'].includes(key);
 }
 
 /**

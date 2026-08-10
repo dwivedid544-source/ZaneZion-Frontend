@@ -208,7 +208,7 @@ const Inventory = () => {
     clientId: ''
   });
   const userRoleNorm = normalizeRole(currentUser?.role);
-  const [activeTab, setActiveTab] = useState(['superadmin', 'admin', 'client', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations'].includes(userRoleNorm) ? 'Marketplace' : 'Business');
+  const [activeTab, setActiveTab] = useState(['superadmin', 'admin', 'client', 'saas_client', 'inventory', 'inventorymanager', 'procurement', 'operations', 'concierge'].includes(userRoleNorm) ? 'Marketplace' : 'Business');
 
   /** When stock entry name matches an existing SKU, keep category dropdown aligned with that row */
   const entryCategorySyncKeyRef = React.useRef('');
@@ -261,6 +261,8 @@ const Inventory = () => {
   ) : null;
 
   const isSaaSPortal = userRoleNorm === 'saas_client' || userRoleNorm === 'client';
+  // Concierge sees all inventory (Marketplace + Business + SaaS) without restriction
+  const isConciergeRole = userRoleNorm === 'concierge';
 
   const displayedInventory = inventory.filter(i => {
     // Exclude custom orders, ad-hoc deliveries, and zero-price internal items from inventory catalog
@@ -282,6 +284,10 @@ const Inventory = () => {
     }
     if (isSaaSPortal) {
       // SaaS Client portal displays all inventory items belonging to their tenant
+      return true;
+    }
+    if (isConciergeRole) {
+      // Concierge (Storage Hub) displays all inventory items across all tabs
       return true;
     }
     if (activeTab === 'Marketplace') return (i.type || 'Marketplace') === 'Marketplace';
@@ -832,7 +838,7 @@ const Inventory = () => {
       render: (item) => `$${(parseFloat(item.price || 0) * parseInt(item.qty || 0)).toLocaleString()}`
     },
     { header: "Warehouse", accessor: "location" },
-    ...(isAdmin && ['Business', 'SaaS'].includes(activeTab) ? [{
+    ...(isAdmin && ['Business', 'SaaS'].includes(activeTab) || isConciergeRole ? [{
       header: "Client",
       accessor: "clientName",
       render: (item) => item.clientName || '—'
@@ -849,9 +855,9 @@ const Inventory = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-white tracking-tight">
-            Inventory Intelligence
+            {isConciergeRole ? 'Storage Hub' : 'Inventory Intelligence'}
           </h1>
-          <p className="text-secondary mt-1 font-medium">Precision stock orchestration and institutional supply chain visibility.</p>
+          <p className="text-secondary mt-1 font-medium">{isConciergeRole ? 'Luxury asset custody, stock visibility, and concierge supply management.' : 'Precision stock orchestration and institutional supply chain visibility.'}</p>
         </div>
         <div className="flex gap-3">
           {canManageInventory && (
@@ -936,18 +942,18 @@ const Inventory = () => {
           <div className="glass-card p-6">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
               <h3 className="text-sm font-bold text-white uppercase tracking-widest">Warehouse Ledger</h3>
-              {isAdmin && !isSaaSPortal && (
+              {(isAdmin || isConciergeRole) && !isSaaSPortal && (
                 <div className="flex bg-black/40 rounded-xl p-1 border border-white/5 w-full sm:w-auto overflow-x-auto whitespace-nowrap hide-scrollbar">
-                  {['Marketplace', 'Business' /*, 'SaaS' */].map((tab) => (
+                  {(isConciergeRole ? ['All Assets'] : ['Marketplace', 'Business' /*, 'SaaS' */]).map((tab) => (
                     <button
                       key={tab}
-                      onClick={() => setActiveTab(tab)}
-                      className={`flex-1 sm:flex-none px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${activeTab === tab
+                      onClick={() => !isConciergeRole && setActiveTab(tab)}
+                      className={`flex-1 sm:flex-none px-6 py-2 rounded-lg text-xs font-black uppercase tracking-widest transition-all ${isConciergeRole || activeTab === tab
                         ? 'bg-accent text-black shadow-lg shadow-accent/20'
                         : 'text-muted hover:text-white hover:bg-white/5'
                         }`}
                     >
-                      {tab} Inventory
+                      {tab} {isConciergeRole ? '' : 'Inventory'}
                     </button>
                   ))}
                 </div>

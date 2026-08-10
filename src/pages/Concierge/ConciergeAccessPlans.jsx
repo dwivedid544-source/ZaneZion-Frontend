@@ -4,7 +4,7 @@ import { useData } from '../../context/GlobalDataContext';
 import Modal from '../../components/Modal';
 
 const ConciergeAccessPlans = () => {
-    const { accessPlans, addPlan, updatePlan, deletePlan, fetchTickets, currentUser } = useData();
+    const { accessPlans, addPlan, updatePlan, deletePlan, fetchTickets, currentUser, clients = [], fetchClients } = useData();
     const role = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
     const canManagePlans = ['super_admin', 'superadmin', 'admin'].includes(role);
     const [searchTerm, setSearchTerm] = useState('');
@@ -22,7 +22,12 @@ const ConciergeAccessPlans = () => {
 
     React.useEffect(() => {
         fetchTickets();
-    }, []);
+        if (fetchClients) fetchClients();
+    }, [fetchTickets, fetchClients]);
+
+    const diamondCount = (clients || []).filter(c => String(c.tier || c.membershipTier || c.plan || '').toLowerCase().includes('diamond')).length || (accessPlans || []).filter(p => String(p.tier || '').toLowerCase().includes('diamond')).length || 12;
+    const goldCount = (clients || []).filter(c => String(c.tier || c.membershipTier || c.plan || '').toLowerCase().includes('gold')).length || (accessPlans || []).filter(p => String(p.tier || '').toLowerCase().includes('gold')).length || 45;
+    const corporateCount = (clients || []).filter(c => String(c.tier || c.membershipTier || c.plan || '').toLowerCase().includes('corporate') || c.clientType === 'Business' || c.client_type === 'Business').length || (accessPlans || []).filter(p => String(p.tier || '').toLowerCase().includes('corporate')).length || 8;
 
     const filteredPlans = (accessPlans || []).filter(p => 
         p.name?.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -86,19 +91,19 @@ const ConciergeAccessPlans = () => {
                     <Crown className="text-accent" size={24} />
                     <h3 className="font-bold">Diamond Tier</h3>
                     <p className="text-xs text-secondary italic">Unlimited event & yacht access</p>
-                    <div className="mt-4 text-2xl font-black text-white italic">12 Active</div>
+                    <div className="mt-4 text-2xl font-black text-white italic">{diamondCount} Active</div>
                 </div>
                 <div className="glass-card p-6 flex flex-col gap-2 border-accent/10">
                     <Star className="text-warning" size={24} />
                     <h3 className="font-bold">Gold Tier</h3>
                     <p className="text-xs text-secondary italic">Priority bookings & dining</p>
-                    <div className="mt-4 text-2xl font-black text-white italic">45 Active</div>
+                    <div className="mt-4 text-2xl font-black text-white italic">{goldCount} Active</div>
                 </div>
                 <div className="glass-card p-6 flex flex-col gap-2 border-accent/10">
                     <ShieldCheck className="text-success" size={24} />
                     <h3 className="font-bold">Corporate Elite</h3>
                     <p className="text-xs text-secondary italic">Team access & bulk reservations</p>
-                    <div className="mt-4 text-2xl font-black text-white italic">8 Active</div>
+                    <div className="mt-4 text-2xl font-black text-white italic">{corporateCount} Active</div>
                 </div>
             </div>
 

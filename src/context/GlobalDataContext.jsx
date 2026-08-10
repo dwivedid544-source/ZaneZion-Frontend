@@ -960,7 +960,7 @@ export const GlobalDataProvider = ({ children }) => {
   const filterDataForCurrentUser = React.useCallback(
     (dataArray) => {
       if (!Array.isArray(dataArray)) return [];
-      if (!currentUser) return [];
+      if (!currentUser) return dataArray;
 
       const role = normalizeRole(currentUser.role);
       // Super Admin and HQ staff see everything
@@ -1854,14 +1854,14 @@ export const GlobalDataProvider = ({ children }) => {
           const orderRef = rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null;
           const rawClientId = d.clientId ?? d.client_id ?? d.customer_id ?? null;
           const rawMissionType = d.missionType ?? d.mission_type ?? null;
-          const rawDriverName = d.driverName ?? d.driver_name ?? null;
+          const rawDriverName = d.driverName ?? d.driver_name ?? (d.assignee ? `${d.assignee.firstName || ''} ${d.assignee.lastName || ''}`.trim() : null) ?? d.driver ?? null;
           const rawPlate = d.plateNumber ?? d.plate_number ?? null;
           const rawPickup = d.pickupLocation ?? d.pickup_location ?? null;
           const rawDrop = d.dropLocation ?? d.drop_location ?? null;
           const rawRoute = d.route ?? null;
           const rawEta = d.etaSchedule ?? d.delivery_date ?? null;
           const rawFee = d.deliveryFee ?? d.delivery_fee ?? d.total_amount ?? d.amount ?? 0;
-          const rawDriverId = d.driverId ?? d.assigned_driver ?? d.driver_id ?? d.assigned_to ?? null;
+          const rawDriverId = d.driverId ?? d.assigned_driver ?? d.driver_id ?? d.assigned_to ?? d.assignedTo ?? d.assignee?.userId ?? null;
 
           return {
             id: `DEL-${String(d.id).padStart(3, "0")}`,
@@ -1888,7 +1888,10 @@ export const GlobalDataProvider = ({ children }) => {
             order_instructions: d.orderInstructions ?? d.order_instructions ?? null,
             status: d.status,
             driverId: rawDriverId,
+            assigned_driver: rawDriverId,
+            assignedTo: d.assignedTo ?? d.assigned_to ?? rawDriverId,
             driver: rawDriverName,
+            driverName: rawDriverName,
             vehicleId: rawPlate,
             pickupLocation: rawPickup,
             drop_location: rawDrop,
@@ -2472,7 +2475,7 @@ export const GlobalDataProvider = ({ children }) => {
       }
       if (eventsData.data?.success) {
         const eventsList = Array.isArray(eventsData.data.data) ? eventsData.data.data : [];
-        const mappedEvents = eventsList.map((e) => {
+        let mappedEvents = eventsList.map((e) => {
           const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
 
           let clientCandidate = null;
@@ -2533,14 +2536,15 @@ export const GlobalDataProvider = ({ children }) => {
           }
           return {
             ...r,
-            request: r.request_details,
-            requestedBy: r.requested_by,
-            time: parsedTime || r.delivery_time || "",
-            date: parsedDate || (r.created_at ? r.created_at.split("T")[0] : ""),
-            guest: r.guest || r.guestName || r.client_name || "VIP Suite",
+            request: r.request_details || r.request || r.requestType || r.request_type || "Concierge Service Request",
+            requestedBy: r.requested_by || r.requestedBy || r.guestName || r.guest || "Client",
+            time: parsedTime || r.delivery_time || r.time || "",
+            date: parsedDate || (r.created_at ? r.created_at.split("T")[0] : r.date || ""),
+            guest: r.guest || r.guestName || r.client_name || r.room || "VIP Suite",
             priority: capitalizePriority(r.priority),
           };
         });
+
         // Store raw guest requests so the filter-effect can re-apply when user loads
         setRawGuestRequests(mappedGuest);
         if (currentUser) setGuestRequests(filterDataForCurrentUser(mappedGuest));
@@ -4517,29 +4521,58 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       const patchBody = {
         status: apiStatus,
-        vehicle_id: updated.vehicle_db_id,
-        route_distance: updated.route_distance !== '' ? updated.route_distance : null,
-        staff_pay_rate: updated.staff_pay_rate !== '' ? updated.staff_pay_rate : null,
-        delivery_fee: updated.delivery_fee !== '' ? updated.delivery_fee : 0,
-        mode: updated.mode || null,
       };
-      if (updated.driver !== undefined || updated.driver_name !== undefined) {
-        patchBody.driver_name = updated.driver ?? updated.driver_name ?? null;
-        patchBody.driver = patchBody.driver_name; // for mock API compatibility
+
+      const rawDriverId = updated.assigned_driver !== undefined ? updated.assigned_driver : (updated.driverId !== undefined ? updated.driverId : (updated.assignedTo !== undefined ? updated.assignedTo : undefined));
+
+      if (rawDriverId !== undefined) {
+        if (rawDriverId === null || rawDriverId === '') {
+          patchBody.assigned_driver = null;
+          patchBody.assignedTo = null;
+        } else {
+          const n = Number(rawDriverId);
+          if (Number.isFinite(n) && !Number.isNaN(n)) {
+            patchBody.assigned_driver = n;
+          }
+        }
       }
-      if (updated.vehicleId !== undefined || updated.plate_number !== undefined) {
-        patchBody.plate_number = updated.vehicleId ?? updated.plate_number ?? null;
+
+      if (updated.routeDistance != null || updated.route_distance != null) {
+        const val = parseFloat(updated.routeDistance ?? updated.route_distance);
+        if (!isNaN(val)) patchBody.routeDistance = val;
       }
-      const assignId = updated.assigned_driver !== undefined ? updated.assigned_driver : (updated.driverId !== undefined ? updated.driverId : updated.driver_id);
-      if (assignId !== undefined) {
-        const n = Number(assignId);
-        patchBody.assigned_driver = (assignId !== null && Number.isFinite(n) && !Number.isNaN(n)) ? n : assignId;
-        patchBody.driverId = patchBody.assigned_driver; // for mock API compatibility
+
+      if (updated.staffPayRate != null || updated.staff_pay_rate != null) {
+        const val = parseFloat(updated.staffPayRate ?? updated.staff_pay_rate);
+        if (!isNaN(val)) patchBody.staffPayRate = val;
+      }
+
+      if (updated.deliveryFee != null || updated.delivery_fee != null) {
+        const val = parseFloat(updated.deliveryFee ?? updated.delivery_fee);
+        if (!isNaN(val)) patchBody.deliveryFee = val;
+      }
+
+      if (updated.transportMode || updated.mode) {
+        patchBody.transportMode = String(updated.transportMode || updated.mode);
+      }
+
+      if (updated.vehicleRef || updated.plate_number || updated.vehicleId) {
+        patchBody.vehicleRef = String(updated.vehicleRef || updated.plate_number || updated.vehicleId);
       }
 
       console.log('Sending PUT to /deliveries/' + patchId, patchBody);
-      const res = await api.put(`/deliveries/${patchId}`, patchBody);
-      console.log('PUT response:', res.data);
+      try {
+        const res = await api.put(`/deliveries/${patchId}`, patchBody);
+        console.log('PUT response:', res.data);
+      } catch (delErr) {
+        console.warn('PUT /deliveries failed, trying order status fallback:', delErr?.response?.data?.message || delErr.message);
+        const numericOrderId = updated.order_id_raw || (updated.orderId ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10) : patchId);
+        if (numericOrderId && !isNaN(numericOrderId)) {
+          await api.patch(`/orders/${numericOrderId}/status`, { status: updated.status === 'assigned' ? 'logistics' : updated.status });
+        } else {
+          throw delErr;
+        }
+      }
 
       await syncGlobalState();
       const numericOrderId =
@@ -4588,6 +4621,7 @@ export const GlobalDataProvider = ({ children }) => {
         "Delivery status API failed:",
         error?.response?.data || error?.message,
       );
+      throw error;
     }
   };
 
@@ -7184,8 +7218,9 @@ export const GlobalDataProvider = ({ children }) => {
         Rejected: "rejected",
         Pending: "pending",
       };
+      const newStatus = reqData.status ? (statusMap[reqData.status] || reqData.status.toLowerCase()) : undefined;
       const postData = {
-        status: reqData.status ? (statusMap[reqData.status] || reqData.status.toLowerCase()) : undefined,
+        status: newStatus,
         leave_type: reqData.type || reqData.leave_type,
         start_date: reqData.start || reqData.start_date,
         end_date: reqData.end || reqData.end_date,
@@ -7193,11 +7228,30 @@ export const GlobalDataProvider = ({ children }) => {
         reason: reqData.reason,
       };
       const res = await api.put(`/staff/leave/${reqData.id}`, postData);
+
+      // If status is updated to approved, deduct leave duration from user's vacation balance
+      if (newStatus === "approved" && (reqData.userId || reqData.user_id)) {
+        const targetUserId = Number(reqData.userId || reqData.user_id);
+        const leaveHours = reqData.hours || (reqData.duration === "Half Day" ? 4 : 8);
+        const leaveDays = Math.max(1, Math.ceil(leaveHours / 8));
+        
+        const staffUser = (staffList || []).find(u => Number(u.id) === targetUserId);
+        if (staffUser) {
+          const currentBal = staffUser.vacationBalance ?? staffUser.vacation_balance ?? 15;
+          const updatedBal = Math.max(0, currentBal - leaveDays);
+          try {
+            await updateUser({ ...staffUser, vacationBalance: updatedBal, vacation_balance: updatedBal });
+          } catch (balErr) {
+            console.warn("Could not deduct vacation balance:", balErr.message);
+          }
+        }
+      }
+
       if (res.data?.success) {
         await fetchLeaveRequests();
         addLog({
           action: "Leave Updated",
-          detail: `Leave request ${reqData.id} updated.`,
+          detail: `Leave request ${reqData.id} updated to ${newStatus}.`,
           type: "system",
         });
       }

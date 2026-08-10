@@ -193,15 +193,38 @@ const Deliveries = () => {
     const list = [];
     const seen = new Set();
 
-    [...(orders || []), ...(chauffeurRequests || [])].forEach((o) => {
-      if (!o) return;
+    const isChauffeurMission = String(formData.missionType || '').toLowerCase() === 'chauffeur';
+
+    const annotatedChauffeurReqs = (chauffeurRequests || []).map(r => ({ ...r, isChauffeur: true, missionType: 'Chauffeur' }));
+    const annotatedOrders = (orders || []).map(o => {
+      const typeStr = String(o.orderType || o.type || o.missionType || o.metadata?.missionType || '').toLowerCase();
+      const isCh = typeStr.includes('chauffeur') || typeStr.includes('service');
+      return { ...o, isChauffeur: isCh };
+    });
+
+    const allSources = [...annotatedChauffeurReqs, ...annotatedOrders];
+
+    const activeSources = allSources.filter(o => {
+      if (!o) return false;
+      const st = String(o.status || '').toLowerCase();
+      const isInactive = ['completed', 'delivered', 'cancelled', 'rejected'].includes(st);
+      if (isInactive) return false;
+
+      if (isChauffeurMission) {
+        return !!o.isChauffeur;
+      } else {
+        return !o.isChauffeur;
+      }
+    });
+
+    activeSources.forEach((o) => {
       const refId = String(o.id || o.db_id || o.orderNumber || o.deliveryNumber || '').trim();
       if (!refId || seen.has(refId)) return;
       seen.add(refId);
 
       const clientLabel = formatClientDisplayName(o, clients, [...(users || []), ...(customerUsers || [])]);
       const drop = o.location || o.dropLocation || o.drop_location || o.deliveryAddress || o.delivery_address || '';
-      const type = String(o.orderType || o.type || o.missionType || 'Order').toUpperCase();
+      const type = String(o.orderType || o.type || o.missionType || (o.isChauffeur ? 'CHAUFFEUR' : 'ORDER')).toUpperCase();
 
       list.push({
         id: refId,
@@ -210,8 +233,8 @@ const Deliveries = () => {
       });
     });
 
-    return list;
-  }, [orders, chauffeurRequests, clients, users, customerUsers]);
+    return list.sort((a, b) => (Number(b.id) || 0) - (Number(a.id) || 0));
+  }, [orders, chauffeurRequests, clients, users, customerUsers, formData.missionType]);
 
   const handleReferenceLookup = React.useCallback(async (refInput, targetOrder = null) => {
     const rawRef = String(refInput || '').trim();

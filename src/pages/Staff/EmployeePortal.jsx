@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied } from '../../utils/swal';
+import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied, swalLoading } from '../../utils/swal';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
     Clock, CheckCircle, MapPin, DollarSign,
@@ -74,6 +74,26 @@ const EmployeePortal = () => {
     const [selectedMission, setSelectedMission] = useState(null);
 
 
+    const isUserDriverMatch = (d) => {
+        if (!currentUser) return false;
+        const currentUserId = String(currentUser.id);
+        const currentEmpId = String(currentUser.employeeId || currentUser.employee_id || currentUser.id);
+        const currentName = String(currentUser.name || '').toLowerCase().trim();
+
+        const matchId =
+            (d.assignedTo && String(d.assignedTo) === currentUserId) ||
+            (d.assignedTo && String(d.assignedTo) === currentEmpId) ||
+            (d.assigned_driver && String(d.assigned_driver) === currentUserId) ||
+            (d.driverId && String(d.driverId) === currentUserId) ||
+            (d.driver_id && String(d.driver_id) === currentUserId);
+
+        const matchName =
+            (d.driver && String(d.driver).toLowerCase().trim() === currentName) ||
+            (d.assigned_driver_name && String(d.assigned_driver_name).toLowerCase().trim() === currentName);
+
+        return matchId || matchName;
+    };
+
     // Filter assignments for the current user - prioritize ID
     const myAssignments = staffAssignments.filter(a => 
         (a.assigneeId && String(a.assigneeId) === String(currentUser?.id)) || 
@@ -82,26 +102,29 @@ const EmployeePortal = () => {
 
     // Add real deliveries assigned to this driver
     const myDeliveries = deliveries.filter(d => {
-        const isMine =
-            (d.driverId && String(d.driverId) === String(currentUser?.id)) ||
-            (d.driver === currentUser?.name);
-        const isLogisticsMission = String(d.mission_type || '').toLowerCase() !== 'chauffeur';
-        return isMine && isLogisticsMission;
+        const isMine = isUserDriverMatch(d);
+        const isLogisticsMission = String(d.mission_type || d.missionType || '').toLowerCase() !== 'chauffeur';
+        const st = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
+        const isActiveOrAccepted = ['assigned', 'accepted', 'en_route', 'in_transit', 'dispatched', 'planned'].includes(st);
+        return isMine && isLogisticsMission && isActiveOrAccepted;
     });
+
     // Chauffeur missions assigned to this driver
     const myChauffeurMissions = deliveries.filter(d => {
-        const isMine =
-            (d.driverId && String(d.driverId) === String(currentUser?.id)) ||
-            (d.driver === currentUser?.name);
-        const isChauffeur = String(d.mission_type || '').toLowerCase() === 'chauffeur';
-        return isMine && isChauffeur;
+        const isMine = isUserDriverMatch(d);
+        const isChauffeur = String(d.mission_type || d.missionType || '').toLowerCase() === 'chauffeur';
+        const st = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
+        const isActiveOrAccepted = ['assigned', 'accepted', 'en_route', 'in_transit', 'dispatched', 'planned'].includes(st);
+        return isMine && isChauffeur && isActiveOrAccepted;
     });
+
     const openDeliveryQueue = deliveries.filter((d) => {
-        const isLogisticsMission = String(d.mission_type || '').toLowerCase() !== 'chauffeur';
+        const isLogisticsMission = String(d.mission_type || d.missionType || '').toLowerCase() !== 'chauffeur';
         const s = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
-        const isOpen = ['pending', 'pending_pickup', 'pending_review', ''].includes(s);
-        const hasDriver = !!(d.driverId || String(d.driver || '').trim());
-        return isLogisticsMission && isOpen && !hasDriver;
+        const isAssignedOrFinished = ['assigned', 'accepted', 'en_route', 'in_transit', 'dispatched', 'delivered', 'completed', 'logistics'].includes(s);
+        const isOpenStatus = ['pending', 'pending_pickup', 'pending_review', 'unassigned', ''].includes(s);
+        const hasAssignedDriver = !!(d.assignedTo || d.assigned_driver || d.driverId || d.driver_id || (typeof d.driver === 'string' && d.driver.trim()));
+        return isLogisticsMission && isOpenStatus && !hasAssignedDriver && !isAssignedOrFinished;
     });
 
     const pendingAssignments = staffAssignments.filter(a => a.status === 'Pending' && !a.assigneeId);
@@ -133,7 +156,67 @@ const EmployeePortal = () => {
         !['delivered', 'completed', 'cancelled'].includes(String(d.status || '').toLowerCase().replace(/\s+/g, '_'))
     ).length;
 
-    const handleStatusChange = (asg, newStatus, proofData = null) => {
+    const handleAcceptMission = async (del) => {
+        try {
+            swalLoading('Accepting Mission...', 'The mission is accepting, please wait...');
+            await updateDelivery({
+                ...del,
+                status: 'assigned',
+                assigned_driver: currentUser?.id,
+                driverId: currentUser?.id,
+                driver: currentUser?.name
+            });
+            await new Promise(resolve => setTimeout(resolve, 800));
+            swalSuccess('Mission Accepted', 'Mission assigned to your roster successfully.');
+        } catch (err) {
+            swalError('Error', err?.response?.data?.message || err?.message || 'Failed to accept mission.');
+        }
+    };
+
+    const handleRejectMission = async (del) => {
+        try {
+            swalLoading('Rejecting Mission...', 'The mission is rejecting, please wait...');
+            await updateDelivery({
+                ...del,
+                status: 'pending',
+                assigned_driver: null,
+                assignedTo: null,
+                driverId: null,
+                driver: null
+            });
+            await new Promise(resolve => setTimeout(resolve, 800));
+            swalInfo('Mission Rejected', 'You have rejected this mission. It remains available for other staff.');
+        } catch (err) {
+            swalError('Error', err?.response?.data?.message || err?.message || 'Failed to reject mission.');
+        }
+    };
+
+    const handleStartTrip = async (del) => {
+        try {
+            await updateDelivery({
+                ...del,
+                status: 'en_route'
+            });
+            swalSuccess('Trip Started', 'Mission status updated to En Route.');
+        } catch (err) {
+            swalError('Error', err?.response?.data?.message || err?.message || 'Failed to start trip.');
+        }
+    };
+
+    const handleCompleteMission = async (del) => {
+        try {
+            await updateDelivery({
+                ...del,
+                status: 'Delivered',
+                deliveredAt: new Date().toISOString()
+            });
+            swalSuccess('Mission Completed', 'Mission marked as delivered successfully.');
+        } catch (err) {
+            swalError('Error', err?.response?.data?.message || err?.message || 'Failed to complete mission.');
+        }
+    };
+
+    const handleStatusChange = async (asg, newStatus, proofData = null) => {
         if (newStatus === 'view_details') {
             const matchingDel = deliveries.find(d => 
                 (asg.orderId && d.orderId === asg.orderId) || 
@@ -145,7 +228,6 @@ const EmployeePortal = () => {
                 setSelectedMission(matchingDel);
                 setIsMissionModalOpen(true);
             } else {
-                // If it's a general task, we can still show asg details
                 setSelectedMission({
                     ...asg,
                     mission_type: 'General Task',
@@ -158,74 +240,109 @@ const EmployeePortal = () => {
             return;
         }
 
-        const updatedAsg = { ...asg, status: newStatus, ...proofData };
+        try {
+            const updatedAsg = { ...asg, status: newStatus, ...proofData };
 
-        if (asg.source === 'delivery' || String(asg.id).startsWith('DEL-')) {
-            const rawId = asg.db_id || asg.rawId || asg.id;
-            const isAlreadyAssigned = String(asg.status).toLowerCase() === 'assigned';
-            let finalStatus = newStatus;
+            if (asg.source === 'delivery' || String(asg.id).startsWith('DEL-')) {
+                const rawId = asg.db_id || asg.rawId || asg.id;
+                const isAlreadyAssigned = String(asg.status).toLowerCase() === 'assigned';
+                let finalStatus = newStatus;
+                
+                if (newStatus === 'in_progress') {
+                    finalStatus = isAlreadyAssigned ? 'en_route' : 'assigned';
+                } else if (newStatus === 'Completed') {
+                    finalStatus = 'Delivered';
+                }
+
+                const payload = {
+                    id: rawId,
+                    status: finalStatus,
+                    ...proofData,
+                };
+
+                if (newStatus === 'in_progress' || newStatus === 'assigned') {
+                    payload.assigned_driver = currentUser?.id;
+                    payload.driverId = currentUser?.id;
+                    payload.driver = currentUser?.name;
+                } else if (newStatus === 'pending') {
+                    payload.assigned_driver = null;
+                    payload.assignedTo = null;
+                    payload.driverId = null;
+                    payload.driver = null;
+                }
+
+                await updateDelivery(payload);
+
+                if (newStatus === 'in_progress' || newStatus === 'assigned') {
+                    swalSuccess('Mission Accepted', 'Mission assigned to your roster successfully.');
+                } else if (newStatus === 'pending') {
+                    swalInfo('Mission Rejected', 'You have rejected this mission. It remains available for other staff.');
+                } else if (newStatus === 'en_route') {
+                    swalSuccess('Trip Started', 'Mission status updated to En Route.');
+                } else if (newStatus === 'Completed' || newStatus === 'Delivered') {
+                    swalSuccess('Mission Completed', 'Mission marked as delivered successfully.');
+                }
+
+                addLog({
+                    action: `Mission ${newStatus}`,
+                    detail: `${currentUser?.name || 'User'} updated mission ${asg.id} to ${newStatus}.`,
+                    type: 'system'
+                });
+                return;
+            }
             
-            if (newStatus === 'in_progress') {
-                finalStatus = isAlreadyAssigned ? 'en_route' : 'assigned';
-            } else if (newStatus === 'Completed') {
-                finalStatus = 'Delivered';
+            if (asg.source === 'mission') {
+                const isAlreadyAssigned = String(asg.status).toLowerCase() === 'assigned';
+                const finalStatus = (newStatus === 'in_progress' && !isAlreadyAssigned) ? 'assigned' : newStatus;
+                
+                const payload = {
+                    id: asg.id,
+                    rawId: asg.rawId,
+                    status: finalStatus,
+                    assigneeId: (newStatus === 'in_progress' || newStatus === 'assigned') ? currentUser?.id : asg.assigneeId,
+                    assignee: (newStatus === 'in_progress' || newStatus === 'assigned') ? currentUser?.name : asg.assignee,
+                    ...proofData
+                };
+                await updateMission(payload);
+
+                if (newStatus === 'in_progress' || newStatus === 'assigned') {
+                    swalSuccess('Mission Accepted', 'Mission assigned to your roster successfully.');
+                } else if (newStatus === 'pending') {
+                    swalInfo('Mission Rejected', 'You have rejected this mission.');
+                } else {
+                    swalSuccess('Status Updated', `Mission updated to ${newStatus}.`);
+                }
+
+                addLog({
+                    action: `Mission ${newStatus}`,
+                    detail: `${currentUser?.name || 'User'} updated mission ${asg.id} to ${newStatus}.`,
+                    type: 'system'
+                });
+                return;
             }
 
-            const payload = {
-                id: rawId,
-                status: finalStatus,
-                ...proofData,
-            };
-            // If they are accepting, assign them
+            if (asg.status === 'Pending' && !asg.assigneeId) {
+                updatedAsg.assigneeId = currentUser?.id;
+                updatedAsg.assignee = currentUser?.name;
+            }
+
+            await updateAssignment(updatedAsg);
+
             if (newStatus === 'in_progress' || newStatus === 'assigned') {
-                payload.driverId = currentUser?.id;
-                payload.driver = currentUser?.name;
+                swalSuccess('Task Accepted', 'Task assigned to your roster successfully.');
+            } else if (newStatus === 'pending') {
+                swalInfo('Task Rejected', 'You have rejected this task.');
+            } else {
+                swalSuccess('Task Updated', `Task status updated to ${newStatus}.`);
             }
-            updateDelivery(payload);
+
             addLog({
-                action: `Mission ${newStatus}`,
-                detail: `${currentUser?.name || 'User'} updated mission ${asg.id} to ${newStatus}.`,
+                action: `Task ${newStatus}`,
+                detail: `${currentUser?.name || 'User'} updated task ${asg.id} to ${newStatus}.`,
                 type: 'system'
             });
-            return;
-        }
-        
-        if (asg.source === 'mission') {
-            const isAlreadyAssigned = String(asg.status).toLowerCase() === 'assigned';
-            const finalStatus = (newStatus === 'in_progress' && !isAlreadyAssigned) ? 'assigned' : newStatus;
-            
-            const payload = {
-                id: asg.id,
-                rawId: asg.rawId,
-                status: finalStatus,
-                assigneeId: (newStatus === 'in_progress' || newStatus === 'assigned') ? currentUser?.id : asg.assigneeId,
-                assignee: (newStatus === 'in_progress' || newStatus === 'assigned') ? currentUser?.name : asg.assignee,
-                ...proofData
-            };
-            updateMission(payload);
-            addLog({
-                action: `Mission ${newStatus}`,
-                detail: `${currentUser?.name || 'User'} updated mission ${asg.id} to ${newStatus}.`,
-                type: 'system'
-            });
-            return;
-        }
-
-        if (asg.status === 'Pending' && !asg.assigneeId) {
-            updatedAsg.assigneeId = currentUser?.id;
-            updatedAsg.assignee = currentUser?.name;
-        }
-
-        updateAssignment(updatedAsg);
-        addLog({
-            action: `Task ${newStatus}`,
-            detail: `${currentUser?.name || 'User'} updated assignment ${asg.id} to ${newStatus}.`,
-            type: 'system'
-        });
-
-        const matchingDel = deliveries.find(d => d.orderId === asg.orderId || d.id === asg.deliveryId || d.taskRef === asg.id);
-        if (newStatus === 'Completed' && matchingDel) {
-            updateDelivery({ ...matchingDel, status: 'Delivered', deliveredAt: new Date().toISOString() });
+        } catch (err) {
+            swalError('Error', err?.response?.data?.message || err?.message || 'Failed to update status.');
         }
     };
 
@@ -509,19 +626,14 @@ const EmployeePortal = () => {
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => updateDelivery({
-                                                        ...del,
-                                                        status: 'assigned',
-                                                        driverId: currentUser?.id,
-                                                        driver: currentUser?.name
-                                                    })}
+                                                    onClick={() => handleAcceptMission(del)}
                                                     className="flex-[1.5] py-4 bg-accent text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-accent/20 flex items-center justify-center gap-2"
                                                 >
                                                     <Check size={18} /> Accept Mission
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => swalInfo('Mission Ignored', 'You have ignored this mission. It remains available for other staff.')}
+                                                    onClick={() => handleRejectMission(del)}
                                                     className="flex-1 py-4 bg-white/5 border border-white/10 text-secondary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all flex items-center justify-center gap-2"
                                                 >
                                                     <X size={16} /> Reject
@@ -582,19 +694,14 @@ const EmployeePortal = () => {
                                                         <>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => updateDelivery({
-                                                                    ...del,
-                                                                    status: 'assigned',
-                                                                    driverId: currentUser?.id,
-                                                                    driver: currentUser?.name
-                                                                })}
+                                                                onClick={() => handleAcceptMission(del)}
                                                                 className="btn-primary py-2 px-4 text-[10px]"
                                                             >
                                                                 Accept
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => updateDelivery({ ...del, status: 'pending', driverId: null, driver: null })}
+                                                                onClick={() => handleRejectMission(del)}
                                                                 className="py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border border-danger/40 text-danger hover:bg-danger/10"
                                                             >
                                                                 Decline
@@ -607,14 +714,14 @@ const EmployeePortal = () => {
                                                         <>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => updateDelivery({ ...del, status: 'en_route' })}
+                                                                onClick={() => handleStartTrip(del)}
                                                                 className="btn-primary py-2 px-4 text-[10px]"
                                                             >
                                                                 Start trip
                                                             </button>
                                                             <button
                                                                 type="button"
-                                                                onClick={() => updateDelivery({ ...del, status: 'pending', driverId: null, driver: null })}
+                                                                onClick={() => handleRejectMission(del)}
                                                                 className="py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border border-danger/40 text-danger hover:bg-danger/10"
                                                             >
                                                                 Decline
@@ -626,7 +733,7 @@ const EmployeePortal = () => {
                                                     return (
                                                         <button
                                                             type="button"
-                                                            onClick={() => updateDelivery({ ...del, status: 'Delivered' })}
+                                                            onClick={() => handleCompleteMission(del)}
                                                             className="bg-success text-white py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all"
                                                         >
                                                             Mark delivered
@@ -696,14 +803,14 @@ const EmployeePortal = () => {
                                                             <>
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => updateDelivery({ ...del, status: 'en_route' })}
+                                                                    onClick={() => handleStartTrip(del)}
                                                                     className="btn-primary py-2 px-4 text-[10px]"
                                                                 >
                                                                     Start trip
                                                                 </button>
                                                                 <button
                                                                     type="button"
-                                                                    onClick={() => updateDelivery({ ...del, status: 'pending', driverId: null, driver: null })}
+                                                                    onClick={() => handleRejectMission(del)}
                                                                     className="py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest border border-danger/40 text-danger hover:bg-danger/10"
                                                                 >
                                                                     Decline
@@ -715,7 +822,7 @@ const EmployeePortal = () => {
                                                         return (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => updateDelivery({ ...del, status: 'Delivered' })}
+                                                                onClick={() => handleCompleteMission(del)}
                                                                 className="bg-success text-white py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all"
                                                             >
                                                                 Mark completed
@@ -1454,12 +1561,7 @@ const EmployeePortal = () => {
                             {!selectedMission.driverId && (
                                 <button
                                     onClick={() => {
-                                        updateDelivery({
-                                            ...selectedMission,
-                                            status: 'assigned',
-                                            driverId: currentUser?.id,
-                                            driver: currentUser?.name
-                                        });
+                                        handleAcceptMission(selectedMission);
                                         setIsMissionModalOpen(false);
                                     }}
                                     className="flex-1 py-4 bg-accent text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all"

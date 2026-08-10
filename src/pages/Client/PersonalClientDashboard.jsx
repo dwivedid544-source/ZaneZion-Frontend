@@ -144,7 +144,9 @@ const PersonalClientDashboard = () => {
   const isMyOrder = (o) => {
     if (!o) return false;
     const typeStr = String(o.orderType || o.type || '').toUpperCase();
-    if (typeStr === 'PROJECT') return false; 
+    if (typeStr === 'PROJECT' || typeStr === 'CHAUFFEUR' || typeStr.includes('CHAUFFEUR')) return false; 
+    const itemsNames = (o.items || []).map(i => String(i.name || '').toUpperCase());
+    if (itemsNames.some(n => n.includes('CHAUFFEUR'))) return false;
 
     const orderClientId = String(o.clientId || o.client_id || o.companyId || o.company_id || '');
     const orderCustId = String(o.customer_id || o.customerId || o.created_by || o.createdById || o.userId || o.user_id || '');
@@ -331,7 +333,20 @@ const PersonalClientDashboard = () => {
               {/* Transaction Ledger Table / Cards */}
               <div className="space-y-3">
                 {(() => {
-                  const combinedHistory = [
+                  const rawCombined = [
+                    ...clientChauffeurRequests.map(r => ({
+                      txId: `CH-${r.id}`,
+                      type: `VIP Chauffeur (${r.serviceType || 'One Way'})`,
+                      date: r.dueDate || r.requestDate || 'N/A',
+                      rawDate: r.createdAt || r.created_at || r.requestDate || r.dueDate,
+                      rawId: r.id,
+                      amount: parseFloat(r.chauffeurFee || r.chauffeur_fee || 120),
+                      status: r.status,
+                      proofRef: `PROOF-CH-${r.id}`,
+                      raw: r,
+                      category: 'chauffeur',
+                      isDone: CHAUFFEUR_DONE.includes(String(r.status || '').toLowerCase().replace(/\s+/g, '_'))
+                    })),
                     ...clientOrders.map(o => {
                       const liveStatus = resolveLiveOrderStatus(o);
                       return {
@@ -348,19 +363,6 @@ const PersonalClientDashboard = () => {
                         isDone: isDoneOrder(liveStatus)
                       };
                     }),
-                    ...clientChauffeurRequests.map(r => ({
-                      txId: `CH-${r.id}`,
-                      type: `VIP Chauffeur (${r.serviceType || 'One Way'})`,
-                      date: r.dueDate || r.requestDate || 'N/A',
-                      rawDate: r.createdAt || r.created_at || r.requestDate || r.dueDate,
-                      rawId: r.id,
-                      amount: parseFloat(r.chauffeurFee || r.chauffeur_fee || 120),
-                      status: r.status,
-                      proofRef: `PROOF-CH-${r.id}`,
-                      raw: r,
-                      category: 'chauffeur',
-                      isDone: CHAUFFEUR_DONE.includes(String(r.status || '').toLowerCase().replace(/\s+/g, '_'))
-                    })),
                     ...clientInvoices.filter(i => String(i.status || '').toLowerCase() === 'paid').map(i => ({
                       txId: `INV-${i.id}`,
                       type: `Settled Invoice Payment`,
@@ -374,7 +376,20 @@ const PersonalClientDashboard = () => {
                       category: 'invoices',
                       isDone: true
                     }))
-                  ].sort((a, b) => {
+                  ];
+
+                  const seenTxKeys = new Set();
+                  const combinedHistory = rawCombined.filter(tx => {
+                    const numId = String(tx.rawId || '').replace(/\D/g, '');
+                    if (numId) {
+                      if (seenTxKeys.has(`num-${numId}`)) return false;
+                      seenTxKeys.add(`num-${numId}`);
+                    }
+                    const key = `${tx.category}-${tx.rawId}`;
+                    if (seenTxKeys.has(key)) return false;
+                    seenTxKeys.add(key);
+                    return true;
+                  }).sort((a, b) => {
                     const timeA = new Date(a.rawDate || a.date || 0).getTime();
                     const timeB = new Date(b.rawDate || b.date || 0).getTime();
                     if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;

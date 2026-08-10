@@ -13,6 +13,7 @@ import Pagination from '../../components/Common/Pagination';
 import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChauffeurMissions, useCreateChauffeurMission, useUpdateChauffeurMission, useDeleteChauffeurMission } from '../../hooks/api/useChauffeur';
+import { formatClientDisplayName } from '../../utils/apiHelpers';
 
 const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
     const [eta, setEta] = useState(null);
@@ -101,9 +102,11 @@ const Chauffeur = () => {
     const {
         currentUser,
         users,
+        customerUsers,
         clients,
         fetchStaff,
         fetchClients,
+        fetchCustomerUsers,
         hasMenuPermission,
         systemSettings,
         fetchSystemSettings,
@@ -119,6 +122,7 @@ const Chauffeur = () => {
     useEffect(() => {
         fetchStaff();
         fetchClients();
+        if (fetchCustomerUsers) fetchCustomerUsers();
         fetchSystemSettings();
         fetchFleet();
 
@@ -207,14 +211,31 @@ const Chauffeur = () => {
     }, [systemSettings]);
 
     const displayFee = (row) => {
-        const amount = Number(row?.chauffeurFee ?? row?.chauffeur_fee ?? row?.total_amount ?? 0);
-        return Number.isFinite(amount) ? amount : 0;
+        const rawAmount = Number(row?.chauffeurFee ?? row?.chauffeur_fee ?? row?.total_amount ?? row?.unitPrice ?? 0);
+        const amount = Number.isFinite(rawAmount) ? rawAmount : 0;
+        const sType = row?.serviceType || 'One Way';
+        const days = parseInt(row?.numberOfDays || row?.dailyDays || 1, 10) || 1;
+        if (sType === 'Round Trip') {
+            return (amount > 0 && amount <= defaultChauffeurFee * 1.5) ? amount * 2 : (amount > 0 ? amount : defaultChauffeurFee * 2);
+        }
+        if (sType === 'Daily Service' && days > 1) {
+            return (amount > 0 && amount <= defaultChauffeurFee * 1.5) ? amount * days : (amount > 0 ? amount : defaultChauffeurFee * days);
+        }
+        return amount > 0 ? amount : defaultChauffeurFee;
     };
 
+    const [daysCountInput, setDaysCountInput] = useState(1);
+
     /** Price shown / submitted for retail customers (cannot self-edit) */
-    const customerLockedFee = editingRequest
-        ? (Number(editingRequest.chauffeurFee ?? editingRequest.chauffeur_fee ?? editingRequest.total_amount ?? 0) || 0)
-        : 0;
+    const customerLockedFee = useMemo(() => {
+        if (editingRequest) {
+            return (Number(editingRequest.chauffeurFee ?? editingRequest.chauffeur_fee ?? editingRequest.total_amount ?? 0) || 0);
+        }
+        const base = defaultChauffeurFee;
+        if (serviceType === 'Round Trip') return Number((base * 2).toFixed(2));
+        if (serviceType === 'Daily Service' && daysCountInput > 1) return Number((base * daysCountInput).toFixed(2));
+        return base;
+    }, [editingRequest, defaultChauffeurFee, serviceType, daysCountInput]);
 
     const mergePassengerPayload = (req, patch = {}) => ({
         passengers: req.numberOfPassengers ?? 1,
@@ -270,20 +291,31 @@ const Chauffeur = () => {
         // For staff admin: resolve selected client from dropdown
         const selectedClientId = isStaffAdmin ? formData.get('assignClient') : null;
         const selectedClient = isStaffAdmin && selectedClientId ? (clients || []).find(c => String(c.id) === selectedClientId) : null;
-        let normalizedFee = 0;
+        const daysCount = serviceType === 'Daily Service' ? (parseInt(formData.get('numberOfDays'), 10) || 1) : 1;
+        let baseFee = 0;
         if (isFeeLocked) {
             const existing = Number(editingRequest?.chauffeurFee ?? editingRequest?.chauffeur_fee ?? editingRequest?.total_amount);
-            normalizedFee = editingRequest && Number.isFinite(existing) && existing >= 0
+            baseFee = editingRequest && Number.isFinite(existing) && existing >= 0
                 ? Number(existing.toFixed(2))
                 : defaultChauffeurFee;
         } else {
             const feeInput = parseFloat(formData.get('chauffeurFee') || 0);
-            normalizedFee = Number.isFinite(feeInput) && feeInput >= 0 ? Number(feeInput.toFixed(2)) : defaultChauffeurFee;
+            baseFee = Number.isFinite(feeInput) && feeInput >= 0 ? Number(feeInput.toFixed(2)) : defaultChauffeurFee;
         }
+        let normalizedFee = baseFee;
+        if (serviceType === 'Round Trip') {
+            normalizedFee = Number((baseFee * 2).toFixed(2));
+        } else if (serviceType === 'Daily Service' && daysCount > 1) {
+            normalizedFee = Number((baseFee * daysCount).toFixed(2));
+        }
+
+        const clientDisplayName = isStaffAdmin 
+            ? (selectedClient?.name || selectedClient?.business_name || currentUser?.name) 
+            : (currentUser?.name ? (currentUser.name.includes('(Personal Client)') ? currentUser.name : `${currentUser.name} (Personal Client)`) : 'Personal Client');
 
         const request = {
             clientId: isStaffAdmin ? (selectedClientId || currentUser?.company_id || 'CLT-GUEST') : (currentUser?.clientId || currentUser?.company_id || 'CLT-GUEST'),
-            clientName: isStaffAdmin ? (selectedClient?.name || selectedClient?.business_name || currentUser?.name) : (currentUser?.name || 'Guest Client'),
+            clientName: clientDisplayName,
             serviceType,
             requestDate: editingRequest ? editingRequest.requestDate : new Date().toISOString().split('T')[0],
             dueDate: formData.get('dueDate'),
@@ -292,8 +324,9 @@ const Chauffeur = () => {
             dropLocation: formData.get('dropLocation'),
             returnDate: serviceType === 'Round Trip' ? formData.get('returnDate') : null,
             returnTime: serviceType === 'Round Trip' ? formData.get('returnTime') : null,
-            numberOfDays: serviceType === 'Daily Service' ? formData.get('numberOfDays') : null,
-            numberOfPassengers: formData.get('numberOfPassengers') || 1,
+            numberOfDays: serviceType === 'Daily Service' ? daysCount : null,
+            numberOfPassengers: parseInt(formData.get('numberOfPassengers'), 10) || 1,
+            passengers: parseInt(formData.get('numberOfPassengers'), 10) || 1,
             luggage: hasLuggage ? 'Yes' : 'No',
             bags: hasLuggage ? (parseInt(formData.get('bags'), 10) || 0) : 0,
             stops: hasStops ? 'Yes' : 'No',
@@ -301,6 +334,7 @@ const Chauffeur = () => {
             amenities: amenities,
             chauffeurFee: normalizedFee,
             chauffeur_fee: normalizedFee,
+            unitPrice: baseFee,
             chauffeur_fee_mode: CHAUFFEUR_BILLING_MODE,
             driverName: isStaffAdmin ? (formData.get('driverNameSelect') ? (users || []).find(u => String(u.id) === formData.get('driverNameSelect'))?.fullName || (users || []).find(u => String(u.id) === formData.get('driverNameSelect'))?.name : formData.get('driverName')) : null,
             plateNumber: isStaffAdmin ? (formData.get('plateNumber') || null) : null,
@@ -417,8 +451,11 @@ const Chauffeur = () => {
     };
 
     const columns = [
-        { header: "ID", accessor: "id" },
-        { header: "Client", accessor: "clientName" },
+        {
+            header: "Client",
+            accessor: "clientName",
+            render: (row) => formatClientDisplayName(row, clients, [...(users || []), ...(customerUsers || [])])
+        },
         { header: "Type", accessor: "serviceType" },
         {
             header: "Price",
@@ -845,6 +882,13 @@ const Chauffeur = () => {
                                                         <p className="text-sm font-bold text-white italic">{editingRequest?.dropLocation || editingRequest?.drop_location || editingRequest?.location || editingRequest?.deliveryAddress || editingRequest?.delivery_address || 'N/A'}</p>
                                                     </div>
                                                     <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">No. of Passengers</p>
+                                                        <p className="text-sm font-bold text-white">
+                                                            {editingRequest?.numberOfPassengers || editingRequest?.passengers || editingRequest?.passengerCount || editingRequest?.passenger_count || editingRequest?.pax || editingRequest?.passengerInfo?.count || editingRequest?.passengerInfo?.passengers || editingRequest?.guestCount || editingRequest?.guest_count || 1} PAX
+                                                            {(editingRequest?.passengerName || editingRequest?.passenger_name || editingRequest?.passengerInfo?.name) ? ` (${editingRequest?.passengerName || editingRequest?.passenger_name || editingRequest?.passengerInfo?.name})` : ''}
+                                                        </p>
+                                                    </div>
+                                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
                                                         <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Luggage</p>
                                                         <p className="text-sm font-bold text-white">
                                                             {editingRequest?.luggage === 'Yes'
@@ -861,9 +905,21 @@ const Chauffeur = () => {
                                                         </p>
                                                     </div>
                                                     <div className="p-4 bg-warning/10 rounded-xl border border-warning/30 col-span-2">
-                                                        <p className="text-[10px] text-warning uppercase font-black tracking-widest mb-1">Pricing</p>
+                                                        <p className="text-[10px] text-warning uppercase font-black tracking-widest mb-1">
+                                                            Pricing {editingRequest?.serviceType === 'Round Trip' ? '(Round Trip: 2× Rate)' : (editingRequest?.serviceType === 'Daily Service' && (editingRequest?.numberOfDays > 1 || editingRequest?.dailyDays > 1) ? `(Daily Service: ${editingRequest?.numberOfDays || editingRequest?.dailyDays} Days)` : '')}
+                                                        </p>
                                                         <p className="text-sm font-bold text-white">
                                                             ${displayFee(editingRequest).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD
+                                                            {editingRequest?.serviceType === 'Round Trip' && (
+                                                                <span className="text-xs text-accent font-semibold ml-2">
+                                                                    (2 × ${(displayFee(editingRequest) / 2).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD)
+                                                                </span>
+                                                            )}
+                                                            {editingRequest?.serviceType === 'Daily Service' && (editingRequest?.numberOfDays > 1 || editingRequest?.dailyDays > 1) && (
+                                                                <span className="text-xs text-accent font-semibold ml-2">
+                                                                    ({editingRequest.numberOfDays || editingRequest.dailyDays} days × ${(displayFee(editingRequest) / (editingRequest.numberOfDays || editingRequest.dailyDays)).toLocaleString(undefined, { minimumFractionDigits: 2 })} USD/day)
+                                                                </span>
+                                                            )}
                                                             {!isCustomer && (
                                                                 <span className="text-warning"> {CHAUFFEUR_BILLING_MODE === 'included' ? '(included in total)' : '(separate billing)'}</span>
                                                             )}
@@ -937,7 +993,7 @@ const Chauffeur = () => {
                                                     </div>
                                                     <div className="space-y-2">
                                                         <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Passengers</label>
-                                                        <input type="number" name="numberOfPassengers" min="1" max="10" defaultValue={editingRequest?.numberOfPassengers || 1} required placeholder="1" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                        <input type="number" name="numberOfPassengers" min="1" max="10" defaultValue={editingRequest?.numberOfPassengers || editingRequest?.passengers || editingRequest?.passengerCount || 1} required placeholder="1" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
                                                     </div>
                                                     <div className="space-y-2">
                                                         <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Chauffeur Price (USD)</label>
@@ -1031,7 +1087,7 @@ const Chauffeur = () => {
                                                 {serviceType === 'Daily Service' && (
                                                     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-2 bg-accent/5 p-4 rounded-3xl border border-accent/20">
                                                         <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1 italic">Requested Duration (Days)</label>
-                                                        <input type="number" name="numberOfDays" min="1" defaultValue={editingRequest?.numberOfDays} required placeholder="e.g. 5" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
+                                                        <input type="number" name="numberOfDays" min="1" defaultValue={editingRequest?.numberOfDays || 1} onChange={(e) => setDaysCountInput(parseInt(e.target.value, 10) || 1)} required placeholder="e.g. 5" className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold" />
                                                     </motion.div>
                                                 )}
 

@@ -14,9 +14,10 @@ import { swalSuccess, swalError, swalConfirm } from '../../utils/swal';
 import { RefreshCcw } from 'lucide-react';
 import Pagination from '../../components/Common/Pagination';
 import { normalizeRole } from '../../utils/authUtils';
+import { formatClientDisplayName } from '../../utils/apiHelpers';
 
 const Invoices = () => {
-    const { orders, deliveries, clients, customerUsers, currentUser, fetchOrders, fetchDeliveries, fetchClients, fetchCustomerUsers, hasMenuPermission } = useData();
+    const { orders, deliveries, clients, customerUsers, users, currentUser, fetchOrders, fetchDeliveries, fetchClients, fetchCustomerUsers, hasMenuPermission } = useData();
 
     const getOrderDetails = (orderId) => {
         const order = (orders || []).find(o => String(o.id) === String(orderId));
@@ -214,7 +215,7 @@ const Invoices = () => {
                 const client = findClientById(row.clientId);
                 return (
                     <div className="flex flex-col">
-                        <span className="font-bold">{client?.name || client?.companyName || row.client?.companyName || row.clientName || 'Institutional Asset'}</span>
+                        <span className="font-bold">{formatClientDisplayName(row, clients, [...(users || []), ...(customerUsers || [])])}</span>
                         <span className="text-[10px] text-muted">{row.clientId}</span>
                     </div>
                 );

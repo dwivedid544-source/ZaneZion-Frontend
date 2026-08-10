@@ -15,6 +15,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../../context/GlobalDataContext';
 import { normalizeRole } from '../../utils/authUtils';
+import { formatClientDisplayName } from '../../utils/apiHelpers';
 
 const Dashboard = () => {
 
@@ -26,7 +27,7 @@ const Dashboard = () => {
     fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs,
     deliveries, projects, dashboardStats, currentUser,
     hasMenuPermission,
-    clients, fetchClients
+    clients, fetchClients, customerUsers = [], fetchCustomerUsers
   } = useData();
   const isSuperAdmin = ['super_admin', 'superadmin', 'super admin'].includes(normalizeRole(currentUser?.role));
   const isB2BClient = normalizeRole(currentUser?.role) === 'client';
@@ -45,11 +46,12 @@ const Dashboard = () => {
         fetchProjects(),
         fetchDashboardStats(revenueFilter),
         fetchDashboardLogs(),
-        ...(fetchClients ? [fetchClients()] : [])
+        ...(fetchClients ? [fetchClients()] : []),
+        ...(fetchCustomerUsers ? [fetchCustomerUsers()] : [])
       ]);
     };
     loadDashboard();
-  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs, fetchClients]);
+  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs, fetchClients, fetchCustomerUsers]);
 
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -130,10 +132,7 @@ const Dashboard = () => {
     {
       header: "Client Entity",
       accessor: "client",
-      render: (item) => {
-        if (typeof item.client === 'string') return item.client;
-        return item.client?.name || item.client?.companyName || item.client?.business_name || "—";
-      }
+      render: (item) => formatClientDisplayName(item, clients, [...(users || []), ...(customerUsers || [])])
     },
     {
       header: "Items",

@@ -118,6 +118,10 @@ const ClientDashboard = () => {
 
   const isMyOrder = (o) => {
     if (!o) return false;
+    const typeStr = String(o.orderType || o.type || '').toUpperCase();
+    if (typeStr === 'PROJECT' || typeStr === 'CHAUFFEUR' || typeStr.includes('CHAUFFEUR')) return false; 
+    const itemsNames = (o.items || []).map(i => String(i.name || '').toUpperCase());
+    if (itemsNames.some(n => n.includes('CHAUFFEUR'))) return false;
     const orderClientId = String(o.clientId || o.client_id || o.companyId || o.company_id || '');
     const orderCustId = String(o.customer_id || o.customerId || o.created_by || o.createdById || o.userId || o.user_id || '');
     const orderEmail = String(o.email || o.client_email || o.customer_email || '').toLowerCase();

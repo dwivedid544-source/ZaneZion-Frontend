@@ -9,6 +9,7 @@ import { swalConfirm, swalSuccess, swalWarning, swalInfo } from '../../utils/swa
 import Pagination from '../../components/Common/Pagination';
 import { normalizeRole, resolvePortalRole } from '../../utils/authUtils';
 import api from '../../services/api/setupAxios.js';
+import { toAbsoluteImageUrl } from '../../utils/apiHelpers';
 import Swal from 'sweetalert2';
 
 const Users = () => {
@@ -16,7 +17,7 @@ const Users = () => {
   const [uploadingDocs, setUploadingDocs] = useState({});
 
   const handleDocUpload = async (userId, docType, e) => {
-    const file = e.target.files[0];
+    const file = e.target?.files?.[0] || e.target?.files?.[0];
     if (!file) return;
 
     const documentTypes = {
@@ -42,13 +43,36 @@ const Users = () => {
       const uploadData = new FormData();
       uploadData.append('file', file);
 
-      const res = await api.post(`/users/${userId}/documents?type=${docType}`, uploadData, {
+      const targetId = userId || formData?.id;
+      if (!targetId) {
+        // If creating a brand new user not yet saved in DB, set local preview state
+        const fieldMap = { passport: 'hasPassport', license: 'hasLicense', nib: 'hasNIB', resume: 'hasResume' };
+        const urlMap = { passport: 'passportUrl', license: 'licenseUrl', nib: 'nibUrl', resume: 'resumeUrl' };
+        setFormData(prev => ({
+          ...prev,
+          [fieldMap[docType]]: true,
+          [urlMap[docType]]: URL.createObjectURL(file)
+        }));
+        swalSuccess('Document Attached', `${docType.toUpperCase()} file selected for new user profile.`);
+        return;
+      }
+
+      const res = await api.post(`/users/${targetId}/documents?type=${docType}`, uploadData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
 
       if (res.data?.success) {
         swalSuccess('Success', 'Document uploaded successfully.');
-        await fetchStaff();
+        const fieldMap = { passport: 'hasPassport', license: 'hasLicense', nib: 'hasNIB', resume: 'hasResume' };
+        const urlMap = { passport: 'passportUrl', license: 'licenseUrl', nib: 'nibUrl', resume: 'resumeUrl' };
+        if (fieldMap[docType]) {
+          setFormData(prev => ({
+            ...prev,
+            [fieldMap[docType]]: true,
+            [urlMap[docType]]: res.data.data?.[urlMap[docType]] || res.data.data?.url
+          }));
+        }
+        if (fetchStaff) await fetchStaff();
       } else {
         swalWarning('Error', res.data?.message || 'Failed to upload document.');
       }
@@ -1436,26 +1460,41 @@ const Users = () => {
                   <label className="text-[10px] font-bold text-muted uppercase">Documents Protocol</label>
                   <div className="flex flex-wrap gap-2 pt-1">
                     {[
-                      { label: 'Passport', field: 'hasPassport' },
-                      { label: 'DL', field: 'hasLicense' },
-                      { label: 'NIB Photo', field: 'hasNIB' },
-                      { label: 'Resume', field: 'hasResume' }
+                      { label: 'Passport', field: 'hasPassport', type: 'passport', urlField: 'passportUrl' },
+                      { label: 'DL', field: 'hasLicense', type: 'license', urlField: 'licenseUrl' },
+                      { label: 'NIB Photo', field: 'hasNIB', type: 'nib', urlField: 'nibUrl' },
+                      { label: 'Resume', field: 'hasResume', type: 'resume', urlField: 'resumeUrl' }
                     ].map(doc => (
-                      <label
-                        key={doc.label}
-                        className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tight border transition-all flex items-center gap-1.5 cursor-pointer ${formData[doc.field]
-                          ? 'bg-success/20 border-success text-success'
-                          : 'bg-white/5 border-white/10 text-muted hover:border-accent/40'}`}
-                      >
-                        <input
-                          type="file"
-                          className="hidden"
-                          disabled={modalType === 'view'}
-                          onChange={() => setFormData({ ...formData, [doc.field]: true })}
-                        />
-                        {formData[doc.field] ? <Check size={10} /> : <Plus size={10} />}
-                        {doc.label}
-                      </label>
+                      <div key={doc.label} className="flex items-center gap-1">
+                        <label
+                          className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tight border transition-all flex items-center gap-1.5 cursor-pointer ${formData[doc.field]
+                            ? 'bg-success/20 border-success text-success'
+                            : 'bg-white/5 border-white/10 text-muted hover:border-accent/40'}`}
+                        >
+                          <input
+                            type="file"
+                            className="hidden"
+                            disabled={modalType === 'view'}
+                            onChange={(e) => {
+                              setFormData(prev => ({ ...prev, [doc.field]: true }));
+                              handleDocUpload(selectedUser?.id || formData?.id, doc.type, e);
+                            }}
+                          />
+                          {formData[doc.field] ? <Check size={10} /> : <Plus size={10} />}
+                          {doc.label}
+                        </label>
+                        {formData[doc.urlField] && (
+                          <a
+                            href={toAbsoluteImageUrl(formData[doc.urlField])}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 text-accent hover:bg-accent/10 rounded-lg text-[9px] font-bold transition-all"
+                            title={`View ${doc.label}`}
+                          >
+                            <FileText size={12} />
+                          </a>
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>

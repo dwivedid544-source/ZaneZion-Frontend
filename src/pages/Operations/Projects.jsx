@@ -10,6 +10,7 @@ import CustomDatePicker from '../../components/CustomDatePicker';
 import Pagination from '../../components/Common/Pagination';
 
 import { useData } from '../../context/GlobalDataContext';
+import { formatClientDisplayName } from '../../utils/apiHelpers';
 
 const Projects = () => {
   const { projects, addProject, updateProject, deleteProject, fetchProjects, customerUsers, fetchCustomerUsers, convertProjectToMission, missions = [], fetchMissions, hasMenuPermission, currentUser, clients = [], fetchClients } = useData();
@@ -212,34 +213,7 @@ const Projects = () => {
   };
 
   const resolveClientName = (item) => {
-    const genericNames = ['personal client', 'personal', 'guest', 'client', 'guest client', 'unknown client', ''];
-    const isGeneric = (s) => !s || genericNames.includes(String(s).trim().toLowerCase());
-
-    // Try to look up from clients list by clientId / companyId / customerId
-    const ids = [
-      item.clientId, item.client_id,
-      item.companyId, item.company_id,
-      item.customerId, item.customer_id
-    ].filter(Boolean).map(String);
-
-    for (const cid of ids) {
-      const found = clients.find(c =>
-        String(c.id) === cid ||
-        String(c.id).replace('CLT-', '') === cid.replace('CLT-', '')
-      );
-      if (found) {
-        const name = found.companyName || found.business_name || found.name || found.email;
-        if (name && !isGeneric(name)) return name;
-      }
-    }
-
-    // Fallback to stored client string
-    const stored = typeof item.client === 'string'
-      ? item.client
-      : (item.client?.companyName || item.client?.name || item.client_name || '');
-    if (!isGeneric(stored)) return stored;
-
-    return item.client_name || item.clientName || 'Unknown Client';
+    return formatClientDisplayName(item, clients, customerUsers);
   };
 
   const columns = [

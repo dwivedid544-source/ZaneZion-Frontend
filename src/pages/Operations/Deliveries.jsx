@@ -14,6 +14,8 @@ import { useItems } from '../../hooks/api/useInventory';
 
 import { useData } from '../../context/GlobalDataContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
+import { formatClientDisplayName } from '../../utils/apiHelpers';
+import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
 
 /** Roles that can be chosen as delivery / field drivers (not only `staff`). */
 function isAssignableDeliveryRole(roleRaw) {
@@ -33,7 +35,7 @@ function displayDeliveryStatus(raw) {
 }
 
 const Deliveries = () => {
-  const { users, fleet, fetchFleet, fetchStaff, hasMenuPermission, warehouses, fetchWarehouses, currentUser, clients = [], fetchClients, customerUsers = [], fetchCustomerUsers, inventory } = useData();
+  const { users, fleet, fetchFleet, fetchStaff, hasMenuPermission, warehouses, fetchWarehouses, currentUser, clients = [], fetchClients, customerUsers = [], fetchCustomerUsers, inventory, orders = [], chauffeurRequests = [], fetchOrders, fetchChauffeurRequests } = useData();
   const { data: dbItemsData } = useItems(1, 100);
   const dbItems = Array.isArray(dbItemsData) ? dbItemsData : (Array.isArray(dbItemsData?.items) ? dbItemsData.items : []);
 
@@ -71,7 +73,9 @@ const Deliveries = () => {
     fetchClients();
     fetchCustomerUsers({ include_all: true, include_client_role: true });
     if (fetchFleet) fetchFleet();
-  }, [fetchWarehouses, fetchStaff, fetchClients, fetchCustomerUsers, fetchFleet]);
+    if (fetchOrders) fetchOrders();
+    if (fetchChauffeurRequests) fetchChauffeurRequests();
+  }, [fetchWarehouses, fetchStaff, fetchClients, fetchCustomerUsers, fetchFleet, fetchOrders, fetchChauffeurRequests]);
 
   const clientOptions = React.useMemo(() => {
     const out = [];
@@ -185,6 +189,200 @@ const Deliveries = () => {
     setFormData({ ...formData, items: newItems });
   };
 
+  const availableOrderReferences = React.useMemo(() => {
+    const list = [];
+    const seen = new Set();
+
+    [...(orders || []), ...(chauffeurRequests || [])].forEach((o) => {
+      if (!o) return;
+      const refId = String(o.id || o.db_id || o.orderNumber || o.deliveryNumber || '').trim();
+      if (!refId || seen.has(refId)) return;
+      seen.add(refId);
+
+      const clientLabel = formatClientDisplayName(o, clients, [...(users || []), ...(customerUsers || [])]);
+      const drop = o.location || o.dropLocation || o.drop_location || o.deliveryAddress || o.delivery_address || '';
+      const type = String(o.orderType || o.type || o.missionType || 'Order').toUpperCase();
+
+      list.push({
+        id: refId,
+        rawOrder: o,
+        label: `${refId} — ${clientLabel} (${type}${drop ? `: ${drop}` : ''})`
+      });
+    });
+
+    return list;
+  }, [orders, chauffeurRequests, clients, users, customerUsers]);
+
+  const handleReferenceLookup = React.useCallback(async (refInput, targetOrder = null) => {
+    const rawRef = String(refInput || '').trim();
+    if (!rawRef && !targetOrder) return;
+
+    const cleanRef = rawRef.replace(/^#|^ORD-|^TKT-|^CLT-/i, '');
+    const allSources = [...(orders || []), ...(chauffeurRequests || [])];
+
+    const matchedOrder = targetOrder || allSources.find((o) => {
+      if (!o) return false;
+      const oId = String(o.id || '');
+      const oDbId = String(o.db_id || '');
+      const oNum = String(o.orderNumber || o.deliveryNumber || o.reference || '');
+      return (
+        oId === rawRef ||
+        oDbId === rawRef ||
+        oNum === rawRef ||
+        oId === cleanRef ||
+        oDbId === cleanRef ||
+        (cleanRef.length >= 2 && (oId.endsWith(cleanRef) || oNum.endsWith(cleanRef)))
+      );
+    });
+
+    if (!matchedOrder) return;
+
+    const pick =
+      matchedOrder.pickupLocation ||
+      matchedOrder.pickup_location ||
+      matchedOrder.pickupAddress ||
+      matchedOrder.origin ||
+      matchedOrder.items?.[0]?.pickupLocation ||
+      matchedOrder.metadata?.customItems?.[0]?.pickupLocation ||
+      matchedOrder.metadata?.pickupLocation ||
+      (warehouses || [])[0]?.name ||
+      '';
+
+    const drop =
+      matchedOrder.location ||
+      matchedOrder.dropLocation ||
+      matchedOrder.drop_location ||
+      matchedOrder.deliveryAddress ||
+      matchedOrder.delivery_address ||
+      matchedOrder.destination ||
+      matchedOrder.items?.[0]?.dropLocation ||
+      matchedOrder.metadata?.customItems?.[0]?.dropLocation ||
+      matchedOrder.metadata?.dropLocation ||
+      '';
+
+    const matchedDriverName =
+      matchedOrder.driverName ||
+      matchedOrder.driver ||
+      (matchedOrder.driver_user_id
+        ? (users || []).find((u) => String(u.id) === String(matchedOrder.driver_user_id))?.name || (users || []).find((u) => String(u.id) === String(matchedOrder.driver_user_id))?.fullName
+        : '');
+
+    const matchedVehicle =
+      matchedOrder.vehicleId ||
+      matchedOrder.plateNumber ||
+      matchedOrder.vehicleRef ||
+      matchedOrder.vehicle ||
+      '';
+
+    const matchedClientId =
+      matchedOrder.clientId ||
+      matchedOrder.client_id ||
+      matchedOrder.companyId ||
+      matchedOrder.company_id ||
+      '';
+
+    const matchedClientName = formatClientDisplayName(matchedOrder, clients, [...(users || []), ...(customerUsers || [])]);
+
+    const foundClientOpt = clientOptions.find((c) =>
+      (matchedClientId && (String(c.value) === String(matchedClientId) || String(c.companyId) === String(matchedClientId) || String(c.id) === String(matchedClientId))) ||
+      (matchedClientName && c.label.toLowerCase().includes(matchedClientName.toLowerCase())) ||
+      (matchedOrder.client && c.label.toLowerCase().includes(String(matchedOrder.client).toLowerCase()))
+    );
+
+    const isChauf = String(matchedOrder.orderType || matchedOrder.type || matchedOrder.missionType || '').toUpperCase() === 'CHAUFFEUR';
+
+    let existingDistance =
+      matchedOrder.totalDistance ||
+      matchedOrder.total_distance ||
+      matchedOrder.routeDistance ||
+      matchedOrder.route_distance ||
+      matchedOrder.estimatedDistance ||
+      matchedOrder.distance ||
+      '';
+
+    let calcDist = parseFloat(existingDistance) || 0;
+    const mode = matchedOrder.deliveryType || matchedOrder.delivery_mode || matchedOrder.mode || 'Road';
+
+    if (!calcDist && pick && drop) {
+      try {
+        const res = await calculateOSRMRouteDistance(pick, drop, mode);
+        if (res && res.distanceKm) {
+          calcDist = parseFloat(res.distanceKm);
+        }
+      } catch (err) {
+        console.warn('Auto distance calc error:', err);
+      }
+    }
+
+    const rate = parseFloat(formData.staff_pay_rate || DEFAULT_RATE_PER_KM) || DEFAULT_RATE_PER_KM;
+    const computedPayout = calcDist > 0 ? parseFloat((calcDist * rate).toFixed(2)) : 0;
+
+    let orderItems = [];
+    if (matchedOrder.items && Array.isArray(matchedOrder.items) && matchedOrder.items.length > 0) {
+      orderItems = matchedOrder.items.map(it => ({
+        name: it.name || it.itemName || 'Manifest Item',
+        qty: parseInt(it.qty || it.quantity || 1, 10) || 1,
+        weight: it.weight || '',
+        length: it.length || '',
+        width: it.width || '',
+        height: it.height || ''
+      }));
+    } else if (matchedOrder.product) {
+      orderItems = [{ name: matchedOrder.product, qty: parseInt(matchedOrder.qty || 1, 10) || 1 }];
+    } else {
+      orderItems = [{ name: isChauf ? 'VIP Chauffeur Transfer' : 'Cargo Manifest', qty: 1 }];
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      orderId: String(matchedOrder.id || rawRef),
+      clientId: foundClientOpt?.value || matchedClientId || prev.clientId,
+      client: foundClientOpt?.label || matchedClientName || prev.client,
+      companyId: foundClientOpt?.companyId || matchedOrder.company_id || prev.companyId,
+      customerId: foundClientOpt?.customerId || prev.customerId,
+      clientUserId: foundClientOpt?.clientUserId || prev.clientUserId,
+      missionType: isChauf ? 'Chauffeur' : (prev.missionType || 'Delivery'),
+      pickupLocation: pick || prev.pickupLocation,
+      dropLocation: drop || prev.dropLocation,
+      location: drop || prev.location,
+      mode: mode,
+      driver: matchedDriverName || prev.driver,
+      assigned_driver: matchedOrder.driver_user_id || prev.assigned_driver,
+      vehicle: matchedVehicle || prev.vehicle,
+      vesselOrFlight: matchedVehicle || prev.vesselOrFlight,
+      items: orderItems,
+      route_distance: calcDist > 0 ? calcDist : prev.route_distance,
+      delivery_fee: computedPayout > 0 ? computedPayout : prev.delivery_fee,
+      passengerInfo: {
+        name: matchedOrder.passengerName || matchedOrder.passenger_name || matchedOrder.passengerInfo?.name || prev.passengerInfo?.name || '',
+        count: matchedOrder.numberOfPassengers || matchedOrder.passengers || matchedOrder.passengerCount || prev.passengerInfo?.count || 1
+      },
+      luggage: matchedOrder.luggage || matchedOrder.luggageOption || prev.luggage || (isChauf ? 'Standard' : 'No')
+    }));
+  }, [orders, chauffeurRequests, clients, users, customerUsers, clientOptions, warehouses, formData.staff_pay_rate]);
+
+  const handleLocationAutoCalculateDistance = React.useCallback(async (pick, drop, mode) => {
+    const p = pick || formData.pickupLocation;
+    const d = drop || formData.dropLocation || formData.location;
+    const m = mode || formData.mode || 'Road';
+    if (!p || !d) return;
+
+    try {
+      const res = await calculateOSRMRouteDistance(p, d, m);
+      if (res && res.distanceKm) {
+        const dist = parseFloat(res.distanceKm);
+        const rate = parseFloat(formData.staff_pay_rate || DEFAULT_RATE_PER_KM) || DEFAULT_RATE_PER_KM;
+        setFormData(prev => ({
+          ...prev,
+          route_distance: dist,
+          delivery_fee: parseFloat((dist * rate).toFixed(2))
+        }));
+      }
+    } catch (err) {
+      console.warn('Auto route distance calculation warning:', err);
+    }
+  }, [formData.pickupLocation, formData.dropLocation, formData.location, formData.mode, formData.staff_pay_rate]);
+
   // Catch Order State for Auto-Mission Launch
   useEffect(() => {
     const st = locationState.state;
@@ -269,22 +467,37 @@ const Deliveries = () => {
       actualTime: del.proofs[0].createdAt
     } : {}));
 
+    // Extract passenger & luggage info from remarks, delivery metadata, or orders
+    const isChauffeurMission = (del.missionType || type) === 'Chauffeur' || String(del.order?.orderType || '').toUpperCase() === 'CHAUFFEUR';
+    const resolvedPassengerName = parsedRemarks.passengerInfo?.name || del.passengerInfo?.name || del.passenger_name || del.customer_name || del.clientName || (typeof del.client === 'object' ? del.client?.companyName : del.client) || '';
+    const resolvedPassengerCount = parsedRemarks.passengerInfo?.count || del.passengerInfo?.count || del.guestCount || del.guest_count || del.passengers || del.pax || 1;
+    const resolvedLuggage = parsedRemarks.luggage || del.luggage || del.luggageOption || del.luggage_option || (isChauffeurMission ? 'Standard' : 'No');
+
+    const resolvedDistance = del.routeDistance || del.route_distance || del.estimatedDistance || del.distance || (parsedRemarks.packageDetails?.distance) || (initialFee > 0 ? parseFloat((initialFee / initialRate).toFixed(2)) : '');
+    const resolvedRate = del.staffPayRate || del.staff_pay_rate || DEFAULT_RATE_PER_KM;
+    const calculatedFee = (parseFloat(resolvedDistance) || 0) * (parseFloat(resolvedRate) || DEFAULT_RATE_PER_KM);
+
     const nextFormData = del && del.id ? {
       ...del,
       orderId: del.order?.orderNumber || del.deliveryNumber || del.orderId || '',
       clientId: parsedRemarks.clientId || String(del.clientId || ''),
       client: typeof del.client === 'object' ? del.client?.companyName : (del.clientName || ''),
       items: restoredItems,
-      packageDetails: parsedRemarks.packageDetails || del.packageDetails || { weight: '', dimensions: '', type: 'General' },
-      passengerInfo: parsedRemarks.passengerInfo || del.passengerInfo || { name: '', count: 1, phone: '' },
+      packageDetails: {
+        weight: parsedRemarks.packageDetails?.weight || del.packageDetails?.weight || '',
+        dimensions: parsedRemarks.packageDetails?.dimensions || del.packageDetails?.dimensions || '',
+        type: isChauffeurMission ? 'CONCIERGE' : (parsedRemarks.packageDetails?.type || del.packageDetails?.type || 'General')
+      },
+      passengerInfo: { name: resolvedPassengerName, count: resolvedPassengerCount, phone: parsedRemarks.passengerInfo?.phone || del.passengerInfo?.phone || '' },
+      luggage: resolvedLuggage,
       delivery_instructions: parsedRemarks.delivery_instructions || del.delivery_instructions || del.order_instructions || '',
-      route_distance: del.routeDistance || del.route_distance || (initialFee > 0 ? parseFloat((initialFee / initialRate).toFixed(2)) : ''),
-      staff_pay_rate: del.staffPayRate || del.staff_pay_rate || DEFAULT_RATE_PER_KM,
-      delivery_fee: del.deliveryFee || del.delivery_fee || 0,
+      route_distance: resolvedDistance,
+      staff_pay_rate: resolvedRate,
+      delivery_fee: calculatedFee > 0 ? parseFloat(calculatedFee.toFixed(2)) : (del.deliveryFee || del.delivery_fee || 0),
       assigned_driver: parsedRemarks.assigned_driver || del.assignedTo || del.assigned_driver || del.driverId || del.driver_id || ((users || []).find(u => u.name === (del.driver || del.driver_name))?.id || null),
       driver: parsedRemarks.driver || (del.assignee ? `${del.assignee.firstName} ${del.assignee.lastName}` : (del.driver || '')),
       mode: del.transportMode || del.mode || 'Road',
-      missionType: del.missionType || 'Delivery',
+      missionType: del.missionType || (isChauffeurMission ? 'Chauffeur' : 'Delivery'),
       vehicle: del.vehicleRef || del.vehicle || '',
       vesselOrFlight: del.vehicleRef || del.vesselOrFlight || '',
       eta: del.etaSchedule ? new Date(del.etaSchedule).toISOString().split('T')[0] : (del.eta || new Date().toISOString().split('T')[0]),
@@ -295,15 +508,16 @@ const Deliveries = () => {
       route: parsedRemarks.route || del.route || '',
       pod: Object.keys(podData).length > 0 ? podData : { signature: null, image: null, actualTime: null }
     } : {
-      items: [{ name: '', qty: 1, weight: '', length: '', width: '', height: '' }],
-      missionType: 'Delivery',
-      passengerInfo: { name: '', count: 1, phone: '' },
-      packageDetails: { weight: '', dimensions: '', type: 'General' },
-      orderId: '',
-      clientId: '',
-      client: '',
-      companyId: '',
-      customerId: '',
+      items: Array.isArray(del?.items) && del.items.length ? del.items : [{ name: isChauffeurMission ? 'VIP Chauffeur Service' : '', qty: 1, weight: '', length: '', width: '', height: '' }],
+      missionType: isChauffeurMission ? 'Chauffeur' : 'Delivery',
+      passengerInfo: { name: resolvedPassengerName, count: resolvedPassengerCount, phone: '' },
+      packageDetails: { weight: '', dimensions: '', type: isChauffeurMission ? 'CONCIERGE' : 'General' },
+      luggage: resolvedLuggage,
+      orderId: del?.orderId || del?.order?.orderNumber || '',
+      clientId: del?.clientId || del?.client_id || del?.customer_id || '',
+      client: del?.client || del?.clientName || '',
+      companyId: del?.companyId || del?.company_id || '',
+      customerId: del?.customerId || del?.customer_id || del?.client_id || '',
       clientUserId: '',
       vehicle: '',
       vesselOrFlight: '',
@@ -311,33 +525,16 @@ const Deliveries = () => {
       requestDate: new Date().toISOString().split('T')[0],
       dueDate: new Date().toISOString().split('T')[0],
       location: '',
-      pickupLocation: '',
-      dropLocation: '',
+      pickupLocation: del?.pickupLocation || '',
+      dropLocation: del?.dropLocation || '',
       status: 'Pending',
       driver: '',
-      mode: 'Road',
-      delivery_instructions: '',
-      route_distance: '',
-      staff_pay_rate: DEFAULT_RATE_PER_KM,
-      delivery_fee: 0,
-      pod: { signature: null, image: null, actualTime: null },
-      ...(del && !del.id ? {
-        orderId: del.orderId || '',
-        clientId: del.clientId || del.client_id || del.customer_id || '',
-        client: del.client || del.clientName || '',
-        customerId: del.customerId || del.customer_id || del.client_id || '',
-        companyId: del.companyId || del.company_id || '',
-        pickupLocation: del.pickupLocation || '',
-        dropLocation: del.dropLocation || '',
-        missionType: del.missionType || 'Delivery',
-        mode: del.mode || 'Road',
-        items: Array.isArray(del.items) && del.items.length ? del.items : [{ name: '', qty: 1, weight: '', length: '', width: '', height: '' }],
-        delivery_instructions: del.delivery_instructions || del.order_instructions || '',
-        route_distance: del.route_distance || (del.delivery_fee > 0 ? parseFloat((del.delivery_fee / (del.staff_pay_rate || DEFAULT_RATE_PER_KM)).toFixed(2)) : ''),
-        staff_pay_rate: del.staff_pay_rate || DEFAULT_RATE_PER_KM,
-        delivery_fee: del.delivery_fee != null ? del.delivery_fee : 0,
-        passengerInfo: del.passengerInfo || { name: '', count: 1, phone: '' },
-      } : {}),
+      mode: del?.mode || 'Road',
+      delivery_instructions: del?.delivery_instructions || del?.order_instructions || '',
+      route_distance: resolvedDistance,
+      staff_pay_rate: resolvedRate,
+      delivery_fee: calculatedFee > 0 ? parseFloat(calculatedFee.toFixed(2)) : 0,
+      pod: { signature: null, image: null, actualTime: null }
     };
     // Quick "Complete Delivery" flow from list action.
     setFormData(type === 'delivered' ? { ...nextFormData, status: 'Delivered' } : nextFormData);
@@ -382,25 +579,37 @@ const Deliveries = () => {
         return;
       }
 
+      const matchedClientOpt = (clientOptions || []).find(c =>
+        String(c.value) === String(finalData.clientId) ||
+        String(c.id) === String(finalData.clientId) ||
+        String(c.companyId) === String(finalData.clientId) ||
+        (finalData.client && c.label.toLowerCase().includes(String(finalData.client).toLowerCase())) ||
+        (finalData.client && String(finalData.client).toLowerCase().includes(c.label.toLowerCase()))
+      );
+
+      const parsedNumFromClientVal = (finalData.clientId && !isNaN(Number(String(finalData.clientId).replace(/\D/g, ''))))
+        ? Number(String(finalData.clientId).replace(/\D/g, ''))
+        : null;
+
       const resolvedClientId =
-        (finalData.clientId && Number(String(finalData.clientId).replace(/\D/g, ''))) ||
+        (matchedClientOpt?.companyId && Number(matchedClientOpt.companyId) > 0 ? Number(matchedClientOpt.companyId) : null) ||
+        (matchedClientOpt?.id && Number(matchedClientOpt.id) > 0 ? Number(matchedClientOpt.id) : null) ||
+        (parsedNumFromClientVal && parsedNumFromClientVal > 0 ? parsedNumFromClientVal : null) ||
         (currentUser?.clientId ? Number(currentUser.clientId) : null) ||
         (currentUser?.company_id ? Number(currentUser.company_id) : null) ||
-        null;
-
-      if (!resolvedClientId) {
-        swalError('Validation Error', 'Please select a Linked Client for this mission.');
-        return;
-      }
+        ((clients && clients.length > 0) ? Number(clients[0].id) : 1);
 
       const matchedWarehouse = (warehouses || []).find(w => w.name === finalData.pickupLocation);
       const itemsWithRealIds = finalData.items.map(item => {
         const matchedItem = (dbItems || []).find(i => 
           String(i.name || '').trim().toLowerCase() === String(item.name || '').trim().toLowerCase()
         );
+        const rawItemId = item.itemId || item.id;
+        const validNumId = (!isNaN(Number(rawItemId)) && Number(rawItemId) > 0) ? Number(rawItemId) : null;
         return {
-          orderItemId: (item.orderItemId || item.id) ? Number(item.orderItemId || item.id) : null,
-          itemId: matchedItem ? Number(matchedItem.id) : Number(item.itemId || item.id || 1),
+          orderItemId: (item.orderItemId && !isNaN(Number(item.orderItemId))) ? Number(item.orderItemId) : null,
+          itemId: matchedItem ? Number(matchedItem.id) : validNumId,
+          name: item.name || 'VIP Chauffeur Service',
           quantity: Number(item.qty || item.quantity || 1)
         };
       });
@@ -432,7 +641,11 @@ const Deliveries = () => {
         swalSuccess("Success", "Mission deployed successfully");
         setIsModalOpen(false);
       })
-      .catch(() => swalError("Error", "Could not create delivery"));
+      .catch((err) => {
+        console.error("Create delivery failed:", err);
+        const msg = err?.response?.data?.message || err?.message || "Could not create delivery";
+        swalError("Error", msg);
+      });
     } else if (modalType === 'edit') {
       const manifestMeta = {
         manifestItems: finalData.items,
@@ -525,34 +738,8 @@ const Deliveries = () => {
       header: "Client",
       accessor: "client",
       render: (item) => {
-        const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
-
-        const clientObj = typeof item.client === 'object' ? item.client : null;
-        const orderClientObj = typeof item.order?.client === 'object' ? item.order.client : null;
-        const matchedClient = (clients || []).find(c =>
-          String(c.id).replace('CLT-', '') === String(item.clientId || item.client_id || item.order?.clientId).replace('CLT-', '')
-        );
-
-        let resolved = null;
-        if (clientObj && !isGeneric(clientObj.contactPerson)) resolved = clientObj.contactPerson;
-        else if (orderClientObj && !isGeneric(orderClientObj.contactPerson)) resolved = orderClientObj.contactPerson;
-        else if (matchedClient && !isGeneric(matchedClient.contactPerson)) resolved = matchedClient.contactPerson;
-        else if (clientObj && !isGeneric(clientObj.companyName || clientObj.name)) resolved = clientObj.companyName || clientObj.name;
-        else if (orderClientObj && !isGeneric(orderClientObj.companyName || orderClientObj.name)) resolved = orderClientObj.companyName || orderClientObj.name;
-        else if (matchedClient && !isGeneric(matchedClient.companyName || matchedClient.name)) resolved = matchedClient.companyName || matchedClient.name;
-        else if (!isGeneric(item.clientName)) resolved = item.clientName;
-        else if (!isGeneric(item.order?.customer_name)) resolved = item.order.customer_name;
-        else if (!isGeneric(item.order?.created_by_name)) resolved = item.order.created_by_name;
-
-        if (!resolved || isGeneric(resolved)) {
-          if (currentUser?.name && !isGeneric(currentUser.name)) {
-            resolved = currentUser.name;
-          } else {
-            resolved = 'Personal Client';
-          }
-        }
-
-        return <span className="font-bold text-white text-xs">{resolved}</span>;
+        const displayName = formatClientDisplayName(item, clients, [...(users || []), ...(customerUsers || [])]);
+        return <span className="font-bold text-white text-xs">{displayName}</span>;
       }
     },
     {
@@ -1132,17 +1319,45 @@ const Deliveries = () => {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-muted uppercase">ZaneZion Reference</label>
-                    <input
-                      type="text"
-                      value={formData.orderId}
-                      onChange={(e) => setFormData({ ...formData, orderId: e.target.value })}
-                      className={`w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold ${
-                        modalType === 'add' ? 'text-white' : 'text-muted bg-background/50 cursor-not-allowed'
-                      }`}
-                      disabled={modalType !== 'add'}
-                      placeholder="e.g. 254 or ORD-2026-254"
-                    />
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-muted uppercase">ZaneZion Reference</label>
+                      {modalType === 'add' && formData.orderId && (
+                        <button
+                          type="button"
+                          onClick={() => handleReferenceLookup(formData.orderId)}
+                          className="text-[9px] font-black text-accent hover:underline uppercase tracking-wider flex items-center gap-1"
+                        >
+                          <RefreshCcw size={10} /> Auto-Fetch & Calculate
+                        </button>
+                      )}
+                    </div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        list="zanezion-reference-options"
+                        value={formData.orderId}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFormData({ ...formData, orderId: val });
+                          if (val.trim()) handleReferenceLookup(val);
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value.trim()) handleReferenceLookup(e.target.value);
+                        }}
+                        className={`w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold ${
+                          modalType === 'add' ? 'text-white' : 'text-muted bg-background/50 cursor-not-allowed'
+                        }`}
+                        disabled={modalType !== 'add'}
+                        placeholder="e.g. 456 or ORD-456 (Type or select)"
+                      />
+                      {modalType === 'add' && availableOrderReferences.length > 0 && (
+                        <datalist id="zanezion-reference-options">
+                          {availableOrderReferences.map((ref) => (
+                            <option key={ref.id} value={ref.id}>{ref.label}</option>
+                          ))}
+                        </datalist>
+                      )}
+                    </div>
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted uppercase">Linked Client</label>
@@ -1425,11 +1640,27 @@ const Deliveries = () => {
                         </div>
                         <div className="space-y-1">
                           <label className="text-[8px] font-bold text-muted uppercase">Pickup Area</label>
-                          <input type="text" value={formData.pickupLocation || ''} onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-accent" placeholder="Lobby / Dock" disabled={modalType === 'view'} />
+                          <input
+                            type="text"
+                            value={formData.pickupLocation || ''}
+                            onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
+                            onBlur={(e) => handleLocationAutoCalculateDistance(e.target.value, formData.dropLocation)}
+                            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-accent"
+                            placeholder="Lobby / Dock"
+                            disabled={modalType === 'view'}
+                          />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[8px] font-bold text-muted uppercase">Drop Location</label>
-                          <input type="text" value={formData.dropLocation || ''} onChange={(e) => setFormData({ ...formData, dropLocation: e.target.value })} className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-accent" placeholder="Airport / Estate" disabled={modalType === 'view'} />
+                          <input
+                            type="text"
+                            value={formData.dropLocation || ''}
+                            onChange={(e) => setFormData({ ...formData, dropLocation: e.target.value, location: e.target.value })}
+                            onBlur={(e) => handleLocationAutoCalculateDistance(formData.pickupLocation, e.target.value)}
+                            className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs outline-none focus:border-accent"
+                            placeholder="Airport / Estate"
+                            disabled={modalType === 'view'}
+                          />
                         </div>
                         <div className="space-y-1 sm:col-span-2">
                           <label className="text-[8px] font-bold text-muted uppercase">Luggage Option</label>

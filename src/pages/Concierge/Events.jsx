@@ -5,7 +5,7 @@ import Modal from '../../components/Modal';
 import { Calendar, MapPin, Plus, Star, Search, Clock, Users } from 'lucide-react';
 import { useData } from '../../context/GlobalDataContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
-import { BACKEND_ORIGIN } from '../../utils/apiHelpers.js';
+import { BACKEND_ORIGIN, formatClientDisplayName } from '../../utils/apiHelpers.js';
 
 const BACKEND_URL = BACKEND_ORIGIN;
 const toAbsoluteImageUrl = (rawPath) => {
@@ -24,17 +24,32 @@ const Events = () => {
     clients,
     customerUsers = [],
     fetchCustomerUsers,
+    fetchTickets,
+    syncGlobalState,
     hasMenuPermission,
     currentUser
   } = useData();
   const canAddEvent = hasMenuPermission('Events', 'can_add');
 
-  // Fetch supporting data once on mount — events are auto-polled by GlobalDataContext
   React.useEffect(() => {
     fetchClients();
     if (fetchCustomerUsers) fetchCustomerUsers();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // empty deps — run once on mount only
+    if (fetchTickets) fetchTickets();
+
+    const handleStateChanged = () => {
+      if (fetchTickets) fetchTickets();
+    };
+    window.addEventListener('app:state-changed', handleStateChanged);
+
+    const interval = setInterval(() => {
+      if (fetchTickets) fetchTickets();
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('app:state-changed', handleStateChanged);
+      clearInterval(interval);
+    };
+  }, [fetchClients, fetchCustomerUsers, fetchTickets]);
 
   // Concierge should see tenant clients + signup customers (personal/business).
   const clientOptions = useMemo(() => {
@@ -130,36 +145,7 @@ const Events = () => {
     {
       header: "Client / Customer",
       accessor: "client_name",
-      render: (row) => {
-        const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
-        const plannerStr = String(row.plannerName || row.planner_name || '').trim().toLowerCase();
-
-        const matchedClient = (clients || []).find(c => String(c.id).replace('CLT-', '') === String(row.clientId || row.client_id).replace('CLT-', ''));
-        const matchedUser = (customerUsers || []).find(u => String(u.id) === String(row.managerId || row.manager_id || row.clientId || row.client_id || row.userId || row.user_id));
-
-        let clientName = null;
-        if (!isGeneric(row.manager?.name)) {
-          clientName = row.manager.name;
-        } else if (matchedUser && !isGeneric(matchedUser.name || matchedUser.full_name)) {
-          clientName = matchedUser.name || matchedUser.full_name;
-        } else if (matchedClient && !isGeneric(matchedClient.contactPerson)) {
-          clientName = matchedClient.contactPerson;
-        } else if (!isGeneric(row.client?.contactPerson)) {
-          clientName = row.client.contactPerson;
-        } else if (matchedClient && !isGeneric(matchedClient.name || matchedClient.companyName)) {
-          clientName = matchedClient.name || matchedClient.companyName;
-        } else if (!isGeneric(row.client?.companyName)) {
-          clientName = row.client.companyName;
-        } else if (!isGeneric(row.client_name) && String(row.client_name).trim().toLowerCase() !== plannerStr) {
-          clientName = row.client_name;
-        } else if (!isGeneric(row.client?.name)) {
-          clientName = row.client.name;
-        } else if (!isGeneric(row.manager?.email)) {
-          clientName = row.manager.email;
-        }
-
-        return clientName || "Personal Client";
-      }
+      render: (row) => formatClientDisplayName(row, clients, customerUsers)
     },
     { header: "Event Title", accessor: "title" },
     { header: "Date", accessor: "date" },

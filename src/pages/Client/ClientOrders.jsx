@@ -228,6 +228,9 @@ const ClientOrders = () => {
                 );
             });
 
+            const isChauffeurOrder = o.orderType === 'CHAUFFEUR' || o.missionType === 'Chauffeur' || String(o.orderType).toUpperCase() === 'CHAUFFEUR' || String(o.id || '').startsWith('CH-');
+            if (isChauffeurOrder) return;
+
             const dbSt = String(o.status || '').toLowerCase();
             let effectiveStatus = dbSt || 'pending';
 
@@ -283,13 +286,25 @@ const ClientOrders = () => {
 
         // 2. Chauffeur Bookings
         (chauffeurRequests || []).filter(isMyRecord).forEach(req => {
+            const numDays = req.numberOfDays ? (parseInt(req.numberOfDays, 10) || 1) : 1;
+            const isDaily = req.serviceType === 'Daily Service';
+            const calcQty = isDaily && numDays > 0 ? numDays : 1;
+            const feeVal = parseFloat(req.chauffeurFee ?? req.chauffeur_fee ?? req.total_amount ?? 120);
+            const unitPrice = req.unitPrice ? parseFloat(req.unitPrice) : (isDaily && numDays > 1 ? Number((feeVal / numDays).toFixed(2)) : feeVal);
+            const totalFee = isDaily && numDays > 1 && feeVal === unitPrice ? Number((unitPrice * numDays).toFixed(2)) : feeVal;
+
             unified.push({
                 id: req.id ? (String(req.id).startsWith('CH-') ? req.id : `CH-ORD-${req.id}`) : 'CH-000',
                 rawId: req.id,
                 category: 'Chauffeur Booking',
                 serviceType: `Chauffeur Protocol (${req.serviceType || 'VIP Service'})`,
-                items: [{ name: `VIP Chauffeur Service (${req.serviceType || 'One Way'}) - Pickup: ${req.pickupLocation || 'Nassau'}`, qty: 1 }],
-                total: parseFloat(req.chauffeurFee ?? req.chauffeur_fee ?? req.total_amount ?? 120),
+                items: [{
+                    name: `VIP Chauffeur Service (${req.serviceType || 'One Way'})${isDaily ? ` - ${numDays} Day(s)` : ''} - Pickup: ${req.pickupLocation || 'Nassau'}`,
+                    qty: calcQty,
+                    price: unitPrice,
+                    total: totalFee
+                }],
+                total: totalFee,
                 requestDate: req.createdAt || req.created_at || req.requestDate || req.dueDate,
                 dueDate: req.dueDate || req.returnDate || null,
                 status: req.status || req.chauffeur_status || 'pending',
@@ -322,38 +337,38 @@ const ClientOrders = () => {
         });
 
         // 4. Guest Requests
-        (guestRequests || []).filter(isMyRecord).forEach(gr => {
-            const formattedId = gr.id ? (String(gr.id).startsWith('GST-') ? gr.id : `GST-${String(gr.id).padStart(3, '0')}`) : 'GST-000';
+        (guestRequests || []).filter(isMyRecord).forEach(g => {
+            const formattedId = g.id ? (String(g.id).startsWith('GST-') ? g.id : `GST-${String(g.id).padStart(3, '0')}`) : 'GST-000';
             unified.push({
                 id: formattedId,
-                rawId: gr.id,
+                rawId: g.id,
                 category: 'Guest Request',
-                serviceType: 'Concierge Guest Service',
-                items: [{ name: gr.request || gr.title || gr.details || 'Guest Service Protocol', qty: 1 }],
-                total: parseFloat(gr.cost || gr.total || gr.estimatedCost || 0),
-                requestDate: gr.createdAt || gr.created_at || gr.date,
-                dueDate: gr.dueDate || gr.date || null,
-                status: gr.status || 'pending',
-                location: gr.location || 'Concierge Desk',
+                serviceType: `Concierge Requisition (${g.requestType || 'Personal Guest Service'})`,
+                items: [{ name: g.details || g.request || g.title || 'Guest Hospitality Task', qty: 1 }],
+                total: parseFloat(g.cost || g.amount || g.total || 0),
+                requestDate: g.createdAt || g.created_at || g.requestDate,
+                dueDate: g.dueDate || null,
+                status: g.status || 'pending',
+                location: g.pickupLocation || g.dropLocation || 'On Site Concierge',
                 source: 'guest',
-                originalRecord: gr
+                originalRecord: g
             });
         });
 
-        // 5. Luxury Item Requests
+        // 5. Luxury Sourcing Requests
         (luxuryItems || []).filter(isMyRecord).forEach(lux => {
             const formattedId = lux.id ? (String(lux.id).startsWith('LUX-') ? lux.id : `LUX-${String(lux.id).padStart(3, '0')}`) : 'LUX-000';
             unified.push({
                 id: formattedId,
                 rawId: lux.id,
                 category: 'Luxury Item Request',
-                serviceType: 'Luxury Item Sourcing',
-                items: [{ name: lux.itemName || lux.name || lux.title || 'Exclusive Sourcing Request', qty: 1 }],
-                total: parseFloat(lux.price || lux.cost || lux.total || 0),
-                requestDate: lux.createdAt || lux.created_at || lux.date,
-                dueDate: lux.dueDate || lux.date || null,
-                status: lux.status || 'pending',
-                location: lux.location || 'Global Procurement Hub',
+                serviceType: `Bespoke Sourcing (${lux.category || 'High-Value Asset'})`,
+                items: [{ name: lux.itemName || lux.title || 'Private Asset Procurement', qty: parseInt(lux.quantity || 1, 10) }],
+                total: parseFloat(lux.estimatedPrice || lux.price || lux.total || 0),
+                requestDate: lux.createdAt || lux.created_at,
+                dueDate: lux.targetDate || null,
+                status: lux.status || 'sourcing',
+                location: lux.deliveryLocation || 'Vault / Direct Courier',
                 source: 'luxury',
                 originalRecord: lux
             });
@@ -361,11 +376,10 @@ const ClientOrders = () => {
 
         // Deduplicate and sort newest first (by timestamp, then rawId descending)
         const getTimeScore = (tx) => {
-            const orig = tx.originalRecord || {};
-            const rawCreated = orig.createdAt || orig.created_at || orig.updatedAt || orig.updated_at || tx.requestDate || orig.order_date || orig.date;
-            if (rawCreated) {
-                const d = new Date(rawCreated);
-                if (!isNaN(d.getTime())) return d.getTime();
+            const dateStr = tx.requestDate || tx.dueDate;
+            if (dateStr) {
+                const t = new Date(dateStr).getTime();
+                if (!isNaN(t)) return t;
             }
             return 0;
         };
@@ -378,7 +392,8 @@ const ClientOrders = () => {
 
         const seen = new Set();
         return unified.filter(tx => {
-            const key = `${tx.source}-${tx.id}`;
+            const numId = tx.rawId ? String(tx.rawId).replace(/\D/g, '') : '';
+            const key = numId && tx.category === 'Chauffeur Booking' ? `chauffeur-db-${numId}` : `${tx.source}-${tx.id}`;
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
@@ -940,6 +955,32 @@ const ClientOrders = () => {
                                         <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5">
                                             <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Service / Delivery Location</p>
                                             <p className="text-xs font-bold text-white">{selectedTransaction.location}</p>
+                                        </div>
+                                    )}
+
+                                    {/* Chauffeur / Passenger Info */}
+                                    {(selectedTransaction.passengerCount || selectedTransaction.passengerInfo || selectedTransaction.category === 'Chauffeur Bookings' || String(selectedTransaction.type || '').toLowerCase() === 'chauffeur') && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-accent/5 border border-accent/20">
+                                            <div>
+                                                <p className="text-[9px] font-black text-accent uppercase tracking-widest">No. of Passengers</p>
+                                                <p className="text-xs font-bold text-white">
+                                                    {selectedTransaction.numberOfPassengers || selectedTransaction.passengers || selectedTransaction.passengerCount || selectedTransaction.passengerInfo?.count || selectedTransaction.guestCount || 1} PAX
+                                                    {(selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name) ? ` (${selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name})` : ''}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[9px] font-black text-accent uppercase tracking-widest">Luggage Protocol</p>
+                                                <p className="text-xs font-bold text-white">
+                                                    {selectedTransaction.luggage || selectedTransaction.luggageOption || 'Standard / Included'}
+                                                </p>
+                                            </div>
+                                            <div className="sm:col-span-2">
+                                                <p className="text-[9px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</p>
+                                                <p className="text-xs font-bold text-white">
+                                                    {selectedTransaction.serviceType || 'One Way'}
+                                                    {selectedTransaction.serviceType === 'Round Trip' ? ' (2× Round Trip Rate applied)' : (selectedTransaction.numberOfDays > 1 || selectedTransaction.dailyDays > 1) ? ` (${selectedTransaction.numberOfDays || selectedTransaction.dailyDays} Days)` : ''}
+                                                </p>
+                                            </div>
                                         </div>
                                     )}
 

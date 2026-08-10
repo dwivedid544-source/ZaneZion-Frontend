@@ -320,7 +320,9 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 returnTime: effectiveOrder.returnTime || firstCustom.returnTime || '',
                 returnLocation: effectiveOrder.returnLocation || '',
                 dailyDays: effectiveOrder.dailyDays || firstCustom.numberOfDays || 1,
-                luggage: effectiveOrder.luggage || firstCustom.luggage || '',
+                luggage: effectiveOrder.luggage || firstCustom.luggage || (meta?.luggage) || '',
+                passengerCount: effectiveOrder.numberOfPassengers || effectiveOrder.number_of_passengers || effectiveOrder.passengers || effectiveOrder.passengerCount || effectiveOrder.passenger_count || effectiveOrder.guestCount || effectiveOrder.guest_count || effectiveOrder.pax || (meta?.numberOfPassengers) || (meta?.passengers) || (meta?.passengerInfo?.count) || (meta?.passengerCount) || (firstCustom.numberOfPassengers) || (firstCustom.passengers) || (firstCustom.passengerCount) || (firstCustom.guestCount) || 1,
+                passengerName: effectiveOrder.passengerName || effectiveOrder.passenger_name || (meta?.passengerInfo?.name) || (meta?.passengerName) || (firstCustom.passengerName) || (firstCustom.passenger_name) || '',
                 stops: effectiveOrder.stops || firstCustom.stops || '',
                 amenities: effectiveOrder.amenities || (firstCustom.amenities ? (Array.isArray(firstCustom.amenities) ? firstCustom.amenities.join(', ') : firstCustom.amenities) : '')
             });
@@ -641,6 +643,53 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                             </div>
                                         </div>
                                     </div>
+
+                                    {(String(formData.type).toLowerCase() === 'chauffeur' || formData.passengerCount || formData.passengerName) && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-accent/5 rounded-2xl border border-accent/20 col-span-1 md:col-span-2">
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">No. of Passengers (PAX)</label>
+                                                <input
+                                                    type="number"
+                                                    min="1"
+                                                    value={formData.passengerCount || 1}
+                                                    onChange={(e) => setFormData({ ...formData, passengerCount: e.target.value })}
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                    disabled={currentModalType === 'view'}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Passenger Name / VIP</label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.passengerName || ''}
+                                                    onChange={(e) => setFormData({ ...formData, passengerName: e.target.value })}
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                    placeholder="Passenger Name"
+                                                    disabled={currentModalType === 'view'}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Luggage Option</label>
+                                                <input
+                                                    type="text"
+                                                    value={formData.luggage || 'Standard'}
+                                                    onChange={(e) => setFormData({ ...formData, luggage: e.target.value })}
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                    disabled={currentModalType === 'view'}
+                                                />
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</label>
+                                                <input
+                                                    type="text"
+                                                    value={`${formData.serviceType || 'One Way'}${formData.serviceType === 'Round Trip' ? ' (2× Round Trip Rate applied)' : formData.dailyDays > 1 ? ` (${formData.dailyDays} Days)` : ''}`}
+                                                    onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                    disabled={currentModalType === 'view'}
+                                                />
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Pickup Location */}
                                     <div className="space-y-1">

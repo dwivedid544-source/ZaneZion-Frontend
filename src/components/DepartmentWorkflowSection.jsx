@@ -5,7 +5,11 @@ import Table from './Table';
 import { RefreshCcw, History, ClipboardList, CheckCircle } from 'lucide-react';
 import { isoDateSlice, displayOrderStatus } from '../utils/orderWorkflow';
 
+import { useData } from '../context/GlobalDataContext';
+import { formatClientDisplayName } from '../utils/apiHelpers';
+
 const DepartmentWorkflowSection = ({ departmentKey, departmentLabel }) => {
+  const { clients = [], users = [], customerUsers = [] } = useData();
   const [activeTab, setActiveTab] = useState('current'); // 'current' | 'processed'
   const [timelineOrder, setTimelineOrder] = useState(null);
 
@@ -36,16 +40,7 @@ const DepartmentWorkflowSection = ({ departmentKey, departmentLabel }) => {
     {
       header: "Client",
       accessor: "client",
-      render: (row) => {
-        const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
-        let name = null;
-        if (!isGeneric(row.client?.contactPerson)) name = row.client.contactPerson;
-        else if (!isGeneric(row.customer_name)) name = row.customer_name;
-        else if (!isGeneric(row.created_by_name)) name = row.created_by_name;
-        else if (!isGeneric(row.client?.companyName)) name = row.client.companyName;
-        else if (!isGeneric(row.client?.name)) name = row.client.name;
-        return name || "Personal Client";
-      }
+      render: (row) => formatClientDisplayName(row, clients, [...(users || []), ...(customerUsers || [])])
     },
     {
       header: "Items",

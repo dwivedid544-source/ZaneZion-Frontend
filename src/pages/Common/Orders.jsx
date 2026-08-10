@@ -11,6 +11,7 @@ import OrderModal from '../../components/OrderModal';
 import InvoiceGenerationModal from '../../components/InvoiceGenerationModal';
 import OrderTimeline from '../../components/OrderTimeline';
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
+import { formatClientDisplayName } from '../../utils/apiHelpers';
 
 /** Bespoke / concierge-path orders (store custom request or any row with a custom_request_category). */
 function isCustomRequestFlowOrder(order) {
@@ -31,7 +32,7 @@ const Orders = () => {
     deliveries, purchaseRequests, stockMovements,
     addProject, invoices, projects, missions, generateInvoiceFromOrder,
     currentUser, launchMissionFromOrder, convertOrderToProject,
-    fetchVendors, fetchClients, clients,
+    fetchVendors, fetchClients, clients, users = [], customerUsers = [], fetchCustomerUsers,
     hasMenuPermission
   } = useData();
   const navigate = useNavigate();
@@ -292,50 +293,7 @@ const Orders = () => {
     {
       header: "Client",
       accessor: "client",
-      render: (row) => {
-        const meta = typeof row.metadata === 'string' ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })() : (row.metadata || {});
-        const isGeneric = (str) => !str || ['person', 'personal client', 'personal', 'guest', 'client', 'null', 'undefined'].includes(String(str).trim().toLowerCase());
-        const isEmail = (str) => str && String(str).includes('@');
-
-        const rowEmail = (row.email || row.user?.email || row.client?.email || meta.email || '').toLowerCase();
-        const rowClientId = String(row.clientId || row.client_id || row.customer_id || row.userId || row.user_id || '').replace('CLT-', '');
-
-        const matchedClient = (clients || []).find(c => {
-          const cId = String(c.id || '').replace('CLT-', '');
-          const cEmail = String(c.email || '').toLowerCase();
-          return (rowClientId && cId === rowClientId) || (rowEmail && cEmail && cEmail === rowEmail);
-        });
-
-        let resolvedName = null;
-        // Priority: real name fields — skip generic terms & email strings as names
-        if (!isGeneric(row.client?.contactPerson) && !isEmail(row.client?.contactPerson)) {
-          resolvedName = row.client.contactPerson;
-        } else if (matchedClient && !isGeneric(matchedClient.name) && !isEmail(matchedClient.name)) {
-          resolvedName = matchedClient.name;
-        } else if (matchedClient && !isGeneric(matchedClient.companyName || matchedClient.business_name) && !isEmail(matchedClient.companyName || matchedClient.business_name)) {
-          resolvedName = matchedClient.companyName || matchedClient.business_name;
-        } else if (matchedClient && !isGeneric(matchedClient.contactPerson) && !isEmail(matchedClient.contactPerson)) {
-          resolvedName = matchedClient.contactPerson;
-        } else if (!isGeneric(row.customer_name) && !isEmail(row.customer_name)) {
-          resolvedName = row.customer_name;
-        } else if (!isGeneric(row.created_by_name) && !isEmail(row.created_by_name)) {
-          resolvedName = row.created_by_name;
-        } else if (!isGeneric(meta.clientName || meta.client_name) && !isEmail(meta.clientName || meta.client_name)) {
-          resolvedName = meta.clientName || meta.client_name;
-        } else if (!isGeneric(row.user?.name) && !isEmail(row.user?.name)) {
-          resolvedName = row.user.name;
-        } else if (!isGeneric(row.client?.companyName) && !isEmail(row.client?.companyName)) {
-          resolvedName = row.client.companyName;
-        } else if (!isGeneric(row.client?.name) && !isEmail(row.client?.name)) {
-          resolvedName = row.client.name;
-        }
-
-        if (!resolvedName && matchedClient?.email) {
-          resolvedName = matchedClient.email;
-        }
-
-        return resolvedName || "Personal Client";
-      }
+      render: (row) => formatClientDisplayName(row, clients, [...(users || []), ...(customerUsers || [])])
     },
     {
       header: "Order Type",

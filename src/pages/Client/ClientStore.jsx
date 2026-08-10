@@ -1087,38 +1087,42 @@ const ClientStore = () => {
 
                     <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-8 pt-8 border-t border-white/5">
                         <div className="flex-1 max-w-md space-y-4">
-                            <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Pickup Location / Origin Address</label>
-                            <div className="relative">
-                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-accent" size={16} />
-                                <input
-                                    type="text"
-                                    placeholder="Enter secure origin/pickup..."
-                                    className="w-full bg-background border border-white/10 rounded-3xl pl-12 pr-4 py-4 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all shadow-inner"
-                                    value={customPickupAddress}
-                                    onChange={(e) => setCustomPickupAddress(e.target.value)}
-                                />
-                            </div>
-                            <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Destination Address / Port</label>
-                            <div className="relative">
-                                <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-accent" size={16} />
-                                <input
-                                    type="text"
-                                    placeholder="Enter secure drop location..."
-                                    className="w-full bg-background border border-white/10 rounded-3xl pl-12 pr-4 py-4 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all shadow-inner"
-                                    value={destination}
-                                    onChange={(e) => setDestination(e.target.value)}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <label className="text-[10px] font-black text-accent uppercase tracking-widest ml-1">Total Distance (km)</label>
-                                <input
-                                    type="text"
-                                    placeholder="Distance auto-calculated..."
-                                    className="w-full bg-background border border-white/10 rounded-3xl px-4 py-4 text-sm text-accent focus:border-accent/50 outline-none font-black transition-all shadow-inner"
-                                    value={customDistanceKm}
-                                    onChange={(e) => setCustomDistanceKm(e.target.value)}
-                                />
-                            </div>
+                            {!isRetailPersonal && (
+                                <>
+                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Pickup Location / Origin Address</label>
+                                    <div className="relative">
+                                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-accent" size={16} />
+                                        <input
+                                            type="text"
+                                            placeholder="Enter secure origin/pickup..."
+                                            className="w-full bg-background border border-white/10 rounded-3xl pl-12 pr-4 py-4 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all shadow-inner"
+                                            value={customPickupAddress}
+                                            onChange={(e) => setCustomPickupAddress(e.target.value)}
+                                        />
+                                    </div>
+                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Destination Address / Port</label>
+                                    <div className="relative">
+                                        <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-accent" size={16} />
+                                        <input
+                                            type="text"
+                                            placeholder="Enter secure drop location..."
+                                            className="w-full bg-background border border-white/10 rounded-3xl pl-12 pr-4 py-4 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all shadow-inner"
+                                            value={destination}
+                                            onChange={(e) => setDestination(e.target.value)}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest ml-1">Total Distance (km)</label>
+                                        <input
+                                            type="text"
+                                            placeholder="Distance auto-calculated..."
+                                            className="w-full bg-background border border-white/10 rounded-3xl px-4 py-4 text-sm text-accent focus:border-accent/50 outline-none font-black transition-all shadow-inner"
+                                            value={customDistanceKm}
+                                            onChange={(e) => setCustomDistanceKm(e.target.value)}
+                                        />
+                                    </div>
+                                </>
+                            )}
                             <CustomDatePicker
                                 label="Order placement date"
                                 selectedDate={orderPlacementDate}

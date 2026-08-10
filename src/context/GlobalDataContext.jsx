@@ -23,6 +23,7 @@ import {
 import { INVENTORY, VENDORS, ACCESS_PLANS } from "../utils/data";
 
 import { getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from "../utils/stateSyncHelper";
+import { formatClientDisplayName } from "../utils/apiHelpers";
 
 const GlobalDataContext = createContext();
 
@@ -938,6 +939,7 @@ export const GlobalDataProvider = ({ children }) => {
       } else {
         setEvents(prev => prev.map(e => e.id === updatedEvent.id ? { ...e, ...updatedEvent } : e));
       }
+      fetchTickets();
     });
 
     socket.on('guest_request_update', (updatedReq) => {
@@ -961,8 +963,8 @@ export const GlobalDataProvider = ({ children }) => {
       if (!currentUser) return [];
 
       const role = normalizeRole(currentUser.role);
-      // Super Admin sees everything
-      if (["super_admin", "superadmin"].includes(role)) {
+      // Super Admin and HQ staff see everything
+      if (["super_admin", "superadmin", "admin", "concierge", "operations", "logistics"].includes(role)) {
         return dataArray;
       }
 
@@ -1871,8 +1873,8 @@ export const GlobalDataProvider = ({ children }) => {
             client_id: rawClientId,
             customer_id: d.customerId ?? d.customer_id ?? null,
             clientId: rawClientId,
-            client: d.client?.companyName || d.client_name || d.customer_name || "",
-            clientName: d.client?.companyName || d.client_name || d.customer_name || "",
+            client: formatClientDisplayName(d, clients, [...(users || []), ...(customerUsers || [])]),
+            clientName: formatClientDisplayName(d, clients, [...(users || []), ...(customerUsers || [])]),
             mission_type: rawMissionType,
             item: items.length > 0
               ? items[0].name
@@ -1932,8 +1934,8 @@ export const GlobalDataProvider = ({ children }) => {
             created_by: usrId,
             user_id: usrId,
             userId: usrId,
-            client: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
-            clientName: order.client?.companyName || order.client?.name || detail.clientName || 'Guest Client',
+            client: formatClientDisplayName(order, clients, users),
+            clientName: formatClientDisplayName(order, clients, users),
             mission_type: "Chauffeur",
             item: "VIP Chauffeur Service",
             items: [{ name: "VIP Chauffeur Service", qty: 1 }],
@@ -2855,25 +2857,7 @@ export const GlobalDataProvider = ({ children }) => {
     fetchTickets();
   }, [currentUser, fetchTickets]);
 
-  // Keep cross-portal operational state in sync when another role changes an order or delivery.
-  // Only fetch orders for roles that have the "Orders" menu permission.
-  useEffect(() => {
-    if (!currentUser || !localStorage.getItem("token")) return;
-    const role = normalizeRole(currentUser?.role);
-    // Roles that have access to Orders endpoint
-    const canAccessOrders = ["superadmin", "admin", "saas_client", "operations", "logistics", "concierge"].includes(role);
-    const canAccessProjects = ["superadmin", "admin", "saas_client", "operations"].includes(role);
-    const canAccessDeliveries = ["superadmin", "admin", "saas_client", "operations", "logistics", "driver"].includes(role);
 
-    const refreshOperationalState = () => {
-      if (canAccessOrders) fetchOrders();
-      if (canAccessDeliveries) fetchDeliveries();
-      if (canAccessProjects) fetchProjects();
-    };
-    refreshOperationalState();
-    const interval = setInterval(refreshOperationalState, 10000); // Poll every 10 seconds for cross-portal sync
-    return () => clearInterval(interval);
-  }, [currentUser, fetchOrders, fetchDeliveries, fetchProjects]);
 
 
   const recordLoss = async (loss) => {
@@ -6009,7 +5993,7 @@ export const GlobalDataProvider = ({ children }) => {
             created_by: usrId,
             user_id: usrId,
             userId: usrId,
-            clientName: order.client?.companyName || order.client?.name || detail?.clientName || 'Guest Client',
+            clientName: formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
             driverName: liveDriver,
             plateNumber: liveVehicle,
             driverPhotoUrl: detail?.driverPhotoUrl || null,
@@ -6021,9 +6005,20 @@ export const GlobalDataProvider = ({ children }) => {
             pickupDate: detail?.eta || detail?.dueDate || null,
             pickupTime: detail?.pickupTime || null,
             status: liveStatus,
-            chauffeurFee: parseFloat(detail?.chauffeurFee ?? detail?.chauffeur_fee ?? 0) || 0,
+            chauffeurFee: (() => {
+              const rawFee = parseFloat(detail?.chauffeurFee ?? detail?.chauffeur_fee ?? detail?.total_amount ?? detail?.unitPrice ?? order.totalAmount ?? 0) || 0;
+              const sType = detail?.serviceType || order.metadata?.customItems?.[0]?.serviceType || "One Way";
+              const daysVal = parseInt(detail?.numberOfDays || detail?.dailyDays || order.metadata?.customItems?.[0]?.numberOfDays || 1, 10) || 1;
+              if (sType === "Round Trip") {
+                return (rawFee > 0 && rawFee <= 180) ? rawFee * 2 : (rawFee > 0 ? rawFee : 240);
+              }
+              if (sType === "Daily Service" && daysVal > 1) {
+                return (rawFee > 0 && rawFee <= 180) ? rawFee * daysVal : (rawFee > 0 ? rawFee : 120 * daysVal);
+              }
+              return rawFee > 0 ? rawFee : 120;
+            })(),
             chauffeur_fee_mode: detail?.chauffeur_fee_mode || "separate",
-            numberOfPassengers: detail?.numberOfPassengers || 1,
+            numberOfPassengers: detail?.numberOfPassengers || detail?.passengers || detail?.numberOfPassengers || detail?.passengerCount || detail?.passenger_count || detail?.pax || detail?.guestCount || detail?.guest_count || order.metadata?.numberOfPassengers || order.metadata?.passengers || 1,
             bags: detail?.bags || 0,
             stops: detail?.stops || "No",
             stopLocations: detail?.stopLocations || "",
@@ -6411,8 +6406,12 @@ export const GlobalDataProvider = ({ children }) => {
 
   const addChauffeurRequest = async (request) => {
     try {
-      const fee =
-        Number(request.chauffeurFee ?? request.chauffeur_fee ?? 0) || 0;
+      const inputFee = Number(request.chauffeurFee ?? request.chauffeur_fee ?? 0) || 0;
+      const isRoundTrip = request.serviceType === 'Round Trip';
+      const daysCount = request.serviceType === 'Daily Service' ? (Number(request.numberOfDays) || 1) : 1;
+      const fee = inputFee > 0
+        ? inputFee
+        : (isRoundTrip ? CHAUFFEUR_BASE_FEE_USD * 2 : (daysCount > 1 ? CHAUFFEUR_BASE_FEE_USD * daysCount : CHAUFFEUR_BASE_FEE_USD));
       const compId = request.clientId && request.clientId !== "CLT-GUEST"
         ? request.clientId
         : currentUser?.company_id || currentUser?.companyId || currentUser?.clientId || null;
@@ -6705,16 +6704,17 @@ export const GlobalDataProvider = ({ children }) => {
           date: res.data.data.event_date
             ? res.data.data.event_date.split("T")[0]
             : "",
-          imageUrl: res.data.data.image_url,
-          moodBoardUrl: res.data.data.mood_board_url,
-          plannerName: res.data.data.planner_name,
-          specialRequests: res.data.data.special_requests,
-          guestCount: res.data.data.guest_count,
+          imageUrl: res.data.data.image_url || res.data.data.imageUrl || "",
+          moodBoardUrl: res.data.data.moodBoardUrl || res.data.data.mood_board_url || moodBoard || event.moodBoardUrl || "",
+          plannerName: res.data.data.plannerName || res.data.data.planner_name || event.plannerName || "",
+          specialRequests: res.data.data.specialRequests || res.data.data.special_requests || event.specialRequests || "",
+          guestCount: res.data.data.guestCount || res.data.data.guest_count || event.guestCount || 0,
           client_id: res.data.data.clientId || res.data.data.client_id,
           manager_id: res.data.data.managerId || res.data.data.manager_id,
         };
         setEvents((prev) => [newEvt, ...prev]);
         await fetchTickets();
+        window.dispatchEvent(new CustomEvent('app:state-changed'));
         addLog({
           action: "Event Registry",
           detail: `New event request: ${event.title}`,
@@ -6786,6 +6786,7 @@ export const GlobalDataProvider = ({ children }) => {
       }
 
       await fetchTickets();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
       addLog({
         action: "Event Update",
         detail: `Synchronized details for ${updated.title || updated.id}.`,
@@ -6800,6 +6801,7 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       await api.delete(`/support/events/${id}`);
       setEvents((prev) => prev.filter((e) => e.id !== id));
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
       addLog({
         action: "Event Cancellation",
         detail: `Removed event reference ID ${id}.`,
@@ -7304,6 +7306,7 @@ export const GlobalDataProvider = ({ children }) => {
         fetchChauffeurRequests(),
         fetchClients(),
         fetchInventory(),
+        fetchTickets(),
       ]);
     } catch (err) {
       console.error("Error synchronizing global state:", err);
@@ -7318,6 +7321,7 @@ export const GlobalDataProvider = ({ children }) => {
     fetchChauffeurRequests,
     fetchClients,
     fetchInventory,
+    fetchTickets,
   ]);
 
   useEffect(() => {
@@ -7329,6 +7333,26 @@ export const GlobalDataProvider = ({ children }) => {
       window.removeEventListener('app:state-changed', handleStateChanged);
     };
   }, [syncGlobalState]);
+
+  // Keep cross-portal operational state in sync when another role changes an order or delivery.
+  useEffect(() => {
+    if (!currentUser || !localStorage.getItem("token")) return;
+    const role = normalizeRole(currentUser?.role);
+    const canAccessOrders = ["superadmin", "admin", "saas_client", "operations", "logistics", "concierge"].includes(role);
+    const canAccessProjects = ["superadmin", "admin", "saas_client", "operations"].includes(role);
+    const canAccessDeliveries = ["superadmin", "admin", "saas_client", "operations", "logistics", "driver"].includes(role);
+
+    const refreshOperationalState = () => {
+      if (canAccessOrders && fetchOrders) fetchOrders();
+      if (canAccessDeliveries && fetchDeliveries) fetchDeliveries();
+      if (canAccessProjects && fetchProjects) fetchProjects();
+      if (fetchTickets) fetchTickets();
+      if (fetchChauffeurRequests) fetchChauffeurRequests();
+    };
+    refreshOperationalState();
+    const interval = setInterval(refreshOperationalState, 3000);
+    return () => clearInterval(interval);
+  }, [currentUser, fetchOrders, fetchDeliveries, fetchProjects, fetchTickets, fetchChauffeurRequests]);
 
   return (
     <GlobalDataContext.Provider

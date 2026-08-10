@@ -21,11 +21,20 @@ const SupportDashboard = () => {
     const [replyText, setReplyText] = useState('');
     const [refundAmount, setRefundAmount] = useState(0);
 
+    const normalizeStatusKey = (s) => {
+        const k = String(s || '').toLowerCase().replace(/[\s_]+/g, '');
+        if (['open', 'pending', 'new'].includes(k)) return 'Open';
+        if (['inprogress', 'assigned', 'investigating', 'in_progress'].includes(k)) return 'In Progress';
+        if (['resolved', 'closed', 'completed', 'done'].includes(k)) return 'Resolved';
+        return 'Open';
+    };
+
     const filteredTickets = supportTickets.filter(t => {
         const matchesSearch = t.clientName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             t.subject?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             String(t.id || '').toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesStatus = filterStatus === 'All' || t.status === filterStatus;
+        const normStatus = normalizeStatusKey(t.status);
+        const matchesStatus = filterStatus === 'All' || normStatus === filterStatus;
         return matchesSearch && matchesStatus;
     });
 
@@ -127,9 +136,9 @@ const SupportDashboard = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 {[
-                    { label: 'Active Tickets', value: supportTickets.filter(t => t.status !== 'Resolved').length, icon: MessageSquare, color: 'text-accent' },
-                    { label: 'Urgent Priority', value: supportTickets.filter(t => t.priority === 'High' && t.status !== 'Resolved').length, icon: AlertCircle, color: 'text-danger' },
-                    { label: 'Pending Response', value: supportTickets.filter(t => t.status === 'Open').length, icon: Clock, color: 'text-warning' },
+                    { label: 'Active Tickets', value: supportTickets.filter(t => normalizeStatusKey(t.status) !== 'Resolved').length, icon: MessageSquare, color: 'text-accent' },
+                    { label: 'Urgent Priority', value: supportTickets.filter(t => String(t.priority).toLowerCase() === 'high' && normalizeStatusKey(t.status) !== 'Resolved').length, icon: AlertCircle, color: 'text-danger' },
+                    { label: 'Pending Response', value: supportTickets.filter(t => normalizeStatusKey(t.status) === 'Open').length, icon: Clock, color: 'text-warning' },
                     { label: 'Resolution Rate', value: '98.4%', icon: CheckCircle2, color: 'text-success' }
                 ].map((stat, idx) => (
                     <div key={idx} className="glass-card p-6 border-white/5 relative overflow-hidden group">

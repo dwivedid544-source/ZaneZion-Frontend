@@ -129,6 +129,21 @@ const EmployeePortal = () => {
 
     const pendingAssignments = staffAssignments.filter(a => a.status === 'Pending' && !a.assigneeId);
 
+    const myApprovedLeaveHours = React.useMemo(() => {
+        return (leaveRequests || [])
+            .filter(r => ((r.userId && String(r.userId) === String(currentUser?.id)) || r.name === currentUser?.name) && String(r.status).toLowerCase() === 'approved')
+            .reduce((sum, r) => {
+                let calcH = r.hours;
+                if (r.start && r.end) {
+                    const s = new Date(r.start);
+                    const e = new Date(r.end);
+                    const diffDays = Math.max(1, Math.floor(Math.abs(e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+                    calcH = diffDays * 24;
+                }
+                return sum + (Number(calcH) || 24);
+            }, 0);
+    }, [leaveRequests, currentUser]);
+
     // Filtered assignments based on search
     const filteredMyAssignments = myAssignments.filter(asg =>
         asg.task?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -402,11 +417,17 @@ const EmployeePortal = () => {
                         />
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-3 bg-white/[0.03] p-2.5 rounded-2xl border border-white/10 backdrop-blur-xl">
-                        <div className="px-5 py-2 flex flex-col items-center min-w-[120px]">
-                            <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1.5 opacity-60">Leave balance</p>
-                            <p className="text-lg font-black text-accent italic tracking-tighter tabular-nums flex items-center gap-2">
-                                <Calendar size={14} className="opacity-50" /> {currentUser?.vacationBalance || 0}<span className="text-[10px] uppercase tracking-tighter opacity-50 not-italic ml-0.5">h</span>
+                    <div className="flex flex-wrap items-center gap-3 bg-white/[0.03] p-2 rounded-2xl border border-white/10 backdrop-blur-xl">
+                        <div className="px-4 py-1.5 flex flex-col items-center border-r border-white/10 min-w-[100px]">
+                            <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1 opacity-70">Deducted Hours</p>
+                            <p className="text-base font-black text-danger italic tracking-tighter tabular-nums flex items-center gap-1.5">
+                                <Clock size={13} className="opacity-70" /> {myApprovedLeaveHours}<span className="text-[10px] uppercase opacity-70 not-italic ml-0.5">h</span>
+                            </p>
+                        </div>
+                        <div className="px-4 py-1.5 flex flex-col items-center min-w-[100px]">
+                            <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1 opacity-70">Remaining Hours</p>
+                            <p className="text-base font-black text-success italic tracking-tighter tabular-nums flex items-center gap-1.5">
+                                <Calendar size={13} className="opacity-70" /> {currentUser?.vacationBalance ?? (10000 - myApprovedLeaveHours)}<span className="text-[10px] uppercase opacity-70 not-italic ml-0.5">h</span>
                             </p>
                         </div>
                     </div>
@@ -1186,7 +1207,16 @@ const EmployeePortal = () => {
                                             <div>
                                                 <div className="flex items-center gap-2">
                                                     <p className="text-sm font-bold text-white">{req.type} Protocol</p>
-                                                    {req.hours && <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded text-accent">{req.hours}h Hourly</span>}
+                                                    {(() => {
+                                                        let calcH = req.hours;
+                                                        if (req.start && req.end) {
+                                                            const s = new Date(req.start);
+                                                            const e = new Date(req.end);
+                                                            const diffDays = Math.max(1, Math.floor(Math.abs(e - s) / (1000 * 60 * 60 * 24)) + 1);
+                                                            calcH = diffDays * 24;
+                                                        }
+                                                        return <span className="text-[10px] bg-white/5 px-2 py-0.5 rounded font-black text-accent">{calcH || 24}h Duration</span>;
+                                                    })()}
                                                 </div>
                                                 <p className="text-[10px] text-muted uppercase font-bold">{req.start} to {req.end}</p>
                                             </div>

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { motion } from 'framer-motion';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence } from 'framer-motion';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import { useData } from '../../context/GlobalDataContext';
@@ -15,6 +16,7 @@ import Swal from 'sweetalert2';
 const Users = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [uploadingDocs, setUploadingDocs] = useState({});
+  const [viewingDoc, setViewingDoc] = useState(null);
 
   const handleDocUpload = async (userId, docType, e) => {
     const file = e.target?.files?.[0] || e.target?.files?.[0];
@@ -29,14 +31,15 @@ const Users = () => {
       certs: ['pdf', 'jpg', 'jpeg', 'png']
     };
 
-    const allowed = documentTypes[docType];
-    const ext = file.name.split('.').pop().toLowerCase();
-    if (!allowed || !allowed.includes(ext)) {
-      swalWarning('Validation Error', `Invalid format. Allowed: ${allowed.join(', ').toUpperCase()}`);
+    const allowedFormats = documentTypes[docType];
+    const fileExt = file.name.split('.').pop().toLowerCase();
+
+    if (allowedFormats && !allowedFormats.includes(fileExt)) {
+      swalWarning('Invalid File', `Allowed formats for ${docType}: ${allowedFormats.join(', ')}`);
       return;
     }
 
-    const stateKey = `${userId}-${docType}`;
+    const stateKey = `${userId || 'new'}-${docType}`;
     setUploadingDocs(prev => ({ ...prev, [stateKey]: true }));
 
     try {
@@ -45,17 +48,23 @@ const Users = () => {
 
       const targetId = userId || formData?.id || selectedUser?.id;
       if (!targetId) {
-        // If creating a brand new user not yet saved in DB, set local preview state and preserve File object
+        // Convert to base64 Data URL for permanent self-contained storage before user creation
         const fieldMap = { passport: 'hasPassport', license: 'hasLicense', nib: 'hasNIB', resume: 'hasResume' };
         const urlMap = { passport: 'passportUrl', license: 'licenseUrl', nib: 'nibUrl', resume: 'resumeUrl' };
         const fileMap = { passport: 'passportFile', license: 'licenseFile', nib: 'nibFile', resume: 'resumeFile' };
-        setFormData(prev => ({
-          ...prev,
-          [fieldMap[docType]]: true,
-          [urlMap[docType]]: URL.createObjectURL(file),
-          [fileMap[docType]]: file
-        }));
-        swalSuccess('Document Attached', `${docType.toUpperCase()} file selected for user profile.`);
+        
+        const reader = new FileReader();
+        reader.onload = (event) => {
+          const dataUrl = event.target.result;
+          setFormData(prev => ({
+            ...prev,
+            [fieldMap[docType]]: true,
+            [urlMap[docType]]: dataUrl,
+            [fileMap[docType]]: file
+          }));
+          swalSuccess('Document Attached', `${docType.toUpperCase()} document loaded & attached.`);
+        };
+        reader.readAsDataURL(file);
         return;
       }
 
@@ -1534,46 +1543,68 @@ const Users = () => {
                     disabled={modalType === 'view'}
                   />
                 </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Documents Protocol</label>
-                  <div className="flex flex-wrap gap-2 pt-1">
+                <div className="space-y-3 sm:col-span-2 p-4 bg-white/5 border border-white/10 rounded-2xl">
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-1 border-b border-white/10 pb-2">
+                    <label className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-1.5">
+                      📄 Documents Protocol (Passport, DL, NIB, Resume)
+                    </label>
+                    <span className="text-[8px] font-bold text-muted uppercase">Click badge to view or upload</span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                     {[
-                      { label: 'Passport', field: 'hasPassport', type: 'passport', urlField: 'passportUrl' },
-                      { label: 'DL', field: 'hasLicense', type: 'license', urlField: 'licenseUrl' },
+                      { label: 'Passport Scan', field: 'hasPassport', type: 'passport', urlField: 'passportUrl' },
+                      { label: 'Driving Licence (DL)', field: 'hasLicense', type: 'license', urlField: 'licenseUrl' },
                       { label: 'NIB Photo', field: 'hasNIB', type: 'nib', urlField: 'nibUrl' },
-                      { label: 'Resume', field: 'hasResume', type: 'resume', urlField: 'resumeUrl' }
-                    ].map(doc => (
-                      <div key={doc.label} className="flex items-center gap-1">
-                        <label
-                          className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-tight border transition-all flex items-center gap-1.5 cursor-pointer ${formData[doc.field]
-                            ? 'bg-success/20 border-success text-success'
-                            : 'bg-white/5 border-white/10 text-muted hover:border-accent/40'}`}
-                        >
-                          <input
-                            type="file"
-                            className="hidden"
-                            disabled={modalType === 'view'}
-                            onChange={(e) => {
-                              setFormData(prev => ({ ...prev, [doc.field]: true }));
-                              handleDocUpload(selectedUser?.id || formData?.id, doc.type, e);
+                      { label: 'Resume / CV', field: 'hasResume', type: 'resume', urlField: 'resumeUrl' }
+                    ].map(doc => {
+                      const hasDoc = formData[doc.field] || !!formData[doc.urlField];
+                      const docUrl = formData[doc.urlField];
+                      const isUploading = uploadingDocs[`${selectedUser?.id || formData?.id || 'new'}-${doc.type}`];
+
+                      return (
+                        <div key={doc.label} className="flex items-center gap-2 w-full min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (hasDoc && docUrl) {
+                                setViewingDoc({ title: `${doc.label} - ${formData.name || 'User Profile'}`, url: toAbsoluteImageUrl(docUrl), type: doc.type, userId: selectedUser?.id || formData?.id });
+                              } else {
+                                document.getElementById(`doc-upload-file-${doc.type}`)?.click();
+                              }
                             }}
-                          />
-                          {formData[doc.field] ? <Check size={10} /> : <Plus size={10} />}
-                          {doc.label}
-                        </label>
-                        {formData[doc.urlField] && (
-                          <a
-                            href={toAbsoluteImageUrl(formData[doc.urlField])}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1 text-accent hover:bg-accent/10 rounded-lg text-[9px] font-bold transition-all"
-                            title={`View ${doc.label}`}
+                            className={`flex-1 py-2.5 px-4 rounded-xl text-[10px] font-black uppercase tracking-wider border transition-all flex items-center justify-between gap-2 min-w-0 ${
+                              hasDoc
+                                ? 'bg-success/20 border-success/60 text-success hover:bg-success/30 shadow-lg shadow-success/10'
+                                : 'bg-white/5 border-white/10 text-muted hover:border-accent/40 hover:text-accent'
+                            }`}
                           >
-                            <FileText size={12} />
-                          </a>
-                        )}
-                      </div>
-                    ))}
+                            <div className="flex items-center gap-2 truncate">
+                              {hasDoc ? <CheckCircle2 size={14} className="text-success shrink-0" /> : <Plus size={14} className="text-muted shrink-0" />}
+                              <span className="truncate">{doc.label}</span>
+                            </div>
+                            {hasDoc && <Eye size={14} className="text-success shrink-0 opacity-80" />}
+                          </button>
+
+                          <label
+                            htmlFor={`doc-upload-file-${doc.type}`}
+                            className="p-2.5 rounded-xl border bg-white/5 border-white/10 text-muted hover:border-accent/40 hover:text-accent cursor-pointer transition-all flex items-center justify-center shrink-0"
+                            title={`Upload / Replace ${doc.label}`}
+                          >
+                            <input
+                              id={`doc-upload-file-${doc.type}`}
+                              type="file"
+                              className="hidden"
+                              disabled={modalType === 'view' || isUploading}
+                              onChange={(e) => {
+                                setFormData(prev => ({ ...prev, [doc.field]: true }));
+                                handleDocUpload(selectedUser?.id || formData?.id, doc.type, e);
+                              }}
+                            />
+                            <Edit size={12} />
+                          </label>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
                 <div className="space-y-1">
@@ -1952,7 +1983,92 @@ const Users = () => {
           </div>
         </form>
       </Modal>
-    </div >
+
+      {/* Document Viewer Modal Overlay via React Portal */}
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {viewingDoc && (
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setViewingDoc(null)}
+                className="absolute inset-0 bg-black/90 backdrop-blur-2xl"
+              />
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                transition={{ type: "spring", damping: 25, stiffness: 300 }}
+                className="relative z-10 glass-card max-w-4xl w-full p-6 border border-accent/30 space-y-4 max-h-[90vh] flex flex-col overflow-hidden shadow-3xl bg-background/95"
+              >
+                <div className="flex items-center justify-between border-b border-white/10 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-accent/10 border border-accent/20 rounded-xl text-accent">
+                      <FileText size={22} />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white uppercase tracking-tight">{viewingDoc.title}</h3>
+                      <p className="text-[10px] text-muted font-bold uppercase tracking-widest">Institutional Vault Document Inspection</p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setViewingDoc(null)}
+                    className="p-2 text-muted hover:text-white hover:bg-white/10 rounded-xl transition-all"
+                  >
+                    <CloseIcon size={20} />
+                  </button>
+                </div>
+
+                <div className="flex-1 overflow-auto p-4 bg-black/50 rounded-2xl border border-white/5 flex items-center justify-center min-h-[360px]">
+                  {viewingDoc.url?.match(/\.(jpg|jpeg|png|webp|gif)($|\?)/i) || viewingDoc.url?.startsWith('data:image/') ? (
+                    <img
+                      src={viewingDoc.url}
+                      alt={viewingDoc.title}
+                      className="max-h-[65vh] max-w-full rounded-xl border border-accent/30 object-contain shadow-2xl"
+                    />
+                  ) : (
+                    <iframe
+                      src={viewingDoc.url}
+                      title={viewingDoc.title}
+                      className="w-full h-[65vh] rounded-xl border border-accent/20 bg-white"
+                    />
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pt-2">
+                  <label className="px-4 py-2.5 bg-white/5 border border-white/10 hover:border-accent/40 text-muted hover:text-accent rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer transition-all flex items-center gap-2">
+                    <input
+                      type="file"
+                      className="hidden"
+                      onChange={(e) => {
+                        handleDocUpload(viewingDoc.userId, viewingDoc.type, e);
+                        setViewingDoc(null);
+                      }}
+                    />
+                    <Edit size={14} />
+                    <span>Replace Document</span>
+                  </label>
+
+                  <a
+                    href={viewingDoc.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    download
+                    className="px-6 py-2.5 bg-accent hover:bg-accent/90 text-primary font-black rounded-xl text-xs uppercase tracking-widest transition-all flex items-center gap-2 shadow-lg shadow-accent/20"
+                  >
+                    <Eye size={14} />
+                    <span>Open Original File</span>
+                  </a>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+    </div>
   );
 };
 

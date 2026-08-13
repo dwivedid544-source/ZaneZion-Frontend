@@ -67,67 +67,53 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     const isStaffRole = ['superadmin', 'admin', 'operations', 'procurement', 'logistics', 'inventory', 'concierge', 'staff'].includes(portalRole);
 
     const customerOnlyForDropdown = React.useMemo(() => {
-        const fromClients = (clients || [])
-            .filter((c) => {
-                // Filter out non-active clients
-                const status = String(c.status || c.account_status || '').trim().toLowerCase();
-                if (status !== 'active' && status !== '') return false;
-
-                const ct = String(c.client_type || c.clientType || c.type || '').trim().toLowerCase();
-                const tt = String(c.tenant_type || c.tenantType || '').trim().toLowerCase();
-                const role = String(c.role || c.user_role || '').trim().toLowerCase();
-                const category = String(c.category || '').trim().toLowerCase();
-
-                // Explicitly EXCLUDE SaaS, Business, and Enterprise clients
-                if (
-                    ct === 'saas' || ct === 'business' || ct === 'enterprise' ||
-                    tt === 'saas' || tt === 'business' || tt === 'enterprise' ||
-                    category === 'saas' || category === 'business' || category === 'enterprise' ||
-                    role === 'saas' || role === 'business' || role === 'saas_client' || role === 'business_client'
-                ) {
-                    return false;
-                }
-
-                return true;
-            })
-            .map((c) => ({
-                id: `client_${c.id}`,
-                rawId: c.id,
-                name: c.name || c.companyName || c.contactPerson || c.business_name || c.company_name || '',
-                email: c.email,
-                type: 'Personal',
-                source: 'client',
-            }));
-
-        const fromUsers = (customerUsers || [])
-            .filter((u) => {
-                const status = String(u.status || u.account_status || '').trim().toLowerCase();
-                return status === 'active' || status === '';
-            })
-            .map((u) => {
-                const matchedClient = (clients || []).find(c => Number(c.userId || c.user_id) === Number(u.id) || String(c.email).toLowerCase() === String(u.email).toLowerCase());
-                const fallbackClient = (clients || [])[0];
-                return {
-                    id: `user_${u.id}`,
-                    rawId: matchedClient ? matchedClient.id : (fallbackClient ? fallbackClient.id : u.id),
-                    name: u.name || u.fullName || u.email,
-                    email: u.email,
-                    type: 'Personal',
-                    source: 'user',
-                };
-            });
-
-        // Deduplicate by email first, then by name fallback.
+        const list = [];
         const seen = new Set();
-        const merged = [...fromClients, ...fromUsers].filter((x) => {
-            if (!x.name) return false;
-            const key = (x.email || '').trim().toLowerCase() || `name:${String(x.name || '').trim().toLowerCase()}`;
-            if (seen.has(key)) return false;
-            seen.add(key);
-            return true;
+
+        // 1. From clients table (Institutional / Corporate Clients)
+        (clients || []).forEach((c) => {
+            if (!c || !c.id) return;
+            const name = c.companyName || c.name || c.contactPerson || c.business_name || c.company_name || `Client ${c.id}`;
+            const email = c.email || '';
+            const key = `client-${c.id}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                list.push({
+                    id: `client_${c.id}`,
+                    rawId: c.id,
+                    name: name,
+                    email: email,
+                    type: c.clientType || c.plan || 'Client',
+                    source: 'client'
+                });
+            }
         });
 
-        return merged;
+        // 2. From customerUsers / users table (Portal Clients)
+        (customerUsers || []).forEach((u) => {
+            if (!u || !u.id) return;
+            const roleStr = String(u.role?.name || u.role || '').toLowerCase();
+            if (['superadmin', 'concierge', 'staff', 'admin', 'inventory', 'logistics', 'driver'].includes(roleStr)) {
+                return;
+            }
+            const name = u.name || u.fullName || u.email || `User ${u.id}`;
+            const email = u.email || '';
+            const key = `user-${u.id}`;
+            if (!seen.has(key)) {
+                seen.add(key);
+                list.push({
+                    id: `user_${u.id}`,
+                    rawId: u.clientId || u.company_id || u.id,
+                    userId: u.id,
+                    name: name,
+                    email: email,
+                    type: 'Personal',
+                    source: 'user'
+                });
+            }
+        });
+
+        return list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     }, [clients, customerUsers]);
     const [formData, setFormData] = useState({
         client: '',
@@ -250,10 +236,18 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
             let parsedItems = [];
             if (isChauffeur) {
+                const sType = effectiveOrder.serviceType || firstCustom.serviceType || 'One Way';
+                const days = parseInt(effectiveOrder.numberOfDays || effectiveOrder.dailyDays || firstCustom.numberOfDays || firstCustom.dailyDays || 1, 10) || 1;
+                const qtyMultiplier = sType === 'Round Trip' ? 2 : (sType === 'Daily Service' ? days : 1);
+                // Always use $120 as the base unit price — ignore any stored bloated values
+                const CHAUFFEUR_BASE = 120;
+                const finalUnitPrice = CHAUFFEUR_BASE;
+                const finalTotal = CHAUFFEUR_BASE * qtyMultiplier;
+
                 parsedItems = [{
-                    name: `Chauffeur Service (${firstCustom.serviceType || 'Ride'})`,
-                    qty: 1,
-                    price: firstCustom.chauffeurFee || firstCustom.chauffeur_fee || 0
+                    name: `VIP Chauffeur Service (${sType}${sType === 'Daily Service' ? ` - ${days} Days` : ''})`,
+                    qty: qtyMultiplier,
+                    price: finalUnitPrice
                 }];
             } else {
                 parsedItems = rawItems.map((itm, idx) => {
@@ -294,11 +288,25 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 String(c.rawId) === String(existingClientId)
             );
 
+            const clientDisplayName = (typeof effectiveOrder.client === 'object' && effectiveOrder.client !== null ? (effectiveOrder.client.companyName || effectiveOrder.client.name || '') : effectiveOrder.client) || effectiveOrder.customer_name || effectiveOrder.created_by_name || '';
             const dropLoc = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || firstCustom.dropLocation || firstCustom.location || '';
             const pickLoc = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || '';
 
+            let rawAmenities = effectiveOrder.amenities || firstCustom.amenities || meta?.amenities || [];
+            let amenitiesList = Array.isArray(rawAmenities) ? rawAmenities : (typeof rawAmenities === 'string' && rawAmenities.trim() ? rawAmenities.split(',').map(s => s.trim()) : []);
+            let amenitiesStr = amenitiesList.join(', ');
+
+            const parsedGuestName = effectiveOrder.passengerName || effectiveOrder.passenger_name || effectiveOrder.guestName || (meta?.passengerInfo?.name) || (meta?.passengerName) || (meta?.guestName) || (firstCustom.passengerName) || (firstCustom.passenger_name) || (firstCustom.guestName) || clientDisplayName || '';
+
+            const parsedWifi = effectiveOrder.wifi || firstCustom.wifi || meta?.wifi || (amenitiesStr.toLowerCase().includes('wifi') ? 'Yes' : 'No');
+            const parsedRefreshments = effectiveOrder.refreshments || firstCustom.refreshments || meta?.refreshments || (amenitiesStr.toLowerCase().includes('refreshment') ? 'Yes' : 'No');
+            const parsedCarSeat = effectiveOrder.carSeat || effectiveOrder.car_seat || firstCustom.carSeat || firstCustom.car_seat || meta?.carSeat || meta?.car_seat || (amenitiesStr.toLowerCase().includes('car seat') || amenitiesStr.toLowerCase().includes('baby') ? 'Yes' : 'No');
+            const parsedStops = effectiveOrder.stops || firstCustom.stops || meta?.stops || 'No';
+            const parsedStopLocations = effectiveOrder.stopLocations || firstCustom.stopLocations || meta?.stopLocations || meta?.stop_locations || '';
+            const parsedLuggage = effectiveOrder.luggage || firstCustom.luggage || meta?.luggage || '';
+
             setFormData({
-                client: (typeof effectiveOrder.client === 'object' && effectiveOrder.client !== null ? (effectiveOrder.client.companyName || effectiveOrder.client.name || '') : effectiveOrder.client) || effectiveOrder.customer_name || effectiveOrder.created_by_name || '',
+                client: clientDisplayName,
                 clientId: existingClientId,
                 clientDropdownId: matchedDropdown?.id || '',
                 items: parsedItems,
@@ -320,11 +328,15 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 returnTime: effectiveOrder.returnTime || firstCustom.returnTime || '',
                 returnLocation: effectiveOrder.returnLocation || '',
                 dailyDays: effectiveOrder.dailyDays || firstCustom.numberOfDays || 1,
-                luggage: effectiveOrder.luggage || firstCustom.luggage || (meta?.luggage) || '',
+                luggage: parsedLuggage,
                 passengerCount: effectiveOrder.numberOfPassengers || effectiveOrder.number_of_passengers || effectiveOrder.passengers || effectiveOrder.passengerCount || effectiveOrder.passenger_count || effectiveOrder.guestCount || effectiveOrder.guest_count || effectiveOrder.pax || (meta?.numberOfPassengers) || (meta?.passengers) || (meta?.passengerInfo?.count) || (meta?.passengerCount) || (firstCustom.numberOfPassengers) || (firstCustom.passengers) || (firstCustom.passengerCount) || (firstCustom.guestCount) || 1,
-                passengerName: effectiveOrder.passengerName || effectiveOrder.passenger_name || (meta?.passengerInfo?.name) || (meta?.passengerName) || (firstCustom.passengerName) || (firstCustom.passenger_name) || '',
-                stops: effectiveOrder.stops || firstCustom.stops || '',
-                amenities: effectiveOrder.amenities || (firstCustom.amenities ? (Array.isArray(firstCustom.amenities) ? firstCustom.amenities.join(', ') : firstCustom.amenities) : '')
+                passengerName: parsedGuestName,
+                stops: parsedStops,
+                stopLocations: parsedStopLocations,
+                wifi: parsedWifi,
+                refreshments: parsedRefreshments,
+                carSeat: parsedCarSeat,
+                amenities: amenitiesStr
             });
         }
     }, [isOpen, effectiveOrder, modalType, customerOnlyForDropdown]);
@@ -644,8 +656,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                         </div>
                                     </div>
 
-                                    {(String(formData.type).toLowerCase() === 'chauffeur' || formData.passengerCount || formData.passengerName) && (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-accent/5 rounded-2xl border border-accent/20 col-span-1 md:col-span-2">
+                                    {(String(formData.type).toLowerCase().includes('chauffeur') || formData.passengerCount || formData.passengerName) && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-accent/5 rounded-2xl border border-accent/20 col-span-1 md:col-span-2">
                                             <div className="space-y-1">
                                                 <label className="text-[10px] font-black text-accent uppercase tracking-widest">No. of Passengers (PAX)</label>
                                                 <input
@@ -658,13 +670,13 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 />
                                             </div>
                                             <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Passenger Name / VIP</label>
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Guest Name / Passenger</label>
                                                 <input
                                                     type="text"
-                                                    value={formData.passengerName || ''}
+                                                    value={formData.passengerName || formData.client || ''}
                                                     onChange={(e) => setFormData({ ...formData, passengerName: e.target.value })}
                                                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
-                                                    placeholder="Passenger Name"
+                                                    placeholder="Guest Name (Auto: Client Name)"
                                                     disabled={currentModalType === 'view'}
                                                 />
                                             </div>
@@ -672,13 +684,37 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 <label className="text-[10px] font-black text-accent uppercase tracking-widest">Luggage Option</label>
                                                 <input
                                                     type="text"
-                                                    value={formData.luggage || 'Standard'}
+                                                    value={formData.luggage || 'No'}
                                                     onChange={(e) => setFormData({ ...formData, luggage: e.target.value })}
                                                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
                                                     disabled={currentModalType === 'view'}
                                                 />
                                             </div>
                                             <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Wi-Fi</label>
+                                                <div className={`w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold ${formData.wifi === 'Yes' ? 'text-success' : 'text-muted'}`}>
+                                                    {formData.wifi || 'No'}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Refreshments</label>
+                                                <div className={`w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold ${formData.refreshments === 'Yes' ? 'text-success' : 'text-muted'}`}>
+                                                    {formData.refreshments || 'No'}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Car Seat</label>
+                                                <div className={`w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold ${formData.carSeat === 'Yes' ? 'text-success' : 'text-muted'}`}>
+                                                    {formData.carSeat || 'No'}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1 sm:col-span-2 md:col-span-3">
+                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Extra Stops</label>
+                                                <div className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white">
+                                                    {formData.stops === 'Yes' ? `Yes ${formData.stopLocations ? `— ${formData.stopLocations}` : ''}` : 'No'}
+                                                </div>
+                                            </div>
+                                            <div className="space-y-1 sm:col-span-2 md:col-span-3">
                                                 <label className="text-[10px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</label>
                                                 <input
                                                     type="text"

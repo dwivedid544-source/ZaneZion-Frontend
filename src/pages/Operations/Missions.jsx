@@ -13,7 +13,7 @@ import { swalSuccess, swalError } from '../../utils/swal';
 const Missions = () => {
   const {
     missions, fetchMissions, users, fleet, fetchFleet, fetchStaff,
-    projects, fetchProjects,
+    projects, fetchProjects, chauffeurRequests, deliveries,
     addLog, updateMissionStatus, assignMissionDriver, deleteMission,
     hasMenuPermission
   } = useData();
@@ -36,11 +36,21 @@ const Missions = () => {
     if (fetchProjects) fetchProjects();
   }, [fetchMissions, fetchFleet, fetchStaff, fetchProjects]);
 
+  const findLinkedOrder = (mission) => {
+    if (!mission) return null;
+    const oId = String(mission.order_id || mission.orderId || mission.metadata?.orderId || '');
+    if (!oId) return null;
+    const fromChauffeur = (chauffeurRequests || []).find(c => String(c.id) === oId || String(c.db_id) === oId || String(c.orderNumber) === oId);
+    if (fromChauffeur) return fromChauffeur;
+    const fromDel = (deliveries || []).find(d => String(d.id) === oId || String(d.db_id) === oId || String(d.orderId) === oId);
+    return fromDel || null;
+  };
+
   // Link mission to its project by orderId or projectId
   const getProject = (mission) => {
     if (!projects || !projects.length) return null;
-    const pId = mission.project_id || mission.projectId;
-    const oId = mission.order_id || mission.orderId;
+    const pId = mission.project_id || mission.projectId || mission.metadata?.projectId;
+    const oId = mission.order_id || mission.orderId || mission.metadata?.orderId;
     
     return projects.find(p =>
       (pId && String(p.id) === String(pId)) ||
@@ -48,13 +58,57 @@ const Missions = () => {
     ) || null;
   };
 
+  const getVehicleDisplayName = (rawVeh) => {
+    if (!rawVeh || rawVeh === 'N/A' || rawVeh === 'null' || rawVeh === 'undefined') {
+      return null;
+    }
+
+    const list = fleet || [];
+    if (list.length === 0) {
+      return isNaN(Number(rawVeh)) ? rawVeh : `Vehicle #${rawVeh}`;
+    }
+
+    // 1. Direct match by id, db_id, vehicleId, plateNumber, or model
+    let vObj = list.find(v => 
+      String(v.id) === String(rawVeh) || 
+      String(v.db_id) === String(rawVeh) || 
+      String(v.vehicleId) === String(rawVeh) ||
+      String(v.plateNumber) === String(rawVeh) ||
+      String(v.plate_number) === String(rawVeh) ||
+      String(v.model || '').toLowerCase() === String(rawVeh || '').toLowerCase()
+    );
+
+    // 2. Loose numeric match (e.g. "1" or 1 matches vehicleId "01" or db_id 1)
+    if (!vObj && !isNaN(Number(rawVeh))) {
+      const num = Number(rawVeh);
+      vObj = list.find(v => Number(v.id) === num || Number(v.db_id) === num || Number(v.vehicleId) === num);
+    }
+
+    // 3. 1-based index fallback if rawVeh is a simple 1-based index
+    if (!vObj && !isNaN(Number(rawVeh))) {
+      const idx = Number(rawVeh) - 1;
+      if (idx >= 0 && idx < list.length) {
+        vObj = list[idx];
+      }
+    }
+
+    if (vObj) {
+      const name = (vObj.model && vObj.model !== 'model') ? vObj.model : (vObj.type || 'Vehicle');
+      const subType = (vObj.type && vObj.type !== name) ? ` (${vObj.type})` : '';
+      return `${name}${subType}`;
+    }
+
+    return isNaN(Number(rawVeh)) ? rawVeh : `Vehicle #${rawVeh}`;
+  };
+
   const handleAction = (type, mission) => {
     setSelectedMission(mission);
     setModalType(type);
     if (type === 'assign') {
+      const linked = findLinkedOrder(mission);
       setAssignData({
-        driverId: mission.driverId || '',
-        vehicleId: mission.vehicleId || ''
+        driverId: mission.driverId || linked?.driver_user_id || linked?.driverId || '',
+        vehicleId: mission.vehicleId || linked?.plateNumber || linked?.vehicleId || ''
       });
     }
     setIsModalOpen(true);
@@ -101,13 +155,16 @@ const Missions = () => {
     { 
       header: "Ref / Order ID", 
       accessor: "order_id",
-      render: (row) => row.order_id || row.orderId || '—'
+      render: (row) => {
+        const refId = row.order_id || row.orderId || row.metadata?.orderId || '—';
+        return <span className="font-mono text-accent font-bold">{refId}</span>;
+      }
     },
     {
       header: "Project",
       accessor: "project_name",
       render: (row) => {
-        const projName = row.project_name || getProject(row)?.name;
+        const projName = row.project_name || getProject(row)?.name || row.metadata?.projectName;
         const projId = row.project_id || row.projectId || getProject(row)?.id;
         const orderId = row.order_id || row.orderId;
 
@@ -115,7 +172,7 @@ const Missions = () => {
           <div className="space-y-0.5 max-w-[150px]">
             <p className="text-xs font-bold text-white truncate">{projName}</p>
             <p className="text-[9px] text-accent font-black uppercase tracking-wider">
-              Ref #{projId}{orderId ? ` · ORD-${orderId}` : ''}
+              Ref #{projId || 'PRJ'}{orderId ? ` · ORD-${orderId}` : ''}
             </p>
           </div>
         ) : (
@@ -150,12 +207,32 @@ const Missions = () => {
     { 
       header: "Driver", 
       accessor: "driverName",
-      render: (row) => row.driverName || <span className="text-muted italic">Unassigned</span>
+      render: (row) => {
+        const linked = findLinkedOrder(row);
+        const dName = row.driverName || linked?.driverName || linked?.driver;
+        return dName ? (
+          <span className="text-xs font-bold text-white">{dName}</span>
+        ) : (
+          <span className="text-muted italic text-xs">Unassigned</span>
+        );
+      }
     },
     { 
       header: "Vehicle", 
       accessor: "plateNumber",
-      render: (row) => row.plateNumber || <span className="text-muted italic">N/A</span>
+      render: (row) => {
+        const linked = findLinkedOrder(row);
+        const rawVeh = row.plateNumber || row.vehicleId || linked?.plateNumber || linked?.vehicleId;
+        const displayName = getVehicleDisplayName(rawVeh);
+
+        return displayName ? (
+          <span className="text-xs font-bold text-accent" title={`Raw Asset Code: ${rawVeh}`}>
+            {displayName}
+          </span>
+        ) : (
+          <span className="text-muted italic text-xs">N/A</span>
+        );
+      }
     },
     { 
       header: "Status", 
@@ -170,7 +247,6 @@ const Missions = () => {
         </span>
       )
     },
-    { header: "Date", accessor: "date" },
     { header: "Date", accessor: "date" }
   ];
 

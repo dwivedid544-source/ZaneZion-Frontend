@@ -1231,156 +1231,85 @@ export const GlobalDataProvider = ({ children }) => {
   const fetchClients = React.useCallback(
     async (options = {}) => {
       const buildFallbackFromUsers = async () => {
-        const res = await api.get(
-          "/users/customers?include_all=1&include_client_role=1",
-        );
-        const list = res.data?.success ? res.data.data || [] : [];
-        const roleKey = normalizeRole(currentUser?.role);
-        return list
-          .filter((u) => {
-            const role = normalizeRole(u?.role);
-            const acct = normalizeClientTypeValue(
-              u?.account_type ??
-              u?.accountType ??
-              u?.client_type ??
-              u?.clientType ??
-              role,
-            );
-            const isClientOrSaaS = roleKey === "client" || roleKey === "saas_client";
-            if (isClientOrSaaS && (role === "client" || role === "saas_client" || ["business", "saas"].includes(String(acct || "").toLowerCase()))) {
-              return false;
-            }
-            return (
-              ["client", "customer", "saas_client"].includes(role) ||
-              ["business", "personal", "saas"].includes(
-                String(acct || "").toLowerCase(),
-              )
-            );
-          })
-          .map((u) => {
-            const acct = normalizeClientTypeValue(
-              u?.account_type ??
-              u?.accountType ??
-              u?.client_type ??
-              u?.clientType ??
-              u?.role,
-            );
-            const mappedType =
-              acct ||
-              (normalizeRole(u?.role) === "client"
-                ? "Business"
-                : normalizeRole(u?.role) === "saas_client"
-                  ? "SaaS"
-                  : "Personal");
-            const base = mapClientFromApi({
-              id: u?.client_id ?? u?.company_id ?? u?.id,
-              name: u?.name || u?.business_name || u?.company_name || u?.companyName || "",
-              business_name:
-                u?.business_name || u?.company_name || u?.companyName || u?.name || "",
-              companyName: u?.companyName || u?.business_name || u?.company_name || u?.name || "",
-              email: u?.email || "",
-              phone: u?.phone || "",
-              address: u?.address || u?.location || "",
-              location: u?.location || u?.address || "",
-              status: u?.status || "pending",
-              source: "Signup",
-              client_type: mappedType,
-              account_type: mappedType,
-              business_license_url:
-                u?.business_license_url || u?.businessLicenseUrl || "",
-              plan: u?.plan || "Free",
-              concierge_member: u?.concierge_member,
-              conciergeMembership:
-                u?.conciergeMembership ?? u?.concierge_member,
-              is_upgraded: u?.is_upgraded,
-            });
-            return {
-              ...(base || {}),
-              signup_user_id: u?.id,
-            };
-          })
-          .filter(Boolean);
+        try {
+          const res = await api.get(
+            "/users/customers?include_all=1&include_client_role=1",
+          );
+          const list = res.data?.success ? res.data.data || [] : (Array.isArray(res.data) ? res.data : []);
+          return list
+            .filter((u) => {
+              if (!u) return false;
+              const roleStr = String(u.role?.name || u.role || "").toLowerCase();
+              return !["superadmin", "inventory", "driver"].includes(roleStr);
+            })
+            .map((u) => {
+              const name = u?.name || u?.full_name || u?.business_name || u?.company_name || u?.companyName || u?.email || `User ${u.id}`;
+              const base = mapClientFromApi({
+                id: u?.client_id ?? u?.company_id ?? u?.id,
+                name: name,
+                business_name: name,
+                companyName: name,
+                email: u?.email || "",
+                phone: u?.phone || "",
+                address: u?.address || u?.location || "",
+                location: u?.location || u?.address || "",
+                status: u?.status || "active",
+                source: "Signup",
+                client_type: u?.client_type || u?.account_type || "Personal",
+                account_type: u?.client_type || u?.account_type || "Personal",
+                plan: u?.plan || "Free",
+                concierge_member: u?.concierge_member,
+                conciergeMembership: u?.conciergeMembership ?? u?.concierge_member,
+                is_upgraded: u?.is_upgraded,
+              });
+              return {
+                ...(base || {}),
+                id: u?.client_id ?? u?.company_id ?? u?.id,
+                name: name,
+                signup_user_id: u?.id,
+              };
+            })
+            .filter(Boolean);
+        } catch (err) {
+          console.error("buildFallbackFromUsers failed", err);
+          return [];
+        }
       };
       try {
         const roleKey = normalizeRole(currentUser?.role);
-        const requestedTypeNorm = normalizeClientTypeValue(options.client_type);
-        const tenantCustomerOnlyView =
-          (roleKey === "admin" || roleKey === "saas_client") &&
-          requestedTypeNorm === "Personal";
         const params = new URLSearchParams();
+        params.append("limit", "1000");
         if (options.search) params.append("search", options.search);
         if (options.client_type)
           params.append("client_type", options.client_type);
         const url = `/clients${params.toString() ? "?" + params.toString() : ""}`;
-        const res = await api.get(url);
-        let raw = res.data?.success ? res.data.data : res.data;
-        const arr = normalizeClientsResponseBody(raw);
-        const mapped = arr.map(mapClientFromApi).filter(Boolean);
-        if (mapped.length > 0) {
-          const isClientOrSaaS = roleKey === "client" || roleKey === "saas_client";
-          const filteredMapped = mapped
-            .filter((c) => clientMatchesTypeFilter(c, options.client_type))
-            .filter((c) => {
-              if (isClientOrSaaS) {
-                const typeLower = String(c.client_type || c.clientType || '').toLowerCase();
-                return typeLower === 'personal' || typeLower === 'customer';
-              }
-              return true;
-            });
-          if (filteredMapped.length > 0) {
-            setClients(filteredMapped);
-          } else {
-            if (tenantCustomerOnlyView) {
-              // Admin customer menu should only show admin-added tenant customers,
-              // not personal signup users from global fallback.
-              setClients([]);
-              return;
-            }
-            // API returned clients, but none match requested type (common for Personal customers).
-            // Fall back to users directory so admin/customer tabs still show signup + manually added customers.
-            const fromUsers = await buildFallbackFromUsers();
-            setClients(
-              fromUsers.filter((c) =>
-                clientMatchesTypeFilter(c, options.client_type),
-              ),
-            );
-          }
-        } else {
-          if (tenantCustomerOnlyView) {
-            setClients([]);
-            return;
-          }
-          const fromUsers = await buildFallbackFromUsers();
-          setClients(
-            fromUsers.filter((c) =>
-              clientMatchesTypeFilter(c, options.client_type),
-            ),
-          );
+        let mapped = [];
+        try {
+          const res = await api.get(url);
+          let raw = res.data?.success ? res.data.data : res.data;
+          const arr = normalizeClientsResponseBody(raw);
+          mapped = arr.map(mapClientFromApi).filter(Boolean);
+        } catch (err) {
+          console.warn("Direct /clients call failed, using user directory fallback", err);
         }
+        const fromUsers = await buildFallbackFromUsers();
+        const merged = [...mapped, ...fromUsers];
+        const seen = new Set();
+        const unique = merged.filter((c) => {
+          if (!c || !c.id) return false;
+          const key = `${c.id}::${(c.email || c.name || '').toLowerCase()}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const filtered = options.client_type
+          ? unique.filter((c) => clientMatchesTypeFilter(c, options.client_type))
+          : unique;
+        setClients(filtered.length > 0 ? filtered : unique);
       } catch (e) {
         console.error("Fetch clients failed", e);
-        try {
-          const roleKey = normalizeRole(currentUser?.role);
-          const requestedTypeNorm = normalizeClientTypeValue(
-            options.client_type,
-          );
-          const tenantCustomerOnlyView =
-            (roleKey === "admin" || roleKey === "saas_client") &&
-            requestedTypeNorm === "Personal";
-          if (tenantCustomerOnlyView) {
-            setClients([]);
-            return;
-          }
-          const fromUsers = await buildFallbackFromUsers();
-          setClients(
-            fromUsers.filter((c) =>
-              clientMatchesTypeFilter(c, options.client_type),
-            ),
-          );
-        } catch (innerErr) {
-          console.error("Fetch fallback clients from users failed", innerErr);
-          setClients([]);
-        }
+        const fromUsers = await buildFallbackFromUsers();
+        setClients(fromUsers);
       }
     },
     [currentUser?.role],
@@ -1769,13 +1698,12 @@ export const GlobalDataProvider = ({ children }) => {
   const fetchCustomerUsers = React.useCallback(async (options = {}) => {
     try {
       const params = new URLSearchParams();
-      if (options.include_all) params.append("include_all", "1");
-      if (options.include_client_role)
-        params.append("include_client_role", "1");
-      const url = `/users/customers${params.toString() ? `?${params.toString()}` : ""}`;
+      params.append("include_all", "1");
+      params.append("include_client_role", "1");
+      if (options.search) params.append("search", options.search);
+      const url = `/users/customers?${params.toString()}`;
       const res = await api.get(url);
       if (res.data?.success) {
-        // Extract array if backend returned paginated object { users: [...] }
         const usersArray = Array.isArray(res.data.data) ? res.data.data : (res.data.data?.users || []);
         setCustomerUsers(usersArray);
         return usersArray;
@@ -2240,23 +2168,36 @@ export const GlobalDataProvider = ({ children }) => {
         rawData = rawData.data || rawData.items || rawData.orders || rawData.missions || rawData.invoices || rawData.projects || Object.values(rawData).find(Array.isArray) || [];
       }
       setMissions(
-        rawData.map((m) => ({
-          ...m,
-          orderId: m.order_id || m.orderId,
-          driverId: m.assigned_driver || m.assignedEmployeeId,
-          driverName: m.driver_name || (m.assignee ? `${m.assignee.firstName} ${m.assignee.lastName}` : ""),
-          vehicleId: m.vehicle_id || (m.metadata?.vehicleId),
-          plateNumber: m.plate_number || (m.assignee && m.assignee.vehiclePlate) || "",
-          missionType: m.mission_type || m.missionType,
-          destinationType: m.destination_type,
-          date: m.event_date
-            ? m.event_date.split("T")[0]
-            : m.created_at || m.createdAt
-              ? (m.created_at || m.createdAt).split("T")[0]
-              : "",
-          id: m.missionNumber || m.id,
-          db_id: m.id,
-        })),
+        rawData.map((m) => {
+          let meta = m.metadata;
+          if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch { meta = {}; }
+          }
+          meta = meta || {};
+
+          const driverNameResolved = meta.driverName || (m.assignee ? `${m.assignee.firstName || ''} ${m.assignee.lastName || ''}`.trim() : '') || m.driver_name || m.driverName || '';
+          const plateResolved = meta.plateNumber || meta.vehicleId || (m.assignee && m.assignee.vehiclePlate) || m.plate_number || m.plateNumber || '';
+          const orderIdResolved = m.order_id || m.orderId || meta.orderId || meta.order_id || (m.delivery ? (m.delivery.deliveryNumber || m.delivery.orderId) : '') || '';
+
+          return {
+            ...m,
+            orderId: orderIdResolved,
+            order_id: orderIdResolved,
+            driverId: m.assignedEmployeeId || m.assigned_driver || m.driverId || meta.driverId || null,
+            driverName: driverNameResolved,
+            vehicleId: plateResolved,
+            plateNumber: plateResolved,
+            missionType: m.mission_type || m.missionType || meta.missionType || 'LOGISTICS',
+            destinationType: m.destination_type || meta.destination_type || 'Client Site',
+            date: m.event_date
+              ? m.event_date.split("T")[0]
+              : m.created_at || m.createdAt
+                ? (m.created_at || m.createdAt).split("T")[0]
+                : "",
+            id: m.missionNumber || m.id,
+            db_id: m.id,
+          };
+        }),
       );
     } catch (e) {
       console.error("Fetch missions failed", e);
@@ -3958,7 +3899,11 @@ export const GlobalDataProvider = ({ children }) => {
   const assignMissionDriver = async (missionId, driverId, vehicleId) => {
     try {
       await api.put(`/missions/${missionId}/assign`, { driverId, vehicleId });
-      await fetchMissions();
+      await Promise.all([
+        fetchMissions(),
+        fetchChauffeurRequests ? fetchChauffeurRequests() : Promise.resolve(),
+        fetchDeliveries ? fetchDeliveries() : Promise.resolve()
+      ]);
       addLog({
         action: "Driver Assigned",
         detail: `Driver ${driverId} assigned to Mission ${missionId}.`,
@@ -5987,20 +5932,25 @@ export const GlobalDataProvider = ({ children }) => {
   const fetchChauffeurRequests = React.useCallback(async () => {
     try {
       const res = await api.get("/orders", { params: { orderType: 'CHAUFFEUR', limit: 100 } });
-      const orders = Array.isArray(res.data?.data)
-        ? res.data.data
-        : (res.data?.data?.orders || []);
+      const raw = res.data;
+      let orders = [];
+      if (Array.isArray(raw?.data?.orders)) {
+        orders = raw.data.orders;
+      } else if (Array.isArray(raw?.data)) {
+        orders = raw.data;
+      } else if (Array.isArray(raw?.orders)) {
+        orders = raw.orders;
+      } else if (Array.isArray(raw)) {
+        orders = raw;
+      }
 
-      const deletedIds = getDeletedChauffeurIds().map(String);
       const updatedMap = getUpdatedChauffeurMap();
 
       const mapped = (orders || [])
         .filter((order) => {
           if (!order || typeof order !== 'object') return false;
-          const strId = String(order.id || '');
-          const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
-          const customId = String(detail?.id || '');
-          return !deletedIds.includes(strId) && !deletedIds.includes(customId);
+          const status = String(order.status || '').toLowerCase();
+          return status !== 'deleted';
         })
         .map((order) => {
           const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
@@ -6040,19 +5990,19 @@ export const GlobalDataProvider = ({ children }) => {
             pickupTime: detail?.pickupTime || null,
             status: liveStatus,
             chauffeurFee: (() => {
-              const rawFee = parseFloat(detail?.chauffeurFee ?? detail?.chauffeur_fee ?? detail?.total_amount ?? detail?.unitPrice ?? order.totalAmount ?? 0) || 0;
               const sType = detail?.serviceType || order.metadata?.customItems?.[0]?.serviceType || "One Way";
               const daysVal = parseInt(detail?.numberOfDays || detail?.dailyDays || order.metadata?.customItems?.[0]?.numberOfDays || 1, 10) || 1;
-              if (sType === "Round Trip") {
-                return (rawFee > 0 && rawFee <= 180) ? rawFee * 2 : (rawFee > 0 ? rawFee : 240);
-              }
-              if (sType === "Daily Service" && daysVal > 1) {
-                return (rawFee > 0 && rawFee <= 180) ? rawFee * daysVal : (rawFee > 0 ? rawFee : 120 * daysVal);
-              }
-              return rawFee > 0 ? rawFee : 120;
+              const qtyMultiplier = sType === "Round Trip" ? 2 : (sType === "Daily Service" ? daysVal : 1);
+              // Always use $120 base — never read stored bloated values
+              return Number((120 * qtyMultiplier).toFixed(2));
             })(),
             chauffeur_fee_mode: detail?.chauffeur_fee_mode || "separate",
             numberOfPassengers: detail?.numberOfPassengers || detail?.passengers || detail?.numberOfPassengers || detail?.passengerCount || detail?.passenger_count || detail?.pax || detail?.guestCount || detail?.guest_count || order.metadata?.numberOfPassengers || order.metadata?.passengers || 1,
+            passengerName: detail?.passengerName || detail?.passenger_name || detail?.guestName || detail?.guest_name || order.metadata?.passengerName || order.metadata?.guestName || formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
+            guestName: detail?.passengerName || detail?.passenger_name || detail?.guestName || detail?.guest_name || order.metadata?.passengerName || order.metadata?.guestName || formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
+            wifi: detail?.wifi || order.metadata?.wifi || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('wifi')) ? 'Yes' : 'No'),
+            refreshments: detail?.refreshments || order.metadata?.refreshments || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('refreshment')) ? 'Yes' : 'No'),
+            carSeat: detail?.carSeat || detail?.car_seat || order.metadata?.carSeat || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('car seat') || String(a).toLowerCase().includes('baby')) ? 'Yes' : 'No'),
             bags: detail?.bags || 0,
             stops: detail?.stops || "No",
             stopLocations: detail?.stopLocations || "",
@@ -7008,30 +6958,30 @@ export const GlobalDataProvider = ({ children }) => {
       let id, payload;
       if (typeof ticketOrId === "object") {
         id = ticketOrId.db_id || ticketOrId.id;
-        id = ticketOrId.db_id || ticketOrId.id;
-        // Ensure ID has TKT- prefix if it's supposed to
         if (typeof id === "string" && !id.startsWith("TKT-")) id = `TKT-${id}`;
 
         payload = {
-          status: (ticketOrId.status || "open").toLowerCase().replace(" ", "_"),
-          messages: ticketOrId.messages,
+          status: (ticketOrId.status || "open").toLowerCase().replace(/\s+/g, "_"),
+          messages: ticketOrId.messages || ticketOrId.responses || [],
           dispute_status: ticketOrId.dispute_status || "none",
           refund_amount: ticketOrId.refund_amount || 0,
         };
       } else {
         id = ticketOrId;
         if (typeof id === "string" && !id.startsWith("TKT-")) id = `TKT-${id}`;
-        payload = { status: status.toLowerCase().replace(" ", "_") };
+        payload = { status: status.toLowerCase().replace(/\s+/g, "_") };
       }
-      await api.put(`/support/tickets/${id}`, payload);
+      const res = await api.put(`/support/tickets/${id}`, payload);
       await fetchTickets();
       addLog({
         action: "Ticket Update",
         detail: `Synchronized support ticket ${id}.`,
         type: "system",
       });
+      return res.data;
     } catch (error) {
       console.error("Failed to update ticket:", error);
+      throw error;
     }
   };
 
@@ -7229,26 +7179,23 @@ export const GlobalDataProvider = ({ children }) => {
       };
       const res = await api.put(`/staff/leave/${reqData.id}`, postData);
 
-      // If status is updated to approved, deduct leave duration from user's vacation balance
-      if (newStatus === "approved" && (reqData.userId || reqData.user_id)) {
-        const targetUserId = Number(reqData.userId || reqData.user_id);
-        const leaveHours = reqData.hours || (reqData.duration === "Half Day" ? 4 : 8);
-        const leaveDays = Math.max(1, Math.ceil(leaveHours / 8));
-        
-        const staffUser = (staffList || []).find(u => Number(u.id) === targetUserId);
-        if (staffUser) {
-          const currentBal = staffUser.vacationBalance ?? staffUser.vacation_balance ?? 15;
-          const updatedBal = Math.max(0, currentBal - leaveDays);
-          try {
-            await updateUser({ ...staffUser, vacationBalance: updatedBal, vacation_balance: updatedBal });
-          } catch (balErr) {
-            console.warn("Could not deduct vacation balance:", balErr.message);
-          }
-        }
-      }
-
       if (res.data?.success) {
         await fetchLeaveRequests();
+        if (fetchStaff) await fetchStaff();
+        if (fetchCustomerUsers) await fetchCustomerUsers({ include_all: 1, include_client_role: 1 });
+        
+        // Refresh current user state if current logged in user was the leave recipient
+        if (currentUser && Number(reqData.userId || reqData.user_id) === Number(currentUser.id)) {
+          try {
+            const profileRes = await api.get('/auth/me');
+            if (profileRes.data?.success && profileRes.data?.data) {
+              setCurrentUser(prev => ({ ...prev, ...profileRes.data.data }));
+            }
+          } catch (e) {
+            console.warn('Profile refresh fallback after leave update failed', e);
+          }
+        }
+
         addLog({
           action: "Leave Updated",
           detail: `Leave request ${reqData.id} updated to ${newStatus}.`,
@@ -7359,6 +7306,7 @@ export const GlobalDataProvider = ({ children }) => {
         fetchDeliveries(),
         fetchChauffeurRequests(),
         fetchClients(),
+        fetchCustomerUsers(),
         fetchInventory(),
         fetchTickets(),
       ]);

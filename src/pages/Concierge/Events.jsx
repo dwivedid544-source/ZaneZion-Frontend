@@ -33,7 +33,7 @@ const Events = () => {
 
   React.useEffect(() => {
     fetchClients();
-    if (fetchCustomerUsers) fetchCustomerUsers();
+    if (fetchCustomerUsers) fetchCustomerUsers({ include_all: 1, include_client_role: 1 });
     if (fetchTickets) fetchTickets();
 
     const handleStateChanged = () => {
@@ -51,41 +51,49 @@ const Events = () => {
     };
   }, [fetchClients, fetchCustomerUsers, fetchTickets]);
 
-  // Concierge should see tenant clients + signup customers (personal/business).
+  // Load the complete client database for Concierge selection (institutional clients + portal users)
   const clientOptions = useMemo(() => {
-    const ownCompanyId = currentUser?.company_id || currentUser?.companyId || null;
-    const byCompany = (row) => {
-      if (!ownCompanyId) return true;
-      const rowCompany = row.company_id || row.companyId || row.client_id || row.clientId || null;
-      if (rowCompany == null || rowCompany === '') return true;
-      return String(rowCompany) === String(ownCompanyId);
-    };
-
-    const fromClients = (clients || [])
-      .filter(byCompany)
-      .map((c) => ({
-        id: c.id,
-        label: c.name || c.business_name || c.companyName || `Client ${c.id}`,
-        email: c.email || '',
-      }));
-
-    const fromCustomerUsers = (customerUsers || [])
-      .filter(byCompany)
-      .map((u) => ({
-        id: u.id,
-        label: u.name || u.full_name || u.client_name || `Client ${u.id}`,
-        email: u.email || '',
-      }));
-
-    const merged = [...fromClients, ...fromCustomerUsers];
+    const list = [];
     const seen = new Set();
-    return merged.filter((o) => {
-      const key = `${o.id}::${o.label}`.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+
+    // 1. Institutional / Corporate Clients
+    (clients || []).forEach((c) => {
+      if (!c || !c.id) return;
+      const name = c.companyName || c.name || c.contactPerson || c.business_name || `Client ${c.id}`;
+      const email = c.email || '';
+      const key = `${c.id}::${(name || email).toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({
+          id: c.id,
+          label: name,
+          email: email
+        });
+      }
     });
-  }, [clients, customerUsers, currentUser?.company_id, currentUser?.companyId]);
+
+    // 2. Personal / Portal Users (All 32+ users across all tenants)
+    (customerUsers || []).forEach((u) => {
+      if (!u || !u.id) return;
+      const roleStr = String(u.role?.name || u.role || u.role_name || '').toLowerCase();
+      if (['superadmin', 'inventory', 'logistics', 'driver'].includes(roleStr)) {
+        return;
+      }
+      const name = u.name || u.full_name || u.companyName || u.contactPerson || `User ${u.id}`;
+      const email = u.email || '';
+      const key = `${u.id}::${(name || email).toLowerCase()}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        list.push({
+          id: u.clientId || u.company_id || u.id,
+          label: name,
+          email: email
+        });
+      }
+    });
+
+    return list.sort((a, b) => a.label.localeCompare(b.label));
+  }, [clients, customerUsers]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalType, setModalType] = useState('view');
   const [selectedEvent, setSelectedEvent] = useState(null);

@@ -23,6 +23,7 @@ const Dashboard = () => {
     orders, addOrder, updateOrder, deleteOrder, logs,
     revenueFilter, setRevenueFilter, getRevenueChartData,
     invoices, users, fleet, inventory, stockMovements,
+    supportTickets = [], fetchTickets,
     fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet,
     fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs,
     deliveries, projects, dashboardStats, currentUser,
@@ -46,12 +47,13 @@ const Dashboard = () => {
         fetchProjects(),
         fetchDashboardStats(revenueFilter),
         fetchDashboardLogs(),
+        ...(fetchTickets ? [fetchTickets()] : []),
         ...(fetchClients ? [fetchClients()] : []),
         ...(fetchCustomerUsers ? [fetchCustomerUsers()] : [])
       ]);
     };
     loadDashboard();
-  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs, fetchClients, fetchCustomerUsers]);
+  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs, fetchTickets, fetchClients, fetchCustomerUsers]);
 
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -267,9 +269,9 @@ const Dashboard = () => {
           { label: isB2BClient ? 'Total Personnel' : 'Global Personnel', value: stats.totalUsers, icon: Users, color: 'text-primary', trend: stats.onlineStaff > 0 ? `${stats.onlineStaff} Online` : 'Active', detail: isB2BClient ? 'Active Team Members' : 'Total HQ Staff', show: hasMenuPermission('Staff Management', 'can_view') || hasMenuPermission('HQ Personnel', 'can_view') },
           { label: 'Chauffeur Requests', value: stats.activeChauffeurs, icon: Truck, color: 'text-accent', trend: stats.activeChauffeurs > 0 ? 'Active' : 'None', detail: 'Pending Rides', show: hasMenuPermission('Chauffeur', 'can_view') || hasMenuPermission('Chauffeur Protocol', 'can_view') },
           { label: 'Active Events', value: stats.activeEvents, icon: Calendar, color: 'text-info', trend: stats.activeEvents > 0 ? 'Scheduled' : 'None', detail: 'Concierge Events', show: hasMenuPermission('Events', 'can_view') },
-          { label: 'Open Support Cases', value: stats.openTickets, icon: AlertTriangle, color: 'text-warning', trend: stats.openTickets > 0 ? 'Need Attention' : 'All Clear', detail: 'Support Tickets', show: hasMenuPermission('Support', 'can_view') }
+          { label: 'Open Support Cases', value: (supportTickets || []).filter(t => ['open', 'pending', 'new', 'inprogress', 'assigned', 'investigating', 'in_progress'].includes(String(t.status || '').toLowerCase().replace(/[\s_]+/g, ''))).length || stats.openTickets || 0, icon: AlertTriangle, color: 'text-warning', trend: ((supportTickets || []).filter(t => ['open', 'pending', 'new', 'inprogress', 'assigned', 'investigating', 'in_progress'].includes(String(t.status || '').toLowerCase().replace(/[\s_]+/g, ''))).length || stats.openTickets) > 0 ? 'Need Attention' : 'All Clear', detail: 'Support Tickets', link: '/dashboard/support-tickets', show: hasMenuPermission('Support', 'can_view') }
         ].filter(s => s.show || hasAccess).map((stat, idx) => (
-          <div key={idx} className="glass-card p-5 sm:p-6 relative overflow-hidden group hover:border-accent/30 transition-all border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent">
+          <div key={idx} onClick={() => stat.link && navigate(stat.link)} className={`glass-card p-5 sm:p-6 relative overflow-hidden group hover:border-accent/30 transition-all border-white/5 bg-gradient-to-br from-white/[0.02] to-transparent ${stat.link ? 'cursor-pointer' : ''}`}>
             <div className="absolute -right-4 -bottom-4 opacity-[0.03] group-hover:scale-110 group-hover:opacity-[0.05] transition-all duration-700 pointer-events-none">
               <stat.icon size={100} />
             </div>

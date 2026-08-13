@@ -16,6 +16,7 @@ import { useData } from '../../context/GlobalDataContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import { formatClientDisplayName } from '../../utils/apiHelpers';
 import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
+import { isOrderVisibleToConcierge } from '../../utils/conciergeVisibility';
 
 /** Roles that can be chosen as delivery / field drivers (not only `staff`). */
 function isAssignableDeliveryRole(roleRaw) {
@@ -260,14 +261,22 @@ const Deliveries = () => {
 
     if (!matchedOrder) return;
 
+    let meta = matchedOrder.metadata;
+    if (typeof meta === 'string') {
+      try { meta = JSON.parse(meta); } catch { meta = {}; }
+    }
+    meta = meta || {};
+    const firstCustom = (meta.customItems && meta.customItems[0]) || (Array.isArray(matchedOrder.items) && matchedOrder.items[0]) || {};
+
     const pick =
       matchedOrder.pickupLocation ||
       matchedOrder.pickup_location ||
+      firstCustom.pickupLocation ||
+      firstCustom.pickup_location ||
+      meta.pickupLocation ||
+      meta.pickup_location ||
       matchedOrder.pickupAddress ||
       matchedOrder.origin ||
-      matchedOrder.items?.[0]?.pickupLocation ||
-      matchedOrder.metadata?.customItems?.[0]?.pickupLocation ||
-      matchedOrder.metadata?.pickupLocation ||
       (warehouses || [])[0]?.name ||
       '';
 
@@ -275,19 +284,26 @@ const Deliveries = () => {
       matchedOrder.location ||
       matchedOrder.dropLocation ||
       matchedOrder.drop_location ||
+      firstCustom.dropLocation ||
+      firstCustom.drop_location ||
+      firstCustom.location ||
+      meta.dropLocation ||
+      meta.drop_location ||
+      meta.location ||
       matchedOrder.deliveryAddress ||
       matchedOrder.delivery_address ||
       matchedOrder.destination ||
-      matchedOrder.items?.[0]?.dropLocation ||
-      matchedOrder.metadata?.customItems?.[0]?.dropLocation ||
-      matchedOrder.metadata?.dropLocation ||
       '';
 
     const matchedDriverName =
       matchedOrder.driverName ||
       matchedOrder.driver ||
-      (matchedOrder.driver_user_id
-        ? (users || []).find((u) => String(u.id) === String(matchedOrder.driver_user_id))?.name || (users || []).find((u) => String(u.id) === String(matchedOrder.driver_user_id))?.fullName
+      firstCustom.driverName ||
+      firstCustom.driver ||
+      meta.driverName ||
+      meta.driver ||
+      (matchedOrder.driver_user_id || matchedOrder.driverId || firstCustom.driver_user_id || firstCustom.driverId
+        ? (users || []).find((u) => String(u.id) === String(matchedOrder.driver_user_id || matchedOrder.driverId || firstCustom.driver_user_id || firstCustom.driverId))?.name
         : '');
 
     const matchedVehicle =
@@ -295,6 +311,10 @@ const Deliveries = () => {
       matchedOrder.plateNumber ||
       matchedOrder.vehicleRef ||
       matchedOrder.vehicle ||
+      firstCustom.plateNumber ||
+      firstCustom.vehicleId ||
+      meta.plateNumber ||
+      meta.vehicleId ||
       '';
 
     const matchedClientId =
@@ -312,7 +332,7 @@ const Deliveries = () => {
       (matchedOrder.client && c.label.toLowerCase().includes(String(matchedOrder.client).toLowerCase()))
     );
 
-    const isChauf = String(matchedOrder.orderType || matchedOrder.type || matchedOrder.missionType || '').toUpperCase() === 'CHAUFFEUR';
+    const isChauf = String(matchedOrder.orderType || matchedOrder.type || matchedOrder.missionType || '').toUpperCase().includes('CHAUFFEUR');
 
     let existingDistance =
       matchedOrder.totalDistance ||
@@ -343,7 +363,7 @@ const Deliveries = () => {
     let orderItems = [];
     if (matchedOrder.items && Array.isArray(matchedOrder.items) && matchedOrder.items.length > 0) {
       orderItems = matchedOrder.items.map(it => ({
-        name: it.name || it.itemName || 'Manifest Item',
+        name: it.name || it.itemName || (isChauf ? 'VIP Chauffeur Service' : 'Manifest Item'),
         qty: parseInt(it.qty || it.quantity || 1, 10) || 1,
         weight: it.weight || '',
         length: it.length || '',
@@ -353,7 +373,8 @@ const Deliveries = () => {
     } else if (matchedOrder.product) {
       orderItems = [{ name: matchedOrder.product, qty: parseInt(matchedOrder.qty || 1, 10) || 1 }];
     } else {
-      orderItems = [{ name: isChauf ? 'VIP Chauffeur Transfer' : 'Cargo Manifest', qty: 1 }];
+      const sType = firstCustom.serviceType || matchedOrder.serviceType || 'One Way';
+      orderItems = [{ name: isChauf ? `VIP Chauffeur Service (${sType})` : 'Cargo Manifest', qty: 1 }];
     }
 
     setFormData((prev) => ({
@@ -370,17 +391,17 @@ const Deliveries = () => {
       location: drop || prev.location,
       mode: mode,
       driver: matchedDriverName || prev.driver,
-      assigned_driver: matchedOrder.driver_user_id || prev.assigned_driver,
+      assigned_driver: matchedOrder.driver_user_id || firstCustom.driver_user_id || prev.assigned_driver,
       vehicle: matchedVehicle || prev.vehicle,
       vesselOrFlight: matchedVehicle || prev.vesselOrFlight,
       items: orderItems,
       route_distance: calcDist > 0 ? calcDist : prev.route_distance,
       delivery_fee: computedPayout > 0 ? computedPayout : prev.delivery_fee,
       passengerInfo: {
-        name: matchedOrder.passengerName || matchedOrder.passenger_name || matchedOrder.passengerInfo?.name || prev.passengerInfo?.name || '',
-        count: matchedOrder.numberOfPassengers || matchedOrder.passengers || matchedOrder.passengerCount || prev.passengerInfo?.count || 1
+        name: matchedOrder.passengerName || matchedOrder.passenger_name || firstCustom.passengerName || meta.passengerName || prev.passengerInfo?.name || '',
+        count: matchedOrder.numberOfPassengers || matchedOrder.passengers || matchedOrder.passengerCount || firstCustom.numberOfPassengers || meta.numberOfPassengers || prev.passengerInfo?.count || 1
       },
-      luggage: matchedOrder.luggage || matchedOrder.luggageOption || prev.luggage || (isChauf ? 'Standard' : 'No')
+      luggage: matchedOrder.luggage || matchedOrder.luggageOption || firstCustom.luggage || meta.luggage || prev.luggage || (isChauf ? 'Standard' : 'No')
     }));
   }, [orders, chauffeurRequests, clients, users, customerUsers, clientOptions, warehouses, formData.staff_pay_rate]);
 
@@ -405,6 +426,40 @@ const Deliveries = () => {
       console.warn('Auto route distance calculation warning:', err);
     }
   }, [formData.pickupLocation, formData.dropLocation, formData.location, formData.mode, formData.staff_pay_rate]);
+
+  // Auto-calculate distance & payout whenever Pickup or Drop location changes or modal opens
+  useEffect(() => {
+    if (!isModalOpen) return;
+
+    const pick = formData.pickupLocation;
+    const drop = formData.dropLocation || formData.location;
+    const mode = formData.mode || 'Road';
+    const rate = parseFloat(formData.staff_pay_rate ?? DEFAULT_RATE_PER_KM) || DEFAULT_RATE_PER_KM;
+
+    if (pick && drop) {
+      if (formData.route_distance && Number(formData.route_distance) > 0) {
+        const dist = parseFloat(formData.route_distance);
+        const computedFee = parseFloat((dist * rate).toFixed(2));
+        if (formData.delivery_fee !== computedFee) {
+          setFormData(prev => ({ ...prev, delivery_fee: computedFee }));
+        }
+      } else {
+        calculateOSRMRouteDistance(pick, drop, mode).then(res => {
+          if (res && res.distanceKm != null) {
+            const dist = parseFloat(res.distanceKm);
+            const computedFee = parseFloat((dist * rate).toFixed(2));
+            setFormData(prev => ({
+              ...prev,
+              route_distance: dist,
+              delivery_fee: computedFee
+            }));
+          }
+        }).catch(err => {
+          console.warn('Auto distance calculation error:', err);
+        });
+      }
+    }
+  }, [isModalOpen, formData.pickupLocation, formData.dropLocation, formData.location, formData.mode, formData.staff_pay_rate, formData.route_distance]);
 
   // Catch Order State for Auto-Mission Launch
   useEffect(() => {
@@ -449,9 +504,13 @@ const Deliveries = () => {
     }
   }, [locationState]);
 
-  const logisticsOnlyDeliveries = deliveries.filter((d) =>
-    String(d.mission_type || '').toLowerCase() !== 'chauffeur'
-  );
+  const logisticsOnlyDeliveries = deliveries.filter((d) => {
+    const isNotChauffeur = String(d.mission_type || '').toLowerCase() !== 'chauffeur';
+    if (portalRole === 'concierge') {
+      return isNotChauffeur && isOrderVisibleToConcierge(d, clients);
+    }
+    return isNotChauffeur;
+  });
 
   const currentItems = logisticsOnlyDeliveries; // Pagination is server-side now
   const totalPages = meta.totalPages;
@@ -526,8 +585,8 @@ const Deliveries = () => {
       eta: del.etaSchedule ? new Date(del.etaSchedule).toISOString().split('T')[0] : (del.eta || new Date().toISOString().split('T')[0]),
       requestDate: del.requestDate ? new Date(del.requestDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       dueDate: del.dueDate ? new Date(del.dueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
-      pickupLocation: del.pickupLocation || '',
-      dropLocation: del.dropLocation || '',
+      pickupLocation: del.pickupLocation || del.pickup_location || parsedRemarks.pickupLocation || del.order?.pickupLocation || del.order?.pickup_location || (warehouses || [])[0]?.name || '',
+      dropLocation: del.dropLocation || del.drop_location || del.location || parsedRemarks.dropLocation || del.order?.location || del.order?.dropLocation || del.order?.drop_location || '',
       route: parsedRemarks.route || del.route || '',
       pod: Object.keys(podData).length > 0 ? podData : { signature: null, image: null, actualTime: null }
     } : {
@@ -547,9 +606,9 @@ const Deliveries = () => {
       eta: new Date().toISOString().split('T')[0],
       requestDate: new Date().toISOString().split('T')[0],
       dueDate: new Date().toISOString().split('T')[0],
-      location: '',
-      pickupLocation: del?.pickupLocation || '',
-      dropLocation: del?.dropLocation || '',
+      location: del?.dropLocation || del?.drop_location || del?.location || del?.order?.location || del?.order?.dropLocation || '',
+      pickupLocation: del?.pickupLocation || del?.pickup_location || del?.order?.pickupLocation || del?.order?.pickup_location || (warehouses || [])[0]?.name || '',
+      dropLocation: del?.dropLocation || del?.drop_location || del?.location || del?.order?.location || del?.order?.dropLocation || '',
       status: 'Pending',
       driver: '',
       mode: del?.mode || 'Road',
@@ -624,7 +683,7 @@ const Deliveries = () => {
 
       const matchedWarehouse = (warehouses || []).find(w => w.name === finalData.pickupLocation);
       const itemsWithRealIds = finalData.items.map(item => {
-        const matchedItem = (dbItems || []).find(i => 
+        const matchedItem = (dbItems || []).find(i =>
           String(i.name || '').trim().toLowerCase() === String(item.name || '').trim().toLowerCase()
         );
         const rawItemId = item.itemId || item.id;
@@ -660,15 +719,15 @@ const Deliveries = () => {
         staffPayRate: finalData.staff_pay_rate ? Number(finalData.staff_pay_rate) : undefined,
         deliveryFee: finalData.delivery_fee ? Number(finalData.delivery_fee) : undefined,
       })
-      .then(() => {
-        swalSuccess("Success", "Mission deployed successfully");
-        setIsModalOpen(false);
-      })
-      .catch((err) => {
-        console.error("Create delivery failed:", err);
-        const msg = err?.response?.data?.message || err?.message || "Could not create delivery";
-        swalError("Error", msg);
-      });
+        .then(() => {
+          swalSuccess("Success", "Mission deployed successfully");
+          setIsModalOpen(false);
+        })
+        .catch((err) => {
+          console.error("Create delivery failed:", err);
+          const msg = err?.response?.data?.message || err?.message || "Could not create delivery";
+          swalError("Error", msg);
+        });
     } else if (modalType === 'edit') {
       const manifestMeta = {
         manifestItems: finalData.items,
@@ -709,11 +768,11 @@ const Deliveries = () => {
             remarks: finalData.pod?.notes || 'Delivered'
           }
         })
-        .then(() => {
-          swalSuccess("Success", "POD submitted successfully");
-          setIsModalOpen(false);
-        })
-        .catch(() => swalError("Error", "Could not submit POD"));
+          .then(() => {
+            swalSuccess("Success", "POD submitted successfully");
+            setIsModalOpen(false);
+          })
+          .catch(() => swalError("Error", "Could not submit POD"));
       } else {
         // Standard update of form fields
         updateDeliveryMutation.mutateAsync({ id: finalData.id, data: updatePayload })
@@ -725,14 +784,14 @@ const Deliveries = () => {
                 assignedEmployeeId: finalData.assigned_driver,
                 vehicleId: 1
               })
-              .then(() => {
-                swalSuccess("Success", "Delivery updated and driver assigned successfully");
-                setIsModalOpen(false);
-              })
-              .catch(() => {
-                swalSuccess("Success", "Delivery updated successfully");
-                setIsModalOpen(false);
-              });
+                .then(() => {
+                  swalSuccess("Success", "Delivery updated and driver assigned successfully");
+                  setIsModalOpen(false);
+                })
+                .catch(() => {
+                  swalSuccess("Success", "Delivery updated successfully");
+                  setIsModalOpen(false);
+                });
             } else {
               swalSuccess("Success", "Delivery updated successfully");
               setIsModalOpen(false);
@@ -781,7 +840,7 @@ const Deliveries = () => {
           try {
             const parsed = JSON.parse(item.remarks);
             remarksDriver = parsed?.driver || parsed?.assigned_driver || parsed?.driverName;
-          } catch (_) {}
+          } catch (_) { }
         }
 
         let metaDriver = null;
@@ -818,7 +877,7 @@ const Deliveries = () => {
             if (parsed && Array.isArray(parsed.manifestItems) && parsed.manifestItems.length > 0) {
               manifestItems = parsed.manifestItems;
             }
-          } catch (e) {}
+          } catch (e) { }
         }
 
         if (manifestItems.length === 0 && item.items && item.items.length > 0) {
@@ -994,8 +1053,8 @@ const Deliveries = () => {
                         handleAction('delivered', item);
                       }}
                       className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide transition-all ${isDelivered
-                          ? 'text-success/30 border border-success/10 bg-success/5 cursor-not-allowed opacity-50'
-                          : 'text-success border border-success/30 bg-success/10 hover:bg-success/20'
+                        ? 'text-success/30 border border-success/10 bg-success/5 cursor-not-allowed opacity-50'
+                        : 'text-success border border-success/30 bg-success/10 hover:bg-success/20'
                         }`}
                       title={isDelivered ? "Already Delivered" : "Complete Delivery (POD)"}
                       disabled={isDelivered}
@@ -1367,9 +1426,8 @@ const Deliveries = () => {
                         onBlur={(e) => {
                           if (e.target.value.trim()) handleReferenceLookup(e.target.value);
                         }}
-                        className={`w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold ${
-                          modalType === 'add' ? 'text-white' : 'text-muted bg-background/50 cursor-not-allowed'
-                        }`}
+                        className={`w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold ${modalType === 'add' ? 'text-white' : 'text-muted bg-background/50 cursor-not-allowed'
+                          }`}
                         disabled={modalType !== 'add'}
                         placeholder="e.g. 456 or ORD-456 (Type or select)"
                       />
@@ -1727,10 +1785,53 @@ const Deliveries = () => {
                   )}
                   {/* Staff Payout Calculation */}
                   <div className="sm:col-span-2 p-4 bg-accent/5 border border-accent/20 rounded-2xl space-y-3">
-                    <p className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-2 border-b border-accent/10 pb-2">
-                      💰 Staff Payout Calculation
+                    <div className="flex items-center justify-between border-b border-accent/10 pb-2">
+                      <p className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-2">
+                        💰 Staff Payout Calculation ({formData.missionType === 'Chauffeur' ? 'Chauffeur Protocol' : 'Delivery Mission'})
+                      </p>
+                      {(formData.pickupLocation || formData.dropLocation || formData.location) && (
+                        <span className="text-[9px] font-bold text-success bg-success/10 border border-success/20 px-2 py-0.5 rounded-lg">
+                          Auto-Calculated via Route Matrix
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Pickup & Drop Locations Inputs (Auto-fetched from backend, editable with live distance calculation) */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-white/5 rounded-xl border border-white/10">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-muted uppercase tracking-wider flex items-center gap-1.5">
+                          <MapPin size={12} className="text-accent" /> Pickup Location (Origin)
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.pickupLocation || ''}
+                          onChange={(e) => setFormData(prev => ({ ...prev, pickupLocation: e.target.value }))}
+                          onBlur={(e) => handleLocationAutoCalculateDistance(e.target.value, formData.dropLocation || formData.location)}
+                          placeholder="e.g. Nassau Central Hub / Shells"
+                          className="w-full bg-background/80 border border-border rounded-xl px-3 py-2 text-xs font-bold text-white outline-none focus:border-accent"
+                          disabled={modalType === 'view'}
+                        />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-muted uppercase tracking-wider flex items-center gap-1.5">
+                          <Navigation size={12} className="text-success" /> Drop Location (Destination)
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.dropLocation || formData.location || ''}
+                          onChange={(e) => setFormData(prev => ({ ...prev, dropLocation: e.target.value, location: e.target.value }))}
+                          onBlur={(e) => handleLocationAutoCalculateDistance(formData.pickupLocation, e.target.value)}
+                          placeholder="e.g. Client Site / Sweet Water"
+                          className="w-full bg-background/80 border border-border rounded-xl px-3 py-2 text-xs font-bold text-accent outline-none focus:border-accent"
+                          disabled={modalType === 'view'}
+                        />
+                      </div>
+                    </div>
+
+                    <p className="text-[9px] text-muted italic">
+                      Staff payout is automatically calculated from route distance × rate per km ($/km).
                     </p>
-                    <p className="text-[9px] text-muted italic">Staff are paid a rate per km driven — NOT the full order total. Set the route distance and rate below.</p>
+
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                       <div className="space-y-1">
                         <label className="text-[9px] font-black text-muted uppercase tracking-widest">Route Distance (km)</label>
@@ -1740,7 +1841,7 @@ const Deliveries = () => {
                           step="0.1"
                           value={formData.route_distance || ''}
                           onChange={(e) => handleDistanceOrRateChange('route_distance', e.target.value)}
-                          placeholder="e.g. 25.5"
+                          placeholder="Auto-calculated"
                           className="w-full bg-background border border-border rounded-xl px-3 py-2 text-xs font-bold outline-none focus:border-accent"
                           disabled={modalType === 'view'}
                         />
@@ -1763,7 +1864,9 @@ const Deliveries = () => {
                         <div className="w-full bg-accent/10 border border-accent/30 rounded-xl px-3 py-2 text-xs font-black text-accent">
                           ${parseFloat(formData.delivery_fee || 0).toFixed(2)}
                         </div>
-                        <p className="text-[8px] text-muted italic">{formData.route_distance ? `${formData.route_distance} km × $${parseFloat(formData.staff_pay_rate || 0).toFixed(2)}/km` : 'Enter distance to calculate'}</p>
+                        <p className="text-[8px] text-muted italic">
+                          {formData.route_distance ? `${formData.route_distance} km × $${parseFloat(formData.staff_pay_rate || 2.50).toFixed(2)}/km` : 'Fetching distance...'}
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1830,12 +1933,21 @@ const Deliveries = () => {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-muted uppercase">Asset Manifest</label>
                   <div className="p-3 bg-white/5 border border-border rounded-xl space-y-2">
-                    {(Array.isArray(formData.items) ? formData.items : []).map((item, idx) => (
-                      <div key={idx} className="flex justify-between text-xs">
-                        <span className="font-bold text-primary">{item.name || 'Provisioning Asset'}</span>
-                        <span className="text-secondary text-right">x{item.qty}</span>
-                      </div>
-                    ))}
+                    {(Array.isArray(formData.items) && formData.items.length > 0
+                      ? formData.items
+                      : [{
+                        name: formData.item || (formData.mission_type === 'Chauffeur' || formData.missionType === 'Chauffeur' ? 'VIP Chauffeur Service' : (formData.mission_type === 'Concierge' || formData.missionType === 'Concierge' || formData.isConcierge ? 'Concierge Service' : (formData.serviceType || 'Concierge Service'))),
+                        qty: 1
+                      }]
+                    ).map((item, idx) => {
+                      const resolvedName = (item.name && item.name !== 'Provisioning Asset') ? item.name : (item.title || item.item || formData.item || (formData.mission_type === 'Chauffeur' || formData.missionType === 'Chauffeur' ? 'VIP Chauffeur Service' : (formData.mission_type === 'Concierge' || formData.missionType === 'Concierge' || formData.isConcierge ? 'Concierge Service' : 'Concierge Service')));
+                      return (
+                        <div key={idx} className="flex justify-between text-xs">
+                          <span className="font-bold text-primary">{resolvedName}</span>
+                          <span className="text-secondary text-right">x{item.qty || 1}</span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 

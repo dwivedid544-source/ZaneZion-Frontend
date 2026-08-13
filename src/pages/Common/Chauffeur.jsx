@@ -195,11 +195,10 @@ const Chauffeur = () => {
     const [returnTimeInput, setReturnTimeInput] = useState('12:00');
 
     const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
-    /** Admin, concierge, or logistics may approve / assign drivers (client: tenant staff booking on behalf). */
-    const isAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'client', 'saas_client', 'business_client'].includes(userRole);
-    const isCustomer = ['customer'].includes(userRole);
-    const isClientAdmin = ['client', 'business_client'].includes(userRole);
-    const isStaffAdmin = ['superadmin', 'super_admin', 'concierge', 'operations', 'operation', 'logistics', 'admin', 'saas_client'].includes(userRole);
+    const isCustomer = userRole === 'customer' || userRole === 'individual_client';
+    const isAdmin = !isCustomer;
+    const isClientAdmin = ['client', 'business_client'].some(r => userRole.includes(r));
+    const isStaffAdmin = !isCustomer && !isClientAdmin;
     const isFeeLocked = isCustomer || (isClientAdmin && (!editingRequest || editingRequest?.userId === currentUser?.id));
 
     /** Admin-configured base price (Settings → system), fallback to env default */
@@ -211,17 +210,11 @@ const Chauffeur = () => {
     }, [systemSettings]);
 
     const displayFee = (row) => {
-        const rawAmount = Number(row?.chauffeurFee ?? row?.chauffeur_fee ?? row?.total_amount ?? row?.unitPrice ?? 0);
-        const amount = Number.isFinite(rawAmount) ? rawAmount : 0;
         const sType = row?.serviceType || 'One Way';
         const days = parseInt(row?.numberOfDays || row?.dailyDays || 1, 10) || 1;
-        if (sType === 'Round Trip') {
-            return (amount > 0 && amount <= defaultChauffeurFee * 1.5) ? amount * 2 : (amount > 0 ? amount : defaultChauffeurFee * 2);
-        }
-        if (sType === 'Daily Service' && days > 1) {
-            return (amount > 0 && amount <= defaultChauffeurFee * 1.5) ? amount * days : (amount > 0 ? amount : defaultChauffeurFee * days);
-        }
-        return amount > 0 ? amount : defaultChauffeurFee;
+        const qty = sType === 'Round Trip' ? 2 : (sType === 'Daily Service' ? days : 1);
+        // Always $120/day base × qty — never read stored values
+        return Number((120 * qty).toFixed(2));
     };
 
     const [daysCountInput, setDaysCountInput] = useState(1);
@@ -229,13 +222,15 @@ const Chauffeur = () => {
     /** Price shown / submitted for retail customers (cannot self-edit) */
     const customerLockedFee = useMemo(() => {
         if (editingRequest) {
-            return (Number(editingRequest.chauffeurFee ?? editingRequest.chauffeur_fee ?? editingRequest.total_amount ?? 0) || 0);
+            const uPrice = Number(editingRequest.unitPrice ?? editingRequest.price);
+            if (Number.isFinite(uPrice) && uPrice > 0) return uPrice;
+            const total = Number(editingRequest.chauffeurFee ?? editingRequest.chauffeur_fee ?? editingRequest.total_amount ?? 0);
+            const days = parseInt(editingRequest.numberOfDays || editingRequest.dailyDays || 1, 10) || 1;
+            const qty = editingRequest.serviceType === 'Round Trip' ? 2 : (editingRequest.serviceType === 'Daily Service' ? days : 1);
+            if (total > 0 && qty > 0) return Number((total / qty).toFixed(2));
         }
-        const base = defaultChauffeurFee;
-        if (serviceType === 'Round Trip') return Number((base * 2).toFixed(2));
-        if (serviceType === 'Daily Service' && daysCountInput > 1) return Number((base * daysCountInput).toFixed(2));
-        return base;
-    }, [editingRequest, defaultChauffeurFee, serviceType, daysCountInput]);
+        return defaultChauffeurFee;
+    }, [editingRequest, defaultChauffeurFee]);
 
     const mergePassengerPayload = (req, patch = {}) => ({
         passengers: req.numberOfPassengers ?? 1,
@@ -292,30 +287,33 @@ const Chauffeur = () => {
         const selectedClientId = isStaffAdmin ? formData.get('assignClient') : null;
         const selectedClient = isStaffAdmin && selectedClientId ? (clients || []).find(c => String(c.id) === selectedClientId) : null;
         const daysCount = serviceType === 'Daily Service' ? (parseInt(formData.get('numberOfDays'), 10) || 1) : 1;
-        let baseFee = 0;
-        if (isFeeLocked) {
-            const existing = Number(editingRequest?.chauffeurFee ?? editingRequest?.chauffeur_fee ?? editingRequest?.total_amount);
-            baseFee = editingRequest && Number.isFinite(existing) && existing >= 0
-                ? Number(existing.toFixed(2))
-                : defaultChauffeurFee;
-        } else {
+        const qtyMultiplier = serviceType === 'Round Trip' ? 2 : (serviceType === 'Daily Service' ? daysCount : 1);
+
+        let baseFee = defaultChauffeurFee;
+        if (!isFeeLocked) {
             const feeInput = parseFloat(formData.get('chauffeurFee') || 0);
-            baseFee = Number.isFinite(feeInput) && feeInput >= 0 ? Number(feeInput.toFixed(2)) : defaultChauffeurFee;
+            if (Number.isFinite(feeInput) && feeInput > 0) {
+                if (feeInput > defaultChauffeurFee * 1.5 && qtyMultiplier > 1) {
+                    baseFee = Number((feeInput / qtyMultiplier).toFixed(2));
+                } else {
+                    baseFee = Number(feeInput.toFixed(2));
+                }
+            }
         }
-        let normalizedFee = baseFee;
-        if (serviceType === 'Round Trip') {
-            normalizedFee = Number((baseFee * 2).toFixed(2));
-        } else if (serviceType === 'Daily Service' && daysCount > 1) {
-            normalizedFee = Number((baseFee * daysCount).toFixed(2));
-        }
+        const normalizedFee = Number((baseFee * qtyMultiplier).toFixed(2));
 
         const clientDisplayName = isStaffAdmin 
             ? (selectedClient?.name || selectedClient?.business_name || currentUser?.name) 
             : (currentUser?.name ? (currentUser.name.includes('(Personal Client)') ? currentUser.name : `${currentUser.name} (Personal Client)`) : 'Personal Client');
 
+        const rawPassengerName = formData.get('passengerName') || editingRequest?.passengerName || editingRequest?.guestName;
+        const guestNameResolved = (rawPassengerName && String(rawPassengerName).trim()) ? String(rawPassengerName).trim() : clientDisplayName;
+
         const request = {
             clientId: isStaffAdmin ? (selectedClientId || currentUser?.company_id || 'CLT-GUEST') : (currentUser?.clientId || currentUser?.company_id || 'CLT-GUEST'),
             clientName: clientDisplayName,
+            passengerName: guestNameResolved,
+            guestName: guestNameResolved,
             serviceType,
             requestDate: editingRequest ? editingRequest.requestDate : new Date().toISOString().split('T')[0],
             dueDate: formData.get('dueDate'),
@@ -325,6 +323,9 @@ const Chauffeur = () => {
             returnDate: serviceType === 'Round Trip' ? formData.get('returnDate') : null,
             returnTime: serviceType === 'Round Trip' ? formData.get('returnTime') : null,
             numberOfDays: serviceType === 'Daily Service' ? daysCount : null,
+            dailyDays: daysCount,
+            quantity: qtyMultiplier,
+            qty: qtyMultiplier,
             numberOfPassengers: parseInt(formData.get('numberOfPassengers'), 10) || 1,
             passengers: parseInt(formData.get('numberOfPassengers'), 10) || 1,
             luggage: hasLuggage ? 'Yes' : 'No',
@@ -332,10 +333,37 @@ const Chauffeur = () => {
             stops: hasStops ? 'Yes' : 'No',
             stopLocations: hasStops ? (formData.get('stopLocations') || '').trim() || null : null,
             amenities: amenities,
+            wifi: amenities.includes('WiFi') ? 'Yes' : 'No',
+            refreshments: amenities.includes('Refreshments') ? 'Yes' : 'No',
+            carSeat: (amenities.includes('Baby Car Seat') || amenities.includes('Car Seat')) ? 'Yes' : 'No',
             chauffeurFee: normalizedFee,
             chauffeur_fee: normalizedFee,
+            totalAmount: normalizedFee,
+            total_amount: normalizedFee,
             unitPrice: baseFee,
+            price: baseFee,
             chauffeur_fee_mode: CHAUFFEUR_BILLING_MODE,
+            items: [{
+                name: `VIP Chauffeur Service (${serviceType}${serviceType === 'Daily Service' ? ` - ${daysCount} Days` : ''})`,
+                qty: qtyMultiplier,
+                quantity: qtyMultiplier,
+                unitPrice: baseFee,
+                price: baseFee,
+                totalPrice: normalizedFee,
+                total: normalizedFee
+            }],
+            customItems: [{
+                name: `VIP Chauffeur Service (${serviceType}${serviceType === 'Daily Service' ? ` - ${daysCount} Days` : ''})`,
+                qty: qtyMultiplier,
+                quantity: qtyMultiplier,
+                unitPrice: baseFee,
+                price: baseFee,
+                totalPrice: normalizedFee,
+                total: normalizedFee,
+                serviceType,
+                numberOfDays: daysCount,
+                dailyDays: daysCount
+            }],
             driverName: isStaffAdmin ? (formData.get('driverNameSelect') ? (users || []).find(u => String(u.id) === formData.get('driverNameSelect'))?.fullName || (users || []).find(u => String(u.id) === formData.get('driverNameSelect'))?.name : formData.get('driverName')) : null,
             plateNumber: isStaffAdmin ? (formData.get('plateNumber') || null) : null,
             driver_user_id: isStaffAdmin ? (formData.get('driverNameSelect') ? Number(formData.get('driverNameSelect')) : (formData.get('driverUserId') ? Number(formData.get('driverUserId')) : (editingRequest?.driver_user_id || editingRequest?.driverId || null))) : (editingRequest?.driver_user_id || editingRequest?.driverId || null),

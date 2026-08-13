@@ -18,29 +18,29 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
         }
       });
       // Ensure data matches what the UI expects
-      const ordersData = response.data?.data;
-      const ordersArray = Array.isArray(ordersData)
-        ? ordersData
-        : (ordersData?.orders || ordersData?.data || []);
-      const totalItems = Array.isArray(ordersData)
-        ? ordersData.length
-        : (ordersData?.total ?? ordersArray.length);
-      const totalPages = Array.isArray(ordersData)
-        ? 1
-        : (ordersData?.totalPages ?? 1);
-      const currentPage = Array.isArray(ordersData)
-        ? 1
-        : (ordersData?.page ?? 1);
+      const raw = response.data;
+      let ordersArray = [];
+      if (Array.isArray(raw?.data?.orders)) {
+        ordersArray = raw.data.orders;
+      } else if (Array.isArray(raw?.data)) {
+        ordersArray = raw.data;
+      } else if (Array.isArray(raw?.orders)) {
+        ordersArray = raw.orders;
+      } else if (Array.isArray(raw)) {
+        ordersArray = raw;
+      }
 
-      const deletedIds = getDeletedChauffeurIds().map(String);
+      const totalItems = raw?.data?.total ?? raw?.meta?.totalItems ?? raw?.totalItems ?? raw?.total ?? ordersArray.length;
+      const totalPages = raw?.data?.totalPages ?? raw?.meta?.totalPages ?? raw?.totalPages ?? 1;
+      const currentPage = raw?.data?.page ?? raw?.meta?.currentPage ?? raw?.page ?? 1;
+
       const updatedMap = getUpdatedChauffeurMap();
 
       const mappedData = (ordersArray || [])
         .filter(order => {
           if (!order || typeof order !== 'object') return false;
-          const realId = String(order?.id || '');
-          const customId = String(order?.metadata?.customItems?.[0]?.id || '');
-          return !deletedIds.includes(realId) && !deletedIds.includes(customId);
+          const status = String(order.status || '').toLowerCase();
+          return status !== 'deleted';
         })
         .map(order => {
           let meta = order?.metadata;
@@ -78,7 +78,7 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
             restCustomItem?.location ||
             '';
 
-          const baseMapped = {
+          const combined = {
             ...order,
             ...restCustomItem,
             id: realId,
@@ -90,12 +90,25 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
             dropLocation: resolvedDrop,
             drop_location: resolvedDrop,
             location: resolvedDrop,
+            ...(updatedMap?.[realId] || {})
           };
 
-          const overlay = updatedMap[realId] || updatedMap[String(order?.id)] || {};
+          const sType = combined.serviceType || restCustomItem.serviceType || 'One Way';
+          const daysVal = parseInt(combined.numberOfDays || combined.dailyDays || restCustomItem.numberOfDays || 1, 10) || 1;
+          const qty = sType === 'Round Trip' ? 2 : (sType === 'Daily Service' ? daysVal : 1);
+
+          // Always use $120 as the base unit price — never read old stored values
+          const baseUnit = 120;
+          const rawTotal = Number((baseUnit * qty).toFixed(2));
+
           return {
-            ...baseMapped,
-            ...overlay
+            ...combined,
+            unitPrice: baseUnit,
+            price: baseUnit,
+            chauffeurFee: rawTotal,
+            chauffeur_fee: rawTotal,
+            totalAmount: rawTotal,
+            total_amount: rawTotal
           };
         });
       return {

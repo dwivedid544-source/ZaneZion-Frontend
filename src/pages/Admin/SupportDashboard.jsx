@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import { useData } from '../../context/GlobalDataContext';
+import { swalSuccess, swalError } from '../../utils/swal';
 import {
     MessageSquare, Send, CheckCircle2, Clock,
     AlertCircle, Search, Filter, User, LifeBuoy, ShieldCheck
@@ -20,6 +21,7 @@ const SupportDashboard = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [replyText, setReplyText] = useState('');
     const [refundAmount, setRefundAmount] = useState(0);
+    const [isSending, setIsSending] = useState(false);
 
     const normalizeStatusKey = (s) => {
         const k = String(s || '').toLowerCase().replace(/[\s_]+/g, '');
@@ -44,24 +46,35 @@ const SupportDashboard = () => {
         setIsModalOpen(true);
     };
 
-    const handleSendReply = () => {
-        if (!replyText.trim()) return;
+    const handleSendReply = async () => {
+        if (!replyText.trim() || isSending) return;
 
+        setIsSending(true);
         const newMessage = {
             sender: 'admin',
-            text: replyText,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            text: replyText.trim(),
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            createdAt: new Date().toISOString()
         };
 
+        const existingMsgs = Array.isArray(selectedTicket.messages) ? selectedTicket.messages : [];
         const updatedTicket = {
             ...selectedTicket,
-            messages: [...selectedTicket.messages, newMessage],
+            messages: [...existingMsgs, newMessage],
             status: 'In Progress'
         };
 
-        updateSupportTicket(updatedTicket);
-        setSelectedTicket(updatedTicket);
-        setReplyText('');
+        try {
+            await updateSupportTicket(updatedTicket);
+            setSelectedTicket(updatedTicket);
+            setReplyText('');
+            swalSuccess('Response Sent', 'Admin response synchronized to Client Portal database.');
+        } catch (err) {
+            console.error('Failed to send admin response:', err);
+            swalError('Save Failed', 'Could not save response to database.');
+        } finally {
+            setIsSending(false);
+        }
     };
 
     const handleResolve = (ticket) => {

@@ -12,6 +12,7 @@ import InvoiceGenerationModal from '../../components/InvoiceGenerationModal';
 import OrderTimeline from '../../components/OrderTimeline';
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
 import { formatClientDisplayName } from '../../utils/apiHelpers';
+import { isOrderVisibleToConcierge } from '../../utils/conciergeVisibility';
 
 /** Bespoke / concierge-path orders (store custom request or any row with a custom_request_category). */
 function isCustomRequestFlowOrder(order) {
@@ -29,7 +30,7 @@ function isCustomRequestFlowOrder(order) {
 
 const Orders = () => {
   const {
-    deliveries, purchaseRequests, stockMovements,
+    orders: contextOrders = [], deliveries, purchaseRequests, stockMovements,
     addProject, invoices, projects, missions, generateInvoiceFromOrder,
     currentUser, launchMissionFromOrder, convertOrderToProject,
     fetchVendors, fetchClients, clients, users = [], customerUsers = [], fetchCustomerUsers,
@@ -43,29 +44,19 @@ const Orders = () => {
   const [workflowTab, setWorkflowTab] = useState('all'); // 'all' | 'current' | 'processed'
   const [timelineOrder, setTimelineOrder] = useState(null); // { id, orderNumber }
 
-  const { data: ordersData, isLoading, error } = useOrders(page, 10, searchTerm);
-  const orders = ordersData?.data?.orders || [];
-  const pagination = ordersData?.data
-    ? {
-      page: ordersData.data.page || 1,
-      total: ordersData.data.total || 0,
-      limit: 10,
-      totalPages: ordersData.data.totalPages || 1,
-    }
-    : null;
-  const updateOrderStatusMutation = useUpdateOrderStatus();
-  const createOrderMutation = useCreateOrder();
-  const updateOrderMutation = useUpdateOrder();
-  const deleteOrderMutation = useDeleteOrder();
-
-  React.useEffect(() => {
-    fetchVendors();
-    fetchClients();
-  }, [fetchVendors, fetchClients]);
-
   const normalizedRole = normalizeRole(currentUser?.role);
   const portalRole = normalizeRole(currentUser?.role);
   const canStaffCreateOrder = roleCanCreateInstitutionalOrder(portalRole);
+
+  const { data: ordersData, isLoading, error } = useOrders(page, 10, searchTerm, portalRole);
+
+  const orders = React.useMemo(() => {
+    const apiOrders = ordersData?.data?.orders || (Array.isArray(ordersData?.data) ? ordersData.data : (Array.isArray(ordersData?.orders) ? ordersData.orders : null));
+    if (Array.isArray(apiOrders) && apiOrders.length > 0) {
+      return apiOrders;
+    }
+    return Array.isArray(contextOrders) ? contextOrders : [];
+  }, [ordersData, contextOrders]);
 
   const rawRoleStr = typeof currentUser?.role === 'object' ? (currentUser?.role?.name || '') : String(currentUser?.role || '');
   const normalizeId = (id) => id ? String(id).replace('CLT-', '') : '';
@@ -219,7 +210,7 @@ const Orders = () => {
       return typeStr !== 'PROJECT';
     });
 
-    const list = workflowTab === 'history'
+    let list = workflowTab === 'history'
       ? nonProjectOrders.filter(o => {
           const status = resolveLiveOrderStatus(o);
           return status === 'completed' || status === 'delivered';
@@ -228,6 +219,11 @@ const Orders = () => {
           const status = resolveLiveOrderStatus(o);
           return status !== 'completed' && status !== 'delivered';
         });
+
+    // Concierge Portal Visibility: Concierge sees Concierge Requests + Marketplace orders of upgraded clients only
+    if (portalRole === 'concierge' || normalizedRole === 'concierge') {
+      list = list.filter(o => isOrderVisibleToConcierge(o, clients));
+    }
 
     return [...list].sort((a, b) => {
       const timeA = new Date(a.createdAt || a.created_at || a.updatedAt || a.updated_at || a.order_date || a.date || 0).getTime();
@@ -238,6 +234,19 @@ const Orders = () => {
       return numB - numA;
     });
   })();
+
+  const pagination = React.useMemo(() => {
+    if (ordersData?.data?.pagination) return ordersData.data.pagination;
+    if (ordersData?.pagination) return ordersData.pagination;
+    const totalItems = currentOrders.length;
+    const totalPages = Math.max(1, Math.ceil(totalItems / 10));
+    return {
+      page: page,
+      limit: 10,
+      total: totalItems,
+      totalPages: totalPages
+    };
+  }, [ordersData, currentOrders.length, page]);
 
   const handleAction = (type, order) => {
     setSelectedOrder(order);
@@ -345,9 +354,18 @@ const Orders = () => {
       header: "Total Value",
       accessor: "totalAmount",
       render: (row) => {
+        const typeUpper = String(row.orderType || row.type || "").toUpperCase();
         const meta = typeof row.metadata === 'string'
           ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })()
           : (row.metadata || {});
+
+        if (typeUpper.includes('CHAUFFEUR')) {
+          const sType = row.serviceType || meta.customItems?.[0]?.serviceType || meta.serviceType || 'One Way';
+          const days = parseInt(row.numberOfDays || row.dailyDays || meta.customItems?.[0]?.numberOfDays || meta.numberOfDays || 1, 10) || 1;
+          const qty = sType === 'Round Trip' ? 2 : (sType === 'Daily Service' ? days : 1);
+          const normalizedTotal = 120 * qty;
+          return <span className="font-black text-accent">${parseFloat(normalizedTotal).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+        }
 
         const itms = row.items && row.items.length > 0 ? row.items : (row.customItems || meta.customItems || []);
 

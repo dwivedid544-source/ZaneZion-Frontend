@@ -52,14 +52,13 @@ const ClientSupport = () => {
         const sameOwnerName =
             String(t.createdByName || '').toLowerCase() !== '' &&
             String(t.createdByName || '').toLowerCase() === String(currentUser?.name || '').toLowerCase();
-        const sameClientAndOwnerName =
+        const sameClientId =
             String(t.clientId ?? '') !== '' &&
-            String(currentUser?.clientId ?? '') !== '' &&
-            String(t.clientId) === String(currentUser?.clientId) &&
-            String(t.clientName || '').toLowerCase() === String(currentUser?.name || '').toLowerCase();
+            String(currentUser?.clientId ?? currentUser?.company_id ?? '') !== '' &&
+            String(t.clientId) === String(currentUser?.clientId ?? currentUser?.company_id ?? '');
 
         if (isEndCustomerRole) {
-            return sameOwnerId || sameOwnerEmail || sameOwnerName || sameClientAndOwnerName;
+            return sameOwnerId || sameOwnerEmail || sameOwnerName || sameClientId;
         }
         return true;
     }) || [];
@@ -69,21 +68,27 @@ const ClientSupport = () => {
         setActiveView('chat');
     };
 
-    const sendReply = () => {
+    const sendReply = async () => {
         if (!replyText.trim()) return;
         const newMessage = {
             sender: 'client',
-            text: replyText,
-            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            text: replyText.trim(),
+            time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+            createdAt: new Date().toISOString()
         };
+        const existingMsgs = Array.isArray(selectedTicket.messages) ? selectedTicket.messages : [];
         const updated = {
             ...selectedTicket,
-            messages: [...selectedTicket.messages, newMessage],
+            messages: [...existingMsgs, newMessage],
             status: selectedTicket.status === 'Resolved' ? 'Resolved' : 'In Progress'
         };
-        updateSupportTicket(updated);
-        setSelectedTicket(updated);
-        setReplyText('');
+        try {
+            await updateSupportTicket(updated);
+            setSelectedTicket(updated);
+            setReplyText('');
+        } catch (err) {
+            console.error('Failed to send reply:', err);
+        }
     };
 
     const submitNewTicket = (e) => {

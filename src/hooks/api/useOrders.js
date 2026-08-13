@@ -6,12 +6,12 @@ import { notifyStateChanged } from '../../utils/stateSyncHelper';
 // Orders Hooks
 // -----------------------------
 
-export const useOrders = (page = 1, limit = 10, search = '') => {
+export const useOrders = (page = 1, limit = 10, search = '', viewerRole = '') => {
   return useQuery({
-    queryKey: ['orders', page, limit, search],
+    queryKey: ['orders', page, limit, search, viewerRole],
     queryFn: async () => {
       const response = await api.get('/orders', {
-        params: { page, limit, search }
+        params: { page, limit, search, viewerRole }
       });
       return response.data;
     },

@@ -151,17 +151,14 @@ const PersonalClientDashboard = () => {
     const orderClientId = String(o.clientId || o.client_id || o.companyId || o.company_id || '');
     const orderCustId = String(o.customer_id || o.customerId || o.created_by || o.createdById || o.userId || o.user_id || '');
     const orderEmail = String(o.email || o.client_email || o.customer_email || '').toLowerCase();
-    const orderClientName = String(o.client || o.clientName || o.customer_name || o.client_name || '').toLowerCase();
 
     const myUserId = String(currentUser?.id || '');
     const myClientId = String(clientData?.id || currentUser?.clientId || '');
     const myEmail = String(currentUser?.email || clientData?.email || '').toLowerCase();
-    const myName = String(currentUser?.name || clientData?.name || '').toLowerCase();
 
     if (myUserId && orderCustId && orderCustId === myUserId) return true;
     if (myClientId && orderClientId && orderClientId === myClientId) return true;
     if (myEmail && orderEmail && orderEmail === myEmail) return true;
-    if (myName && orderClientName && orderClientName === myName) return true;
 
     return false;
   };
@@ -172,15 +169,13 @@ const PersonalClientDashboard = () => {
     const oRawIdStr = String(o.rawId || o.id || '').replace(/\D/g, '');
     const firstItemName = String(o.items?.[0]?.name || o.product || '').toLowerCase().trim();
 
-    // 1. Find linked projects (by orderRef, orderId, or item name match)
+    // 1. Find linked projects (by exact orderRef or orderId)
     const linkedProjects = (projects || []).filter(p => {
       const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
-      const pName = String(p.name || '').toLowerCase();
       const pId = String(p.id || '');
       return (
         (pRef && (pRef === oIdStr || pRef === oRawIdStr || pRef === `ORD-${oIdStr}` || pRef === `ORD-${oRawIdStr}`)) ||
-        (pId && (pId === oIdStr || pId === oRawIdStr)) ||
-        (firstItemName && firstItemName.length > 3 && pName.includes(firstItemName))
+        (pId && (pId === oIdStr || pId === oRawIdStr))
       );
     });
     const linkedProjectIds = linkedProjects.map(p => String(p.id));

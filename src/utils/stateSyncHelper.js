@@ -44,7 +44,7 @@ export const addDeletedChauffeurId = (id) => {
         localStorage.setItem('deleted_chauffeur_ids', JSON.stringify(existing));
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 };
 
 export const getUpdatedChauffeurMap = () => {
@@ -65,5 +65,5 @@ export const setUpdatedChauffeurItem = (id, updatedFields) => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('updated_chauffeur_map', JSON.stringify(map));
     }
-  } catch (_) {}
+  } catch (_) { }
 };

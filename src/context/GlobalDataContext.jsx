@@ -22,7 +22,7 @@ import {
 } from "../utils/constants";
 import { INVENTORY, VENDORS, ACCESS_PLANS } from "../utils/data";
 
-import { getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from "../utils/stateSyncHelper";
+import { notifyStateChanged, getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from "../utils/stateSyncHelper";
 import { formatClientDisplayName } from "../utils/apiHelpers";
 
 const GlobalDataContext = createContext();
@@ -3522,6 +3522,7 @@ export const GlobalDataProvider = ({ children }) => {
           detail: `Order ${orderId} status changed to ${normalized}.`,
           type: "system",
         });
+        notifyStateChanged(queryClient, ['orders', ['orders', numericParam], 'deliveries', 'dashboardStats']);
         await fetchOrders();
         return;
       }
@@ -3575,6 +3576,7 @@ export const GlobalDataProvider = ({ children }) => {
         }
       }
 
+      notifyStateChanged(queryClient, ['orders', ['orders', numericParam], 'deliveries', 'dashboardStats']);
       await syncGlobalState();
       addLog({
         action: "Order Updated",
@@ -3601,6 +3603,7 @@ export const GlobalDataProvider = ({ children }) => {
         notes,
       });
       if (res.data?.success) {
+        notifyStateChanged(queryClient, ['orders', ['orders', orderId], 'deliveries', 'dashboardStats']);
         await fetchOrders();
         const stageNorm = String(stage || "").toLowerCase();
         if (stageNorm === "logistics" && orderId != null) {
@@ -7317,9 +7320,9 @@ export const GlobalDataProvider = ({ children }) => {
   useEffect(() => {
     if (!currentUser || !localStorage.getItem("token")) return;
     const role = normalizeRole(currentUser?.role);
-    const canAccessOrders = ["superadmin", "admin", "saas_client", "operations", "logistics", "concierge"].includes(role);
-    const canAccessProjects = ["superadmin", "admin", "saas_client", "operations"].includes(role);
-    const canAccessDeliveries = ["superadmin", "admin", "saas_client", "operations", "logistics", "driver"].includes(role);
+    const canAccessOrders = true; // All authenticated dashboards sync their orders automatically
+    const canAccessProjects = ["superadmin", "admin", "saas_client", "operations", "client", "business_client"].includes(role);
+    const canAccessDeliveries = ["superadmin", "admin", "saas_client", "operations", "logistics", "driver", "client", "business_client", "personal_client", "staff", "employee"].includes(role);
 
     const refreshOperationalState = () => {
       if (canAccessOrders && fetchOrders) fetchOrders();
@@ -7327,11 +7330,27 @@ export const GlobalDataProvider = ({ children }) => {
       if (canAccessProjects && fetchProjects) fetchProjects();
       if (fetchTickets) fetchTickets();
       if (fetchChauffeurRequests) fetchChauffeurRequests();
+      if (queryClient) {
+        queryClient.invalidateQueries({ queryKey: ['orders'] });
+        queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+        queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+      }
     };
     refreshOperationalState();
     const interval = setInterval(refreshOperationalState, 3000);
-    return () => clearInterval(interval);
-  }, [currentUser, fetchOrders, fetchDeliveries, fetchProjects, fetchTickets, fetchChauffeurRequests]);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshOperationalState();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [currentUser, fetchOrders, fetchDeliveries, fetchProjects, fetchTickets, fetchChauffeurRequests, queryClient]);
 
   return (
     <GlobalDataContext.Provider

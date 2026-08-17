@@ -125,17 +125,14 @@ const ClientDashboard = () => {
     const orderClientId = String(o.clientId || o.client_id || o.companyId || o.company_id || '');
     const orderCustId = String(o.customer_id || o.customerId || o.created_by || o.createdById || o.userId || o.user_id || '');
     const orderEmail = String(o.email || o.client_email || o.customer_email || '').toLowerCase();
-    const orderClientName = String(o.client || o.clientName || o.customer_name || o.client_name || '').toLowerCase();
 
     const myUserId = String(currentUser?.id || '');
     const myClientId = String(clientData?.id || currentUser?.clientId || '');
     const myEmail = String(currentUser?.email || clientData?.email || '').toLowerCase();
-    const myName = String(currentUser?.name || clientData?.name || '').toLowerCase();
 
     if (myUserId && orderCustId && orderCustId === myUserId) return true;
     if (myClientId && orderClientId && orderClientId === myClientId) return true;
     if (myEmail && orderEmail && orderEmail === myEmail) return true;
-    if (myName && orderClientName && orderClientName === myName) return true;
 
     return false;
   };

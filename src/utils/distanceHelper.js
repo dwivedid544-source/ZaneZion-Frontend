@@ -1,21 +1,107 @@
+const KNOWN_LOCATIONS = {
+    'nassau': { lat: 25.047984, lng: -77.355413, displayName: 'Nassau, Bahamas' },
+    'nassau central hub': { lat: 25.047984, lng: -77.355413, displayName: 'Nassau Central Hub, Bahamas' },
+    'nassau hub': { lat: 25.047984, lng: -77.355413, displayName: 'Nassau Hub, Bahamas' },
+    'lpia': { lat: 25.0389, lng: -77.4662, displayName: 'Lynden Pindling International Airport (LPIA)' },
+    'lpia airport': { lat: 25.0389, lng: -77.4662, displayName: 'Lynden Pindling International Airport (LPIA)' },
+    'paradise island': { lat: 25.0833, lng: -77.3167, displayName: 'Paradise Island, Bahamas' },
+    'cable beach': { lat: 25.0766, lng: -77.4069, displayName: 'Cable Beach, Nassau' },
+    'london': { lat: 51.5074456, lng: -0.1277653, displayName: 'London, United Kingdom' },
+    'london heathrow': { lat: 51.4700, lng: -0.4543, displayName: 'Heathrow Airport, London' },
+    'sweden': { lat: 60.1282, lng: 18.6435, displayName: 'Sweden' },
+    'sweeden': { lat: 60.1282, lng: 18.6435, displayName: 'Sweden' },
+    'stockholm': { lat: 59.3293, lng: 18.0686, displayName: 'Stockholm, Sweden' },
+    'paris': { lat: 48.8566, lng: 2.3522, displayName: 'Paris, France' },
+    'new york': { lat: 40.7128, lng: -74.0060, displayName: 'New York, USA' },
+    'miami': { lat: 25.7617, lng: -80.1918, displayName: 'Miami, Florida, USA' },
+    'dubai': { lat: 25.2048, lng: 55.2708, displayName: 'Dubai, UAE' },
+    'indore': { lat: 22.7196, lng: 75.8577, displayName: 'Indore, MP, India' },
+    'mumbai': { lat: 19.0760, lng: 72.8777, displayName: 'Mumbai, Maharashtra, India' },
+    'delhi': { lat: 28.6139, lng: 77.2090, displayName: 'New Delhi, India' },
+    'rau': { lat: 22.6288, lng: 75.8078, displayName: 'Rau, Indore, India' },
+};
+
 /**
- * Geocodes a text location to [lat, lng] using OpenStreetMap Nominatim API (Free & No API Key)
- * Supports smart right-to-left fallback matching for extremely specific local/neighborhood addresses.
+ * Geocodes a text location to [lat, lng] using a resilient multi-tier cascade:
+ * 1. Fast known locations dictionary
+ * 2. Photon API (Komoot OpenStreetMap index - Fast, open CORS, browser-friendly)
+ * 3. Open-Meteo Geocoding API (Fast global place search, open CORS)
+ * 4. Nominatim OpenStreetMap API (Fallback)
  */
 export const geocodeLocation = async (query) => {
     if (!query || !query.trim()) return null;
-    
-    const fetchGeocode = async (q) => {
+    const cleanQuery = query.trim();
+    const lower = cleanQuery.toLowerCase();
+
+    // 1. Direct dictionary match
+    if (KNOWN_LOCATIONS[lower]) {
+        return { ...KNOWN_LOCATIONS[lower] };
+    }
+    for (const [key, val] of Object.entries(KNOWN_LOCATIONS)) {
+        if (lower === key || lower.startsWith(key + ' ') || lower.endsWith(' ' + key)) {
+            return { ...val, displayName: cleanQuery };
+        }
+    }
+
+    const fetchWithTimeout = async (url, timeoutMs = 3000, options = {}) => {
+        const controller = new AbortController();
+        const id = setTimeout(() => controller.abort(), timeoutMs);
         try {
-            const headers = {};
-            if (typeof window === 'undefined') {
-                headers['User-Agent'] = 'ZaneZion-App';
+            const response = await fetch(url, { ...options, signal: controller.signal });
+            clearTimeout(id);
+            return response;
+        } catch (e) {
+            clearTimeout(id);
+            return null;
+        }
+    };
+
+    // 2. Try Photon API (OpenStreetMap geocoding with open CORS)
+    try {
+        const photonRes = await fetchWithTimeout(
+            `https://photon.komoot.io/api/?q=${encodeURIComponent(cleanQuery)}&limit=1`,
+            3000
+        );
+        if (photonRes && photonRes.ok) {
+            const data = await photonRes.json();
+            if (data?.features?.[0]?.geometry?.coordinates) {
+                const [lng, lat] = data.features[0].geometry.coordinates;
+                const name = data.features[0].properties?.name || data.features[0].properties?.city || cleanQuery;
+                return {
+                    lat: parseFloat(lat),
+                    lng: parseFloat(lng),
+                    displayName: name
+                };
             }
-            const response = await fetch(
-                `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=1`,
-                { headers }
-            );
-            const data = await response.json();
+        }
+    } catch (_) {}
+
+    // 3. Try Open-Meteo Geocoding API
+    try {
+        const meteoRes = await fetchWithTimeout(
+            `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cleanQuery)}&count=1`,
+            3000
+        );
+        if (meteoRes && meteoRes.ok) {
+            const data = await meteoRes.json();
+            if (data?.results?.[0]?.latitude) {
+                return {
+                    lat: parseFloat(data.results[0].latitude),
+                    lng: parseFloat(data.results[0].longitude),
+                    displayName: data.results[0].name || cleanQuery
+                };
+            }
+        }
+    } catch (_) {}
+
+    // 4. Try Nominatim API
+    try {
+        const nomRes = await fetchWithTimeout(
+            `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(cleanQuery)}&limit=1`,
+            3000
+        );
+        if (nomRes && nomRes.ok) {
+            const data = await nomRes.json();
             if (data && data.length > 0) {
                 return {
                     lat: parseFloat(data[0].lat),
@@ -23,34 +109,9 @@ export const geocodeLocation = async (query) => {
                     displayName: data[0].display_name
                 };
             }
-        } catch (e) {
-            console.error("Geocoding fetch failed for:", q, e);
         }
-        return null;
-    };
+    } catch (_) {}
 
-    // 1. Try matching full search query
-    let result = await fetchGeocode(query.trim());
-    if (result) return result;
-
-    // 2. Fallback: Right-to-left word extraction for local specific neighborhoods/landmarks
-    const parts = query.trim().split(/\s+/);
-    if (parts.length > 2) {
-        // Try last 3 words
-        const last3 = parts.slice(-3).join(' ');
-        result = await fetchGeocode(last3);
-        if (result) return result;
-
-        // Try last 2 words
-        const last2 = parts.slice(-2).join(' ');
-        result = await fetchGeocode(last2);
-        if (result) return result;
-
-        // Try last 1 word
-        const last1 = parts.slice(-1).join(' ');
-        result = await fetchGeocode(last1);
-        if (result) return result;
-    }
     return null;
 };
 
@@ -166,10 +227,20 @@ export const calculateOSRMRouteDistance = async (pickup, drop, mode = 'Road') =>
             };
         } else {
             // Road Transport (default): Actual driving distance via OSRM Route API
-            const response = await fetch(
-                `https://router.project-osrm.org/route/v1/driving/${pickupCoords.lng},${pickupCoords.lat};${dropCoords.lng},${dropCoords.lat}?overview=false`
-            );
-            const data = await response.json();
+            let data = null;
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3500);
+                const response = await fetch(
+                    `https://router.project-osrm.org/route/v1/driving/${pickupCoords.lng},${pickupCoords.lat};${dropCoords.lng},${dropCoords.lat}?overview=false`,
+                    { signal: controller.signal }
+                );
+                clearTimeout(timeoutId);
+                if (response && response.ok) {
+                    data = await response.json();
+                }
+            } catch (_) {}
+
             if (data && data.routes && data.routes.length > 0) {
                 const distanceMeters = data.routes[0].distance;
                 let distanceKm = parseFloat((distanceMeters / 1000).toFixed(2));
@@ -197,8 +268,7 @@ export const calculateOSRMRouteDistance = async (pickup, drop, mode = 'Road') =>
                     dropCoords
                 };
             } else {
-                console.warn(`No driving route found via OSRM road network. Falling back to straight-line estimation.`);
-                // Safe fallback to straight-line if OSRM driving route is not found (e.g. no road path exists)
+                // Safe fallback to straight-line if OSRM driving route is not found (e.g. no road path exists or overseas)
                 const straightLineKm = calculateHaversine(pickupCoords, dropCoords);
                 // Apply realistic road circuity factor to straight-line distance
                 let roadCircuityFactor = 1.22;

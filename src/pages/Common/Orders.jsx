@@ -39,6 +39,11 @@ const Orders = () => {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
+  const updateOrderStatusMutation = useUpdateOrderStatus();
+  const createOrderMutation = useCreateOrder();
+  const updateOrderMutation = useUpdateOrder();
+  const deleteOrderMutation = useDeleteOrder();
+
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
   const [workflowTab, setWorkflowTab] = useState('all'); // 'all' | 'current' | 'processed'
@@ -80,43 +85,36 @@ const Orders = () => {
     if (!o) return 'pending';
     const oIdStr = String(o.id || '');
     const oRawIdStr = String(o.rawId || o.id || '').replace(/\D/g, '');
-    let normItems = o.items || o.customItems || [];
-    if (typeof normItems === 'string') { try { normItems = JSON.parse(normItems); } catch { normItems = []; } }
-    const firstItemName = String((normItems?.[0]?.name || normItems?.[0]?.title || o.product || '').toLowerCase()).trim();
 
     const dbStatus = String(o.status || '').toLowerCase();
     if (['completed', 'delivered', 'done'].includes(dbStatus)) return 'completed';
 
-    // 1. Find linked projects
+    // 1. Find linked projects by exact order reference
     const linkedProjects = (projects || []).filter(p => {
       const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
-      const pName = String(p.name || p.metadata?.name || '').toLowerCase();
       const pId = String(p.id || '');
       return (
         (pRef && (pRef === oIdStr || pRef === oRawIdStr || pRef === `ORD-${oIdStr}` || pRef === `ORD-${oRawIdStr}`)) ||
-        (pId && (pId === oIdStr || pId === oRawIdStr)) ||
-        (firstItemName && firstItemName.length > 3 && pName.includes(firstItemName))
+        (pId && (pId === oIdStr || pId === oRawIdStr))
       );
     });
     const linkedProjectIds = linkedProjects.map(p => String(p.id));
 
-    // 2. Find linked mission
+    // 2. Find linked mission by exact order/project reference
     const linkedMission = (missions || []).find(m => {
       const mOrderId = String(m.orderId || m.order_id || m.order_id_raw || m.metadata?.orderId || m.metadata?.orderRef || m.metadata?.order_ref || '');
       const mProjectId = String(m.projectId || m.project_id || m.metadata?.projectId || m.metadata?.projectRef || '');
-      const mName = String(m.metadata?.project_name || m.route || '').toLowerCase();
       return (
         mOrderId === oIdStr ||
         mOrderId === oRawIdStr ||
         mOrderId === `ORD-${oIdStr}` ||
         mOrderId === `ORD-${oRawIdStr}` ||
         linkedProjectIds.includes(mOrderId) ||
-        linkedProjectIds.includes(mProjectId) ||
-        (firstItemName && firstItemName.length > 3 && mName.includes(firstItemName))
+        linkedProjectIds.includes(mProjectId)
       );
     });
 
-    // 3. Find linked delivery
+    // 3. Find linked delivery by exact order reference
     const linkedDelivery = (deliveries || []).find(d => {
       const dOrderId = String(d.orderId || d.order_id_raw || d.order_id || '');
       const dMissionId = String(d.mission_id || d.missionId || '');
@@ -198,7 +196,8 @@ const Orders = () => {
         window.dispatchEvent(new CustomEvent('app:state-changed'));
         swalSuccess(`Order #${order.id} has been successfully moved to ${stage}.`);
       } catch (err) {
-        swalError('Failed to update order status.');
+        const errMsg = err?.response?.data?.message || err?.message || 'Failed to update order status.';
+        swalError(errMsg);
       }
     }
   };
@@ -622,31 +621,16 @@ const Orders = () => {
               customAction={(item) => {
                 const liveSt = resolveLiveOrderStatus(item);
                 const isCompleted = ['completed', 'delivered'].includes(liveSt);
-                const isLogisticsOrTransit = ['logistics', 'in_transit', 'assigned'].includes(liveSt);
+                const rawSt = String(item.status || '').toLowerCase();
 
                 if (isCompleted) {
                   return null;
                 }
 
-                if (isLogisticsOrTransit) {
-                  return (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        navigate('/dashboard/deliveries');
-                      }}
-                      className="btn-secondary text-[10px] font-black uppercase tracking-wider py-1 px-2.5 flex items-center gap-1"
-                    >
-                      <Truck size={12} className="text-accent" /> Dispatch / Fleet
-                    </button>
-                  );
-                }
-
                 return canManageOrders ? (
-                <div className="flex items-center gap-1 flex-wrap">
-                  {(['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) || isBusinessClient) &&
-                    String(item.status).toLowerCase() !== 'completed' && String(item.status).toLowerCase() !== 'delivered' && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {/* Delivery / Fleet Action */}
+                  {(['superadmin', 'operations', 'admin', 'saas_client', 'logistics'].includes(normalizedRole) || isBusinessClient) && (
                     <button
                       type="button"
                       onClick={(e) => {
@@ -670,32 +654,33 @@ const Orders = () => {
                           }
                         });
                       }}
-                      className="p-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1 border border-white/5"
-                      title="Delivery action — assign marketplace fulfilment for field staff"
+                      className="p-1.5 px-2.5 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1 border border-white/5"
+                      title="Dispatch / Delivery Fleet"
                     >
-                      <Truck size={14} /> Delivery
+                      <Truck size={13} /> <span>{['logistics', 'in_transit', 'assigned'].includes(liveSt) ? 'Dispatch / Fleet' : 'Delivery'}</span>
                     </button>
                   )}
-                  {/* Admin approval: marketplace → logistics queue (whole team sees it; assign driver in Deliveries); bespoke → concierge */}
+
+                  {/* Admin Approval: For newly created/submitted/pending orders */}
                   {['superadmin', 'admin', 'saas_client'].includes(normalizedRole) &&
-                    ['created', 'admin_review', 'pending_review'].includes(String(item.status).toLowerCase()) && (
+                    ['created', 'admin_review', 'pending_review', 'pending', 'submitted', 'draft'].includes(rawSt) && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleApprove(item, isCustomRequestFlowOrder(item) ? 'concierge' : 'logistics');
+                          handleApprove(item, isCustomRequestFlowOrder(item) ? 'concierge' : 'operation');
                         }}
-                        className="p-2 rounded-lg text-secondary hover:text-success hover:bg-success/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
-                        title={isCustomRequestFlowOrder(item) ? 'Approve & send to Concierge' : 'Approve & send to Logistics (dispatch queue)'}
+                        className="p-1.5 px-2.5 rounded-lg text-success hover:text-white bg-success/10 hover:bg-success/20 transition-all flex items-center justify-center font-black text-[10px] gap-1.5 border border-success/30 shadow-sm"
+                        title={isCustomRequestFlowOrder(item) ? 'Approve & send to Concierge' : 'Approve & send to Operations'}
                       >
-                        <CheckCircle size={14} />{' '}
-                        <span>{isCustomRequestFlowOrder(item) ? 'Approve → Concierge' : 'Approve → Logistics'}</span>
+                        <CheckCircle size={14} className="text-success" />{' '}
+                        <span>{isCustomRequestFlowOrder(item) ? 'Approve → Concierge' : 'Approve Order'}</span>
                       </button>
                     )}
 
                   {/* Concierge triage: forward into supply chain */}
                   {['superadmin', 'concierge', 'admin', 'saas_client'].includes(normalizedRole) &&
-                    String(item.status).toLowerCase() === 'concierge' && (
+                    rawSt === 'concierge' && (
                       <>
                         <button
                           type="button"
@@ -725,8 +710,8 @@ const Orders = () => {
                     )}
 
                   {/* Operations Actions: operation -> procurement OR inventory OR logistics */}
-                  {['superadmin', 'operations'].includes(normalizedRole) &&
-                    ['operation'].includes(String(item.status).toLowerCase()) && (
+                  {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) &&
+                    ['operation'].includes(rawSt) && (
                       <>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleApprove(item, 'procurement'); }}
@@ -741,6 +726,13 @@ const Orders = () => {
                           title="Move to Inventory"
                         >
                           <Warehouse size={13} /> <span>Stock</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
+                          className="p-1 px-2 rounded-lg text-accent hover:text-white bg-accent/10 hover:bg-accent/20 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/25"
+                          title="Send to Logistics"
+                        >
+                          <Truck size={13} /> <span>To Logistics</span>
                         </button>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleConvertToProject(item); }}
@@ -761,23 +753,32 @@ const Orders = () => {
                     )}
 
                   {/* Procurement to Inventory: procurement -> inventory */}
-                  {['superadmin', 'procurement'].includes(normalizedRole) &&
-                    ['procurement'].includes(String(item.status).toLowerCase()) && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleApprove(item, 'inventory'); }}
-                        className="p-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
-                        title="Move to Inventory"
-                      >
-                        <Warehouse size={14} /> <span>Store</span>
-                      </button>
+                  {['superadmin', 'procurement', 'admin', 'saas_client'].includes(normalizedRole) &&
+                    ['procurement'].includes(rawSt) && (
+                      <>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'inventory'); }}
+                          className="p-1.5 px-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
+                          title="Move to Inventory"
+                        >
+                          <Warehouse size={13} /> <span>Store</span>
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
+                          className="p-1.5 px-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20"
+                          title="Send for Dispatch"
+                        >
+                          <Truck size={13} /> <span>To Logistics</span>
+                        </button>
+                      </>
                     )}
 
                   {/* Inventory to Logistics: inventory -> logistics */}
-                  {['superadmin', 'inventory'].includes(normalizedRole) &&
-                    ['inventory'].includes(String(item.status).toLowerCase()) && (
+                  {['superadmin', 'inventory', 'admin', 'saas_client'].includes(normalizedRole) &&
+                    ['inventory'].includes(rawSt) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
-                        className="p-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
+                        className="p-1.5 px-2.5 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1.5 border border-white/5"
                         title="Send for Dispatch"
                       >
                         <Truck size={14} /> <span>Dispatch</span>
@@ -785,11 +786,11 @@ const Orders = () => {
                     )}
 
                   {/* Logistics to Completed: logistics -> completed */}
-                  {['superadmin', 'logistics'].includes(normalizedRole) &&
-                    ['logistics'].includes(String(item.status).toLowerCase()) && (
+                  {['superadmin', 'logistics', 'admin', 'saas_client'].includes(normalizedRole) &&
+                    ['logistics', 'assigned', 'in_transit'].includes(rawSt) && (
                       <button
                         onClick={(e) => { e.stopPropagation(); handleApprove(item, 'completed'); }}
-                        className="p-2 rounded-lg text-secondary hover:text-success hover:bg-success/10 transition-all flex items-center justify-center font-bold text-[10px] gap-2"
+                        className="p-1.5 px-2.5 rounded-lg text-secondary hover:text-success hover:bg-success/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1.5 border border-white/5"
                         title="Mark as Delivered"
                       >
                         <PackageCheck size={14} /> <span>Deliver</span>

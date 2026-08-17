@@ -25,6 +25,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     const { currentUser, marketplaceVendors = [], clients, fetchVendors, fetchClients, customerUsers, fetchCustomerUsers } = useData();
     const [currentModalType, setCurrentModalType] = useState(modalType);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
 
     const { data: fetchedOrderData, isLoading: isFetchingDetails } = useOrder(
         isOpen && selectedOrder?.id && modalType !== 'add' ? selectedOrder.id : null
@@ -219,8 +220,19 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                     meta = {};
                 }
             }
-            const isChauffeur = String(effectiveOrder.orderType || effectiveOrder.type || '').toLowerCase().includes('chauffeur') ||
-                String(effectiveOrder.items?.[0]?.name || effectiveOrder.product || '').toLowerCase().includes('chauffeur');
+            const typeStr = String(effectiveOrder.orderType || effectiveOrder.type || '').toLowerCase();
+            const kindStr = String(effectiveOrder.orderKind || effectiveOrder.order_kind || meta?.order_kind || meta?.type || '').toLowerCase();
+            const firstItemName = String(effectiveOrder.items?.[0]?.name || effectiveOrder.product || '').toLowerCase();
+
+            const isChauffeur = !typeStr.includes('marketplace') && 
+                !typeStr.includes('product') && 
+                !typeStr.includes('procurement') && 
+                !typeStr.includes('provisioning') && 
+                !typeStr.includes('inventory') && 
+                !typeStr.includes('delivery') && 
+                !typeStr.includes('custom order') && 
+                !kindStr.includes('marketplace') && 
+                (typeStr.includes('chauffeur') || kindStr.includes('chauffeur') || firstItemName.includes('chauffeur service') || firstItemName.startsWith('vip chauffeur'));
             const firstCustom = (meta?.customItems && meta.customItems[0]) || {};
 
             let rawItems = (effectiveOrder.items && effectiveOrder.items.length > 0) ? effectiveOrder.items : (effectiveOrder.customItems || meta?.customItems || []);
@@ -290,8 +302,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             );
 
             const clientDisplayName = (typeof effectiveOrder.client === 'object' && effectiveOrder.client !== null ? (effectiveOrder.client.companyName || effectiveOrder.client.name || '') : effectiveOrder.client) || effectiveOrder.customer_name || effectiveOrder.created_by_name || '';
-            const dropLoc = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || firstCustom.dropLocation || firstCustom.location || '';
-            const pickLoc = isChauffeur ? (effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || '') : '';
+            const dropLoc = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || effectiveOrder.dropLocation || effectiveOrder.drop_location || firstCustom.dropLocation || firstCustom.location || firstCustom.deliveryAddress || meta?.location || meta?.deliveryAddress || meta?.delivery_address || meta?.dropLocation || meta?.drop_location || '';
+            const pickLoc = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || firstCustom.pickup_location || meta?.pickupLocation || meta?.pickup_location || '';
 
             let rawAmenities = effectiveOrder.amenities || firstCustom.amenities || meta?.amenities || [];
             let amenitiesList = Array.isArray(rawAmenities) ? rawAmenities : (typeof rawAmenities === 'string' && rawAmenities.trim() ? rawAmenities.split(',').map(s => s.trim()) : []);
@@ -333,7 +345,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 vendor: effectiveOrder.vendor || '',
                 vendorId: effectiveOrder.vendorId || effectiveOrder.vendor_id || '',
                 isPreferredVendor: !!(effectiveOrder.vendorId || effectiveOrder.vendor_id),
-                type: effectiveOrder.orderType || effectiveOrder.type || (isChauffeur ? 'Chauffeur Service' : 'Custom Order'),
+                type: isChauffeur ? 'Chauffeur Service' : ((effectiveOrder.orderType === 'PRODUCT' || meta?.order_kind === 'marketplace') ? 'Procurement' : (effectiveOrder.orderType || effectiveOrder.type || 'Custom Order')),
                 deliveryType: effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road',
                 pickupLocation: pickLoc,
                 pickupTime: isChauffeur ? (effectiveOrder.pickupTime || firstCustom.pickupTime || '') : '',
@@ -356,14 +368,31 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         }
     }, [isOpen, effectiveOrder, modalType, customerOnlyForDropdown]);
 
-    useEffect(() => {
-        if (currentModalType === 'view') return;
+    const triggerCalculateDistance = React.useCallback(async (pick, drop, mode) => {
+        const p = (pick !== undefined ? pick : formData.pickupLocation) || '';
+        const d = (drop !== undefined ? drop : formData.location) || '';
+        const m = (mode !== undefined ? mode : formData.deliveryType) || 'Road';
 
-        // If editing an existing order, and the locations or transport mode haven't changed from their initial values,
-        // and we already have a loaded totalDistance, skip recalculating to preserve the database value.
-        if (modalType === 'edit' && effectiveOrder) {
+        if (p.trim() && d.trim()) {
+            setIsCalculatingDistance(true);
+            try {
+                const res = await calculateOSRMRouteDistance(p.trim(), d.trim(), m);
+                if (res && res.distanceKm != null) {
+                    setFormData(prev => ({ ...prev, totalDistance: String(res.distanceKm) }));
+                }
+            } catch (err) {
+                console.warn('Distance calculation error:', err);
+            } finally {
+                setIsCalculatingDistance(false);
+            }
+        }
+    }, [formData.pickupLocation, formData.location, formData.deliveryType]);
+
+    useEffect(() => {
+        // If we already have a loaded totalDistance from the database and locations haven't changed, keep it
+        if (effectiveOrder) {
             const initialPickup = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || '';
-            const initialLocation = effectiveOrder.location || '';
+            const initialLocation = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || '';
             const initialMode = effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road';
             const initialDistance = effectiveOrder.totalDistance || effectiveOrder.total_distance || '';
 
@@ -372,29 +401,25 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 formData.location === initialLocation &&
                 formData.deliveryType === initialMode &&
                 String(formData.totalDistance) === String(initialDistance) &&
-                formData.totalDistance !== ''
+                formData.totalDistance !== '' &&
+                formData.totalDistance != null
             ) {
                 return;
             }
         }
 
-        const calculateDistance = async () => {
-            if (formData.pickupLocation && formData.location) {
-                const res = await calculateOSRMRouteDistance(formData.pickupLocation, formData.location, formData.deliveryType);
-                if (res && res.distanceKm != null) {
-                    setFormData(prev => ({ ...prev, totalDistance: String(res.distanceKm) }));
-                } else {
-                    setFormData(prev => ({ ...prev, totalDistance: '' }));
-                }
-            } else {
-                setFormData(prev => ({ ...prev, totalDistance: '' }));
-            }
-        };
+        // If in view mode and totalDistance is already present, no need to recalculate
+        if (currentModalType === 'view' && formData.totalDistance) {
+            return;
+        }
+
         const timer = setTimeout(() => {
-            calculateDistance();
-        }, 1000);
+            if (formData.pickupLocation && formData.location) {
+                triggerCalculateDistance(formData.pickupLocation, formData.location, formData.deliveryType);
+            }
+        }, currentModalType === 'view' ? 50 : 400);
         return () => clearTimeout(timer);
-    }, [formData.pickupLocation, formData.location, formData.deliveryType, currentModalType]);
+    }, [formData.pickupLocation, formData.location, formData.deliveryType, currentModalType, triggerCalculateDistance]);
 
     const handleAddItem = () => {
         setFormData({ ...formData, items: [...formData.items, { name: '', qty: 1, price: '' }] });
@@ -419,11 +444,32 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
     const isChauffeurOrder = React.useMemo(() => {
         const typeStr = String(formData.type || effectiveOrder?.orderType || effectiveOrder?.type || '').toLowerCase();
-        const kindStr = String(effectiveOrder?.orderKind || effectiveOrder?.kind || '').toLowerCase();
+        const kindStr = String(effectiveOrder?.orderKind || effectiveOrder?.order_kind || effectiveOrder?.kind || effectiveOrder?.metadata?.order_kind || '').toLowerCase();
         const metaType = String(effectiveOrder?.metadata?.orderType || effectiveOrder?.metadata?.type || '').toLowerCase();
         const firstItemName = String(formData.items?.[0]?.name || effectiveOrder?.items?.[0]?.name || effectiveOrder?.product || '').toLowerCase();
 
-        return typeStr.includes('chauffeur') || kindStr.includes('chauffeur') || metaType.includes('chauffeur') || firstItemName.includes('chauffeur service') || firstItemName.startsWith('vip chauffeur');
+        // Marketplace, procurement, provisioning, delivery, inventory, custom product orders are never chauffeur
+        if (
+            typeStr.includes('marketplace') || 
+            typeStr.includes('procurement') || 
+            typeStr.includes('provisioning') || 
+            typeStr.includes('inventory') || 
+            typeStr.includes('delivery') ||
+            typeStr.includes('product') ||
+            typeStr.includes('custom order') ||
+            kindStr.includes('marketplace') ||
+            metaType.includes('marketplace')
+        ) {
+            return false;
+        }
+
+        return (
+            typeStr.includes('chauffeur') || 
+            kindStr.includes('chauffeur') || 
+            metaType.includes('chauffeur') || 
+            firstItemName.includes('chauffeur service') || 
+            firstItemName.startsWith('vip chauffeur')
+        );
     }, [formData.type, formData.items, effectiveOrder]);
 
     const handleSubmit = (e) => {
@@ -448,6 +494,10 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         const dueDate = clampDueDateToRequest(requestDate, formData.dueDate);
         const payload = {
             ...formData,
+            pickupLocation: formData.pickupLocation || '',
+            location: formData.location || '',
+            deliveryAddress: formData.location || '',
+            dropLocation: formData.location || '',
             requestDate,
             dueDate,
             totalAmount: parseFloat(calculateTotal()),
@@ -460,6 +510,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         if (!isChauffeurOrder) {
             delete payload.passengerCount;
             delete payload.passengerName;
+            delete payload.passengerInfo;
             delete payload.luggage;
             delete payload.stops;
             delete payload.stopLocations;
@@ -467,8 +518,6 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             delete payload.refreshments;
             delete payload.carSeat;
             delete payload.amenities;
-            delete payload.pickupLocation;
-            delete payload.pickupTime;
             delete payload.returnDate;
             delete payload.returnTime;
             delete payload.returnLocation;
@@ -767,52 +816,65 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                         </div>
                                     )}
 
-                                    {/* Pickup Location - only for Chauffeur orders */}
-                                    {isChauffeurOrder && (
-                                        <div className="space-y-1">
-                                            <label className="text-[10px] font-bold text-muted uppercase">Pickup Location / Origin</label>
-                                            <div className="relative">
-                                                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
-                                                <input
-                                                    type="text"
-                                                    value={formData.pickupLocation}
-                                                    onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
-                                                    className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                                    disabled={currentModalType === 'view'}
-                                                    placeholder="Enter pickup location"
-                                                />
-                                            </div>
+                                    {/* Starting / Pickup Location */}
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-muted uppercase">Starting / Pickup Location</label>
+                                        <div className="relative">
+                                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                                            <input
+                                                type="text"
+                                                value={formData.pickupLocation}
+                                                onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
+                                                onBlur={() => triggerCalculateDistance()}
+                                                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                                disabled={currentModalType === 'view'}
+                                                placeholder="Enter starting / pickup location"
+                                            />
                                         </div>
-                                    )}
+                                    </div>
 
                                     {/* Destination / Delivery Location */}
-                                    <div className={`space-y-1 ${!isChauffeurOrder ? 'col-span-1 md:col-span-2' : ''}`}>
-                                        <label className="text-[10px] font-bold text-muted uppercase">
-                                            {isChauffeurOrder ? 'Destination Address / Drop Location' : 'Delivery Address / Destination'}
-                                        </label>
+                                    <div className="space-y-1">
+                                        <label className="text-[10px] font-bold text-muted uppercase">Destination / Delivery Location</label>
                                         <div className="relative">
                                             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
                                             <input
                                                 type="text"
                                                 value={formData.location}
                                                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                                onBlur={() => triggerCalculateDistance()}
                                                 className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
                                                 disabled={currentModalType === 'view'}
-                                                placeholder={isChauffeurOrder ? "Enter drop location" : "Enter delivery address"}
+                                                placeholder="Enter destination / delivery address"
                                             />
                                         </div>
                                     </div>
 
                                     {/* Total Distance */}
                                     <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-accent uppercase tracking-widest pl-1">Total Distance (km)</label>
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-[10px] font-bold text-accent uppercase tracking-widest pl-1">Total Distance (km)</label>
+                                            {isCalculatingDistance ? (
+                                                <span className="text-[9px] text-accent font-bold animate-pulse">Calculating...</span>
+                                            ) : (
+                                                currentModalType !== 'view' && formData.pickupLocation && formData.location && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => triggerCalculateDistance()}
+                                                        className="text-[9px] text-accent hover:underline font-bold"
+                                                    >
+                                                        Recalculate
+                                                    </button>
+                                                )
+                                            )}
+                                        </div>
                                         <input
                                             type="text"
                                             value={formData.totalDistance}
                                             onChange={(e) => setFormData({ ...formData, totalDistance: e.target.value })}
                                             className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-accent font-black focus:border-accent outline-none"
                                             disabled={currentModalType === 'view'}
-                                            placeholder="Distance auto-calculated..."
+                                            placeholder={isCalculatingDistance ? "Calculating route distance..." : "Distance auto-calculated..."}
                                         />
                                     </div>
                                     {currentModalType === 'view' && String(effectiveOrder?.delivery_instructions || '').trim() && (

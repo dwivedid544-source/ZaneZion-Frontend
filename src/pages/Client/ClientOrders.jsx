@@ -105,24 +105,21 @@ const ClientOrders = () => {
     const myName = (myClient?.name || currentUser?.name || '').toLowerCase();
     const myEmail = (currentUser?.email || myClient?.email || '').toLowerCase();
 
-    // Helper to check ownership of any record
+    // Helper to check ownership of any record strictly by ID or email
     const isMyRecord = (item) => {
         if (!item) return false;
         const itemClientId = String(item.clientId || item.client_id || item.companyId || item.company_id || '');
         const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || '');
-        const itemClientName = String(item.client || item.clientName || item.customer_name || item.client_name || '').toLowerCase();
         const itemEmail = String(item.email || item.client_email || item.customer_email || '').toLowerCase();
 
         const myUserId = String(currentUser?.id || '');
         const myClientIdStr = String(myClientId || '');
         const myEmailStr = String(myEmail || '').toLowerCase();
-        const myNameStr = String(myName || '').toLowerCase();
 
         if (myUserId && itemCustId && itemCustId === myUserId) return true;
         if (myClientIdStr && itemClientId && itemClientId === myClientIdStr) return true;
-        if (myNameStr && itemClientName && itemClientName === myNameStr) return true;
+        if (myEmailStr && itemEmail && itemEmail === myEmailStr) return true;
 
-        // No ownership match found — do not show this record to the current user
         return false;
     };
 
@@ -186,15 +183,13 @@ const ClientOrders = () => {
             const oRawIdStr = String(o.rawId || o.id || '').replace(/\D/g, '');
             const firstItemName = (normalizedItems?.[0]?.name || o.product || '').toLowerCase().trim();
 
-            // 1. Find linked projects (by orderRef, orderId, or item name match)
+            // 1. Find linked projects (by exact orderRef or orderId)
             const linkedProjects = (projects || []).filter(p => {
                 const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
-                const pName = String(p.name || '').toLowerCase();
                 const pId = String(p.id || '');
                 return (
                     (pRef && (pRef === oIdStr || pRef === oRawIdStr || pRef === `ORD-${oIdStr}` || pRef === `ORD-${oRawIdStr}`)) ||
-                    (pId && (pId === oIdStr || pId === oRawIdStr)) ||
-                    (firstItemName && firstItemName.length > 3 && pName.includes(firstItemName))
+                    (pId && (pId === oIdStr || pId === oRawIdStr))
                 );
             });
             const linkedProjectIds = linkedProjects.map(p => String(p.id));
@@ -949,11 +944,27 @@ const ClientOrders = () => {
                                         </div>
                                     </div>
 
-                                    {/* Location / Protocol Info */}
-                                    {selectedTransaction.location && (
-                                        <div className="p-4 rounded-2xl bg-white/[0.02] border border-white/5">
-                                            <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Service / Delivery Location</p>
-                                            <p className="text-xs font-bold text-white">{selectedTransaction.location}</p>
+                                    {/* Location / Route Info */}
+                                    {(selectedTransaction.pickupLocation || selectedTransaction.pickup_location || selectedTransaction.location || selectedTransaction.deliveryAddress || selectedTransaction.delivery_address) && (
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-white/[0.02] border border-white/5">
+                                            {(selectedTransaction.pickupLocation || selectedTransaction.pickup_location) && (
+                                                <div>
+                                                    <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Starting / Pickup Location</p>
+                                                    <p className="text-xs font-bold text-white">{selectedTransaction.pickupLocation || selectedTransaction.pickup_location}</p>
+                                                </div>
+                                            )}
+                                            {(selectedTransaction.location || selectedTransaction.deliveryAddress || selectedTransaction.delivery_address) && (
+                                                <div>
+                                                    <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Destination / Delivery Location</p>
+                                                    <p className="text-xs font-bold text-white">{selectedTransaction.location || selectedTransaction.deliveryAddress || selectedTransaction.delivery_address}</p>
+                                                </div>
+                                            )}
+                                            {(selectedTransaction.totalDistance || selectedTransaction.total_distance) && (
+                                                <div className="sm:col-span-2">
+                                                    <p className="text-[9px] font-black text-accent uppercase tracking-widest mb-1">Total Route Distance</p>
+                                                    <p className="text-xs font-black text-accent">{selectedTransaction.totalDistance || selectedTransaction.total_distance} km</p>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 
@@ -961,7 +972,21 @@ const ClientOrders = () => {
                                     {(() => {
                                         const typeStr = String(selectedTransaction.type || selectedTransaction.orderType || '').toLowerCase();
                                         const catStr = String(selectedTransaction.category || '').toLowerCase();
+                                        const kindStr = String(selectedTransaction.orderKind || selectedTransaction.order_kind || '').toLowerCase();
                                         const firstItem = String(selectedTransaction.items?.[0]?.name || selectedTransaction.items?.[0]?.itemName || selectedTransaction.product || '').toLowerCase();
+
+                                        if (
+                                            typeStr.includes('marketplace') || 
+                                            typeStr.includes('procurement') || 
+                                            typeStr.includes('provisioning') || 
+                                            typeStr.includes('inventory') || 
+                                            typeStr.includes('delivery') || 
+                                            typeStr.includes('product') ||
+                                            kindStr.includes('marketplace')
+                                        ) {
+                                            return null;
+                                        }
+
                                         const isChauffeur = catStr.includes('chauffeur') || typeStr.includes('chauffeur') || firstItem.includes('chauffeur service') || firstItem.startsWith('vip chauffeur');
                                         if (!isChauffeur) return null;
                                         return (

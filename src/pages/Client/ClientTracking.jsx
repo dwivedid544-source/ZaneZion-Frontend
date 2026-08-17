@@ -59,8 +59,9 @@ const ClientTracking = () => {
             String(o.created_by) === String(currentUser?.id)
         ) : (
             String(o.created_by) === String(currentUser?.id) ||
-            String(o.clientId) === String(currentUser?.id) ||
-            String(o.customer_id) === String(currentUser?.id)
+            String(o.customer_id) === String(currentUser?.id) ||
+            String(o.user_id) === String(currentUser?.id) ||
+            String(o.userId) === String(currentUser?.id)
         );
     });
 

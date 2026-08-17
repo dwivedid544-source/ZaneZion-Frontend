@@ -6,9 +6,23 @@ import { notifyStateChanged } from '../../utils/stateSyncHelper';
 // Deliveries Hooks
 // -----------------------------
 
+const getCurrentUserContext = () => {
+  try {
+    const rawUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+    const u = rawUser ? JSON.parse(rawUser) : null;
+    return {
+      userId: u?.id || null,
+      tenantId: u?.tenantId || null
+    };
+  } catch (_) {
+    return { userId: null, tenantId: null };
+  }
+};
+
 export const useDeliveries = (page = 1, limit = 10, search = '') => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['deliveries', page, limit, search],
+    queryKey: ['deliveries', userId, tenantId, page, limit, search],
     queryFn: async () => {
       const response = await api.get('/deliveries', {
         params: { page, limit, search }
@@ -75,8 +89,9 @@ export const useUpdateDelivery = () => {
 // -----------------------------
 
 export const useMissions = (page = 1, limit = 10, search = '') => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['missions', page, limit, search],
+    queryKey: ['missions', userId, tenantId, page, limit, search],
     queryFn: async () => {
       const response = await api.get('/missions', {
         params: { page, limit, search }

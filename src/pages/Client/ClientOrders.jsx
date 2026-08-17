@@ -118,13 +118,12 @@ const ClientOrders = () => {
         const myEmailStr = String(myEmail || '').toLowerCase();
         const myNameStr = String(myName || '').toLowerCase();
 
-        if (myUserId && (itemCustId === myUserId || itemClientId === myUserId)) return true;
-        if (myClientIdStr && (itemClientId === myClientIdStr || itemCustId === myClientIdStr)) return true;
-        if (myEmailStr && itemEmail && itemEmail === myEmailStr) return true;
+        if (myUserId && itemCustId && itemCustId === myUserId) return true;
+        if (myClientIdStr && itemClientId && itemClientId === myClientIdStr) return true;
         if (myNameStr && itemClientName && itemClientName === myNameStr) return true;
 
-        // Fallback for customer portal
-        return portalRole === 'customer' || portalRole === 'client';
+        // No ownership match found — do not show this record to the current user
+        return false;
     };
 
     // Combine all transaction types into a unified list
@@ -959,30 +958,37 @@ const ClientOrders = () => {
                                     )}
 
                                     {/* Chauffeur / Passenger Info */}
-                                    {(selectedTransaction.passengerCount || selectedTransaction.passengerInfo || selectedTransaction.category === 'Chauffeur Bookings' || String(selectedTransaction.type || '').toLowerCase() === 'chauffeur') && (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-accent/5 border border-accent/20">
-                                            <div>
-                                                <p className="text-[9px] font-black text-accent uppercase tracking-widest">No. of Passengers</p>
-                                                <p className="text-xs font-bold text-white">
-                                                    {selectedTransaction.numberOfPassengers || selectedTransaction.passengers || selectedTransaction.passengerCount || selectedTransaction.passengerInfo?.count || selectedTransaction.guestCount || 1} PAX
-                                                    {(selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name) ? ` (${selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name})` : ''}
-                                                </p>
+                                    {(() => {
+                                        const typeStr = String(selectedTransaction.type || selectedTransaction.orderType || '').toLowerCase();
+                                        const catStr = String(selectedTransaction.category || '').toLowerCase();
+                                        const firstItem = String(selectedTransaction.items?.[0]?.name || selectedTransaction.items?.[0]?.itemName || selectedTransaction.product || '').toLowerCase();
+                                        const isChauffeur = catStr.includes('chauffeur') || typeStr.includes('chauffeur') || firstItem.includes('chauffeur service') || firstItem.startsWith('vip chauffeur');
+                                        if (!isChauffeur) return null;
+                                        return (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-accent/5 border border-accent/20">
+                                                <div>
+                                                    <p className="text-[9px] font-black text-accent uppercase tracking-widest">No. of Passengers</p>
+                                                    <p className="text-xs font-bold text-white">
+                                                        {selectedTransaction.numberOfPassengers || selectedTransaction.passengers || selectedTransaction.passengerCount || selectedTransaction.passengerInfo?.count || selectedTransaction.guestCount || 1} PAX
+                                                        {(selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name) ? ` (${selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name})` : ''}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-[9px] font-black text-accent uppercase tracking-widest">Luggage Protocol</p>
+                                                    <p className="text-xs font-bold text-white">
+                                                        {selectedTransaction.luggage || selectedTransaction.luggageOption || 'Standard / Included'}
+                                                    </p>
+                                                </div>
+                                                <div className="sm:col-span-2">
+                                                    <p className="text-[9px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</p>
+                                                    <p className="text-xs font-bold text-white">
+                                                        {selectedTransaction.serviceType || 'One Way'}
+                                                        {selectedTransaction.serviceType === 'Round Trip' ? ' (2× Round Trip Rate applied)' : (selectedTransaction.numberOfDays > 1 || selectedTransaction.dailyDays > 1) ? ` (${selectedTransaction.numberOfDays || selectedTransaction.dailyDays} Days)` : ''}
+                                                    </p>
+                                                </div>
                                             </div>
-                                            <div>
-                                                <p className="text-[9px] font-black text-accent uppercase tracking-widest">Luggage Protocol</p>
-                                                <p className="text-xs font-bold text-white">
-                                                    {selectedTransaction.luggage || selectedTransaction.luggageOption || 'Standard / Included'}
-                                                </p>
-                                            </div>
-                                            <div className="sm:col-span-2">
-                                                <p className="text-[9px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</p>
-                                                <p className="text-xs font-bold text-white">
-                                                    {selectedTransaction.serviceType || 'One Way'}
-                                                    {selectedTransaction.serviceType === 'Round Trip' ? ' (2× Round Trip Rate applied)' : (selectedTransaction.numberOfDays > 1 || selectedTransaction.dailyDays > 1) ? ` (${selectedTransaction.numberOfDays || selectedTransaction.dailyDays} Days)` : ''}
-                                                </p>
-                                            </div>
-                                        </div>
-                                    )}
+                                        );
+                                    })()}
 
                                     {/* Itemized Breakdown */}
                                     <div className="space-y-3">

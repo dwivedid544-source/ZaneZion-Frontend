@@ -9,6 +9,7 @@ import {
   Globe, Car, Sparkles, ShieldAlert
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 
 const menuItems = {
   superadmin: [
@@ -254,13 +255,22 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  const queryClient = useQueryClient();
   const handleLogout = () => {
-    // Clear all authentication data
+    // Clear all authentication data and local session caches
+    try {
+      queryClient.clear();
+    } catch (_) {}
     localStorage.removeItem('token');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('user');
     localStorage.removeItem('menuPermissions');
+    localStorage.removeItem('deleted_chauffeur_ids');
+    localStorage.removeItem('updated_chauffeur_map');
+    localStorage.removeItem('pending_vendor_overrides_v1');
+    localStorage.removeItem('pending_vendor_drafts_v1');
+    localStorage.removeItem('customer_order_status_overrides_v1');
     window.location.href = '/login';
   };
 

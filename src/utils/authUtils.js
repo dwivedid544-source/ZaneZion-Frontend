@@ -24,7 +24,7 @@ export const normalizeRole = (role) => {
     if (r.includes('concierge')) return 'concierge';
     // 'saas_client' kept for backward compat (old accounts before multi-tenant fix)
     if (r.includes('saas_client') || r.includes('saas client')) return 'saas_client';
-    if (r === 'customer' || r === 'personal_user' || r.includes('personal')) return 'customer';
+    if (r === 'customer' || r === 'personal_user' || r.includes('personal') || r.includes('individual_client') || r === 'individual') return 'customer';
     // Business client aliases
     if (r === 'client' || r === 'business_client' || r === 'business client') return 'client';
     if (r.includes('vendor')) return 'vendor';

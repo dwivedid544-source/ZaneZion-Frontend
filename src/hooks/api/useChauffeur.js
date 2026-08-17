@@ -3,18 +3,30 @@ import api from '../../services/api/setupAxios';
 import { notifyStateChanged, getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from '../../utils/stateSyncHelper';
 
 export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
+  let currentUser = null;
+  try {
+    const rawUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+    currentUser = rawUser ? JSON.parse(rawUser) : null;
+  } catch (_) {}
+
+  const currentUserId = currentUser?.id || null;
+  const currentUserTenant = currentUser?.tenantId || null;
+  const currentUserEmail = currentUser?.email || null;
+  const currentClientId = currentUser?.clientId || currentUser?.company_id || null;
+
   return useQuery({
-    queryKey: ['chauffeurMissions', page, limit, search],
+    queryKey: ['chauffeurMissions', currentUserId, currentUserTenant, page, limit, search],
     queryFn: async () => {
       // Fetch from orders where orderType is CHAUFFEUR, or from missions.
-      // The requirement says fetch from missions if it's tracking, but Chauffeur.jsx shows all requests
-      // including unassigned. Orders hold unassigned requests. Let's fetch orders for CHAUFFEUR.
       const response = await api.get('/orders', {
         params: {
           page,
           limit,
           search,
-          orderType: 'CHAUFFEUR'
+          orderType: 'CHAUFFEUR',
+          ...(currentUserId && { user_id: currentUserId }),
+          ...(currentUserEmail && { customer_email: currentUserEmail }),
+          ...(currentClientId && { clientId: currentClientId })
         }
       });
       // Ensure data matches what the UI expects

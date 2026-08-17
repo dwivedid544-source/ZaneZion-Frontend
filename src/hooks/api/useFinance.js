@@ -6,9 +6,23 @@ import { notifyStateChanged } from '../../utils/stateSyncHelper';
 // Invoices Hooks
 // -----------------------------
 
+const getCurrentUserContext = () => {
+  try {
+    const rawUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+    const u = rawUser ? JSON.parse(rawUser) : null;
+    return {
+      userId: u?.id || null,
+      tenantId: u?.tenantId || null
+    };
+  } catch (_) {
+    return { userId: null, tenantId: null };
+  }
+};
+
 export const useInvoices = (page = 1, limit = 10, search = '', status = '') => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['invoices', page, limit, search, status],
+    queryKey: ['invoices', userId, tenantId, page, limit, search, status],
     queryFn: async () => {
       const response = await api.get('/invoices', {
         params: { page, limit, search, ...(status && { status }) }
@@ -19,8 +33,9 @@ export const useInvoices = (page = 1, limit = 10, search = '', status = '') => {
 };
 
 export const useInvoice = (id) => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['invoices', id],
+    queryKey: ['invoices', userId, tenantId, id],
     queryFn: async () => {
       const response = await api.get(`/invoices/${id}`);
       return response.data;

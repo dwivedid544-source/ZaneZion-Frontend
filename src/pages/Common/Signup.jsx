@@ -165,6 +165,16 @@ const Signup = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
+      try {
+        localStorage.removeItem('token');
+        localStorage.removeItem('userRole');
+        localStorage.removeItem('userEmail');
+        localStorage.removeItem('user');
+        localStorage.removeItem('menuPermissions');
+        localStorage.removeItem('deleted_chauffeur_ids');
+        localStorage.removeItem('updated_chauffeur_map');
+      } catch (_) {}
+
       setStep('done');
     } catch (err) {
       setApiError(err.response?.data?.message || 'Registration failed. Please try again.');

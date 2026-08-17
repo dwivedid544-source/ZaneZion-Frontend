@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Search, Bell, Menu, User, LogOut, ChevronDown, Package, Users, Briefcase, Box, CheckCheck, ShoppingCart, Truck, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { useData } from '../context/GlobalDataContext';
 import { normalizeRole } from '../utils/authUtils';
 import { useNavigate } from 'react-router-dom';
 import StaffClockBar from './StaffClockBar';
 
 const Topbar = ({ toggleSidebar, role }) => {
+  const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [showResults, setShowResults] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -43,12 +45,20 @@ const Topbar = ({ toggleSidebar, role }) => {
     : '??';
 
   const handleLogout = () => {
-    // Clear all authentication data
+    // Clear all authentication data and local session caches
+    try {
+      queryClient.clear();
+    } catch (_) {}
     localStorage.removeItem('token');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userEmail');
     localStorage.removeItem('user');
     localStorage.removeItem('menuPermissions');
+    localStorage.removeItem('deleted_chauffeur_ids');
+    localStorage.removeItem('updated_chauffeur_map');
+    localStorage.removeItem('pending_vendor_overrides_v1');
+    localStorage.removeItem('pending_vendor_drafts_v1');
+    localStorage.removeItem('customer_order_status_overrides_v1');
     // Force reload to /login
     window.location.href = '/login';
   };

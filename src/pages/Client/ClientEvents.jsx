@@ -136,41 +136,34 @@ const ClientEvents = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {events.filter(e => {
-                    const cleanEventClientId = e.client_id ? String(e.client_id).replace('CLT-', '') : '';
-                    const cleanMyCompanyId = myCompany?.id ? String(myCompany.id).replace('CLT-', '') : '';
-                    const cleanUserCompanyId = currentUser?.company_id ? String(currentUser.company_id).replace('CLT-', '') : '';
-                    const cleanUserClientId = currentUser?.clientId ? String(currentUser.clientId).replace('CLT-', '') : '';
+                    const cleanEventClientId = e.client_id || e.clientId ? String(e.client_id || e.clientId).replace('CLT-', '').trim() : '';
+                    const cleanMyCompanyId = myCompany?.id ? String(myCompany.id).replace('CLT-', '').trim() : '';
+                    const cleanUserCompanyId = currentUser?.company_id ? String(currentUser.company_id).replace('CLT-', '').trim() : '';
+                    const cleanUserClientId = currentUser?.clientId ? String(currentUser.clientId).replace('CLT-', '').trim() : '';
 
                     const matchesClientId = (cleanEventClientId && (
-                        cleanEventClientId === cleanMyCompanyId ||
-                        cleanEventClientId === cleanUserCompanyId ||
-                        cleanEventClientId === cleanUserClientId ||
-                        String(cleanEventClientId) === String(currentUser?.id)
+                        (cleanMyCompanyId && cleanEventClientId === cleanMyCompanyId) ||
+                        (cleanUserCompanyId && cleanEventClientId === cleanUserCompanyId) ||
+                        (cleanUserClientId && cleanEventClientId === cleanUserClientId)
                     ));
 
                     const matchesCompanyId = (e.company_id && (
-                        String(e.company_id).replace('CLT-', '') === cleanMyCompanyId ||
-                        String(e.company_id).replace('CLT-', '') === cleanUserCompanyId ||
-                        String(e.company_id).replace('CLT-', '') === cleanUserClientId
+                        (cleanMyCompanyId && String(e.company_id).replace('CLT-', '').trim() === cleanMyCompanyId) ||
+                        (cleanUserCompanyId && String(e.company_id).replace('CLT-', '').trim() === cleanUserCompanyId) ||
+                        (cleanUserClientId && String(e.company_id).replace('CLT-', '').trim() === cleanUserClientId)
                     ));
 
-                    const matchesName = (
-                        (e.client && (e.client === clientName || (companyName && e.client === companyName))) ||
-                        (e.client_name && (e.client_name === clientName || (companyName && e.client_name === companyName)))
-                    );
+                    const myEmail = String(currentUser?.email || '').toLowerCase().trim();
+                    const eventEmail = String(e.client?.email || e.email || '').toLowerCase().trim();
+                    const matchesEmail = myEmail && eventEmail && myEmail === eventEmail;
 
-                    const matchesManager = (
-                        e.manager_id && String(e.manager_id) === String(currentUser?.id)
-                    );
+                    const myName = String(currentUser?.name || '').toLowerCase().trim();
+                    const eventClient = String(e.client?.companyName || e.client?.name || e.client || e.client_name || e.plannerName || '').toLowerCase().trim();
+                    const matchesName = myName && eventClient && (eventClient === myName || (companyName && eventClient === String(companyName).toLowerCase().trim()));
 
-                    const isOperational = (
-                        e.client === 'Current Client' ||
-                        e.client === 'Operational Client' ||
-                        e.client_name === 'Current Client' ||
-                        e.client_name === 'Operational Client'
-                    );
+                    const matchesManager = e.manager_id && String(e.manager_id) === String(currentUser?.id);
 
-                    return matchesClientId || matchesCompanyId || matchesName || matchesManager || isOperational;
+                    return matchesClientId || matchesCompanyId || matchesEmail || matchesName || matchesManager;
                 }).map((evt, index) => (
                     <div key={`${evt.id}-${index}`} className="glass-card p-6 border-accent/10 group hover:border-accent/40 transition-all">
                         <div className="flex justify-between items-start mb-4">

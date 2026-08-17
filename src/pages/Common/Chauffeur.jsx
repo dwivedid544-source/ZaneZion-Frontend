@@ -14,6 +14,7 @@ import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
 import { useQueryClient } from '@tanstack/react-query';
 import { useChauffeurMissions, useCreateChauffeurMission, useUpdateChauffeurMission, useDeleteChauffeurMission } from '../../hooks/api/useChauffeur';
 import { formatClientDisplayName } from '../../utils/apiHelpers';
+import { normalizeRole } from '../../utils/authUtils';
 
 const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
     const [eta, setEta] = useState(null);
@@ -194,11 +195,11 @@ const Chauffeur = () => {
     const [pickupTimeInput, setPickupTimeInput] = useState('12:00');
     const [returnTimeInput, setReturnTimeInput] = useState('12:00');
 
-    const userRole = String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/\s+/g, '_');
-    const isCustomer = userRole === 'customer' || userRole === 'individual_client';
-    const isAdmin = !isCustomer;
-    const isClientAdmin = ['client', 'business_client'].some(r => userRole.includes(r));
+    const userRoleKey = normalizeRole(currentUser?.role);
+    const isCustomer = userRoleKey === 'customer';
+    const isClientAdmin = userRoleKey === 'client' || userRoleKey === 'saas_client';
     const isStaffAdmin = !isCustomer && !isClientAdmin;
+    const isAdmin = isStaffAdmin;
     const isFeeLocked = isCustomer || (isClientAdmin && (!editingRequest || editingRequest?.userId === currentUser?.id));
 
     /** Admin-configured base price (Settings → system), fallback to env default */
@@ -263,7 +264,27 @@ const Chauffeur = () => {
     const needsAdminApprove = (req) =>
         isAdmin && (!isClientAdmin || req?.userId !== currentUser?.id) && req && !req.driverName && !req.adminApproved && ['pending', 'pending_review'].includes(chauffeurStatusKey(req.status));
 
-    const filteredRequests = chauffeurRequests;
+    const filteredRequests = useMemo(() => {
+        if (!isCustomer && !isClientAdmin) return chauffeurRequests;
+        const myUserId = String(currentUser?.id || '').trim();
+        const myClientId = String(currentUser?.clientId || currentUser?.company_id || '').trim();
+        const myEmail = String(currentUser?.email || '').toLowerCase().trim();
+        const myName = String(currentUser?.name || '').toLowerCase().trim();
+
+        return (chauffeurRequests || []).filter(req => {
+            const reqUserId = String(req.userId || req.user_id || req.customer_id || req.created_by || req.createdById || req.metadata?.userId || req.metadata?.user_id || req.metadata?.customer_id || req.metadata?.created_by || '').trim();
+            const reqClientId = String(req.clientId || req.client_id || '').trim();
+            const reqEmail = String(req.email || req.clientEmail || req.customerEmail || req.customer_email || req.metadata?.email || req.metadata?.user_email || req.metadata?.customer_email || '').toLowerCase().trim();
+            const reqClientName = String(req.clientName || req.client || req.guestName || req.passengerName || req.customer_name || '').toLowerCase().trim();
+
+            if (myUserId && reqUserId && reqUserId === myUserId) return true;
+            if (myClientId && reqClientId && reqClientId === myClientId) return true;
+            if (myEmail && reqEmail && reqEmail === myEmail) return true;
+            if (myName && reqClientName && reqClientName === myName) return true;
+
+            return false;
+        });
+    }, [chauffeurRequests, isCustomer, isClientAdmin, currentUser]);
 
     /** Active: any status that is NOT completed/cancelled – stays visible until service is done. */
     const DONE_STATUSES = ['completed', 'delivered', 'cancelled', 'done'];

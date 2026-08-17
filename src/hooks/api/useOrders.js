@@ -6,9 +6,25 @@ import { notifyStateChanged } from '../../utils/stateSyncHelper';
 // Orders Hooks
 // -----------------------------
 
+const getCurrentUserContext = () => {
+  try {
+    const rawUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+    const u = rawUser ? JSON.parse(rawUser) : null;
+    return {
+      userId: u?.id || null,
+      tenantId: u?.tenantId || null,
+      clientId: u?.clientId || u?.company_id || null,
+      email: u?.email || null
+    };
+  } catch (_) {
+    return { userId: null, tenantId: null, clientId: null, email: null };
+  }
+};
+
 export const useOrders = (page = 1, limit = 10, search = '', viewerRole = '') => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['orders', page, limit, search, viewerRole],
+    queryKey: ['orders', userId, tenantId, page, limit, search, viewerRole],
     queryFn: async () => {
       const response = await api.get('/orders', {
         params: { page, limit, search, viewerRole }
@@ -19,8 +35,9 @@ export const useOrders = (page = 1, limit = 10, search = '', viewerRole = '') =>
 };
 
 export const useDepartmentOrders = (currentDept, passedThrough) => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['orders', 'dept', currentDept, passedThrough],
+    queryKey: ['orders', 'dept', userId, tenantId, currentDept, passedThrough],
     queryFn: async () => {
       const response = await api.get('/orders', {
         params: { currentDept, passedThrough, limit: 100 }
@@ -31,8 +48,9 @@ export const useDepartmentOrders = (currentDept, passedThrough) => {
 };
 
 export const useOrder = (id) => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['orders', id],
+    queryKey: ['orders', userId, tenantId, id],
     queryFn: async () => {
       const response = await api.get(`/orders/${id}`);
       return response.data;

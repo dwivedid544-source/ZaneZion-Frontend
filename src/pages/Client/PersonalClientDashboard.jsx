@@ -158,13 +158,10 @@ const PersonalClientDashboard = () => {
     const myEmail = String(currentUser?.email || clientData?.email || '').toLowerCase();
     const myName = String(currentUser?.name || clientData?.name || '').toLowerCase();
 
-    if (myUserId && (orderCustId === myUserId || orderClientId === myUserId)) return true;
-    if (myClientId && (orderClientId === myClientId || orderCustId === myClientId)) return true;
+    if (myUserId && orderCustId && orderCustId === myUserId) return true;
+    if (myClientId && orderClientId && orderClientId === myClientId) return true;
     if (myEmail && orderEmail && orderEmail === myEmail) return true;
     if (myName && orderClientName && orderClientName === myName) return true;
-
-    const role = normalizeRole(currentUser?.role);
-    if (role === 'customer' || role === 'client') return true;
 
     return false;
   };
@@ -254,11 +251,9 @@ const PersonalClientDashboard = () => {
     (inv.userId && String(inv.userId) === String(currentUser?.id))
   );
   const clientChauffeurRequests = (chauffeurRequests || []).filter(req =>
-    String(req.clientId) === String(clientData.id) ||
-    String(req.company_id) === String(clientData.id) ||
-    String(req.clientName) === String(clientData.name) ||
-    (req.created_by && String(req.created_by) === String(currentUser?.id)) ||
-    (normalizeRole(currentUser?.role) === 'customer' || normalizeRole(currentUser?.role) === 'client')
+    (clientData?.id && (String(req.clientId) === String(clientData.id) || String(req.company_id) === String(clientData.id))) ||
+    (clientData?.name && String(req.clientName).toLowerCase() === String(clientData.name).toLowerCase()) ||
+    (req.created_by && String(req.created_by) === String(currentUser?.id))
   );
 
   const DONE_STATUSES = ['delivered', 'cancelled', 'completed', 'done'];

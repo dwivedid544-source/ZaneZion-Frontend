@@ -1002,15 +1002,14 @@ export const GlobalDataProvider = ({ children }) => {
         });
       }
 
-      // For regular customers, filter strictly by their user_id
+      // For regular customers, filter strictly by their user_id, client profile, or email
       if (role === "customer") {
         return dataArray.filter((item) => {
           const itemCompany =
             item.company_id ||
             item.companyId ||
             item.client_id ||
-            item.clientId ||
-            item.customer_id;
+            item.clientId;
           const itemUser =
             item.user_id ||
             item.userId ||
@@ -1018,9 +1017,17 @@ export const GlobalDataProvider = ({ children }) => {
             item.requested_by ||
             item.manager_id ||
             item.submitted_by;
+          const itemEmail =
+            item.email ||
+            item.client_email ||
+            item.customer_email ||
+            item.clientEmail ||
+            item.customerEmail ||
+            item.metadata?.email;
           return (
             (itemUser && String(itemUser) === String(myUserId)) ||
-            (itemCompany && String(itemCompany) === String(myUserId))
+            (myCompanyId && itemCompany && String(itemCompany) === String(myCompanyId)) ||
+            (currentUser.email && itemEmail && String(itemEmail).toLowerCase().trim() === String(currentUser.email).toLowerCase().trim())
           );
         });
       }
@@ -1230,89 +1237,24 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchClients = React.useCallback(
     async (options = {}) => {
-      const buildFallbackFromUsers = async () => {
-        try {
-          const res = await api.get(
-            "/users/customers?include_all=1&include_client_role=1",
-          );
-          const list = res.data?.success ? res.data.data || [] : (Array.isArray(res.data) ? res.data : []);
-          return list
-            .filter((u) => {
-              if (!u) return false;
-              const roleStr = String(u.role?.name || u.role || "").toLowerCase();
-              return !["superadmin", "inventory", "driver"].includes(roleStr);
-            })
-            .map((u) => {
-              const name = u?.name || u?.full_name || u?.business_name || u?.company_name || u?.companyName || u?.email || `User ${u.id}`;
-              const base = mapClientFromApi({
-                id: u?.client_id ?? u?.company_id ?? u?.id,
-                name: name,
-                business_name: name,
-                companyName: name,
-                email: u?.email || "",
-                phone: u?.phone || "",
-                address: u?.address || u?.location || "",
-                location: u?.location || u?.address || "",
-                status: u?.status || "active",
-                source: "Signup",
-                client_type: u?.client_type || u?.account_type || "Personal",
-                account_type: u?.client_type || u?.account_type || "Personal",
-                plan: u?.plan || "Free",
-                concierge_member: u?.concierge_member,
-                conciergeMembership: u?.conciergeMembership ?? u?.concierge_member,
-                is_upgraded: u?.is_upgraded,
-              });
-              return {
-                ...(base || {}),
-                id: u?.client_id ?? u?.company_id ?? u?.id,
-                name: name,
-                signup_user_id: u?.id,
-              };
-            })
-            .filter(Boolean);
-        } catch (err) {
-          console.error("buildFallbackFromUsers failed", err);
-          return [];
-        }
-      };
       try {
-        const roleKey = normalizeRole(currentUser?.role);
         const params = new URLSearchParams();
         params.append("limit", "1000");
         if (options.search) params.append("search", options.search);
         if (options.client_type)
           params.append("client_type", options.client_type);
         const url = `/clients${params.toString() ? "?" + params.toString() : ""}`;
-        let mapped = [];
-        try {
-          const res = await api.get(url);
-          let raw = res.data?.success ? res.data.data : res.data;
-          const arr = normalizeClientsResponseBody(raw);
-          mapped = arr.map(mapClientFromApi).filter(Boolean);
-        } catch (err) {
-          console.warn("Direct /clients call failed, using user directory fallback", err);
-        }
-        const fromUsers = await buildFallbackFromUsers();
-        const merged = [...mapped, ...fromUsers];
-        const seen = new Set();
-        const unique = merged.filter((c) => {
-          if (!c || !c.id) return false;
-          const key = `${c.id}::${(c.email || c.name || '').toLowerCase()}`;
-          if (seen.has(key)) return false;
-          seen.add(key);
-          return true;
-        });
-        const filtered = options.client_type
-          ? unique.filter((c) => clientMatchesTypeFilter(c, options.client_type))
-          : unique;
-        setClients(filtered.length > 0 ? filtered : unique);
+        const res = await api.get(url);
+        let raw = res.data?.success ? res.data.data : res.data;
+        const arr = normalizeClientsResponseBody(raw);
+        const mapped = arr.map(mapClientFromApi).filter(Boolean);
+        setClients(mapped);
       } catch (e) {
         console.error("Fetch clients failed", e);
-        const fromUsers = await buildFallbackFromUsers();
-        setClients(fromUsers);
+        setClients([]);
       }
     },
-    [currentUser?.role],
+    [],
   );
 
   const fetchVendors = React.useCallback(async () => {
@@ -2789,10 +2731,45 @@ export const GlobalDataProvider = ({ children }) => {
     if (currentUser && localStorage.getItem("token")) {
       if (lastFetchedUserIdRef.current !== currentUser.id) {
         lastFetchedUserIdRef.current = currentUser.id;
+        // Clean slate reset on account change
+        setOrders([]);
+        setDeliveries([]);
+        setInvoices([]);
+        setClients([]);
+        setCustomerUsers([]);
+        setUsers([]);
+        setProjects([]);
+        setMissions([]);
+        setStaffAssignments([]);
+        setGuestRequests([]);
+        setRawGuestRequests([]);
+        setEvents([]);
+        setRawEvents([]);
+        setSupportTickets([]);
+        setRawSupportTickets([]);
+        setChauffeurRequests([]);
+        setNotifications([]);
         fetchInitialData();
       }
     } else {
       lastFetchedUserIdRef.current = null;
+      setOrders([]);
+      setDeliveries([]);
+      setInvoices([]);
+      setClients([]);
+      setCustomerUsers([]);
+      setUsers([]);
+      setProjects([]);
+      setMissions([]);
+      setStaffAssignments([]);
+      setGuestRequests([]);
+      setRawGuestRequests([]);
+      setEvents([]);
+      setRawEvents([]);
+      setSupportTickets([]);
+      setRawSupportTickets([]);
+      setChauffeurRequests([]);
+      setNotifications([]);
     }
   }, [currentUser]);
 

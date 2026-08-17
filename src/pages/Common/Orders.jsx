@@ -52,7 +52,7 @@ const Orders = () => {
 
   const orders = React.useMemo(() => {
     const apiOrders = ordersData?.data?.orders || (Array.isArray(ordersData?.data) ? ordersData.data : (Array.isArray(ordersData?.orders) ? ordersData.orders : null));
-    if (Array.isArray(apiOrders) && apiOrders.length > 0) {
+    if (Array.isArray(apiOrders)) {
       return apiOrders;
     }
     return Array.isArray(contextOrders) ? contextOrders : [];

@@ -2,10 +2,24 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
 import { notifyStateChanged } from '../../utils/stateSyncHelper';
 
+const getCurrentUserContext = () => {
+  try {
+    const rawUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+    const u = rawUser ? JSON.parse(rawUser) : null;
+    return {
+      userId: u?.id || null,
+      tenantId: u?.tenantId || null
+    };
+  } catch (_) {
+    return { userId: null, tenantId: null };
+  }
+};
+
 // --- Clients ---
 export const useClients = (page = 1, limit = 10, search = '', clientType = '') => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['clients', page, limit, search, clientType],
+    queryKey: ['clients', userId, tenantId, page, limit, search, clientType],
     queryFn: async () => {
       const response = await api.get('/clients', {
         params: { page, limit, search, clientType }
@@ -56,8 +70,9 @@ export const useDeleteClient = () => {
 
 // --- Users ---
 export const useUsers = (page = 1, limit = 10, search = '', status = '') => {
+  const { userId, tenantId } = getCurrentUserContext();
   return useQuery({
-    queryKey: ['users', page, limit, search, status],
+    queryKey: ['users', userId, tenantId, page, limit, search, status],
     queryFn: async () => {
       const response = await api.get('/users', {
         params: { page, limit, search, status }

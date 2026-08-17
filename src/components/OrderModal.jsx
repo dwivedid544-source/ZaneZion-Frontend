@@ -219,7 +219,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                     meta = {};
                 }
             }
-            const isChauffeur = String(effectiveOrder.orderType || effectiveOrder.type || '').toLowerCase() === 'chauffeur';
+            const isChauffeur = String(effectiveOrder.orderType || effectiveOrder.type || '').toLowerCase().includes('chauffeur') ||
+                String(effectiveOrder.items?.[0]?.name || effectiveOrder.product || '').toLowerCase().includes('chauffeur');
             const firstCustom = (meta?.customItems && meta.customItems[0]) || {};
 
             let rawItems = (effectiveOrder.items && effectiveOrder.items.length > 0) ? effectiveOrder.items : (effectiveOrder.customItems || meta?.customItems || []);
@@ -290,20 +291,34 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
             const clientDisplayName = (typeof effectiveOrder.client === 'object' && effectiveOrder.client !== null ? (effectiveOrder.client.companyName || effectiveOrder.client.name || '') : effectiveOrder.client) || effectiveOrder.customer_name || effectiveOrder.created_by_name || '';
             const dropLoc = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || firstCustom.dropLocation || firstCustom.location || '';
-            const pickLoc = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || '';
+            const pickLoc = isChauffeur ? (effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || '') : '';
 
             let rawAmenities = effectiveOrder.amenities || firstCustom.amenities || meta?.amenities || [];
             let amenitiesList = Array.isArray(rawAmenities) ? rawAmenities : (typeof rawAmenities === 'string' && rawAmenities.trim() ? rawAmenities.split(',').map(s => s.trim()) : []);
             let amenitiesStr = amenitiesList.join(', ');
 
-            const parsedGuestName = effectiveOrder.passengerName || effectiveOrder.passenger_name || effectiveOrder.guestName || (meta?.passengerInfo?.name) || (meta?.passengerName) || (meta?.guestName) || (firstCustom.passengerName) || (firstCustom.passenger_name) || (firstCustom.guestName) || clientDisplayName || '';
+            const parsedGuestName = isChauffeur
+                ? (effectiveOrder.passengerName || effectiveOrder.passenger_name || effectiveOrder.guestName || (meta?.passengerInfo?.name) || (meta?.passengerName) || (meta?.guestName) || (firstCustom.passengerName) || (firstCustom.passenger_name) || (firstCustom.guestName) || clientDisplayName || '')
+                : '';
 
-            const parsedWifi = effectiveOrder.wifi || firstCustom.wifi || meta?.wifi || (amenitiesStr.toLowerCase().includes('wifi') ? 'Yes' : 'No');
-            const parsedRefreshments = effectiveOrder.refreshments || firstCustom.refreshments || meta?.refreshments || (amenitiesStr.toLowerCase().includes('refreshment') ? 'Yes' : 'No');
-            const parsedCarSeat = effectiveOrder.carSeat || effectiveOrder.car_seat || firstCustom.carSeat || firstCustom.car_seat || meta?.carSeat || meta?.car_seat || (amenitiesStr.toLowerCase().includes('car seat') || amenitiesStr.toLowerCase().includes('baby') ? 'Yes' : 'No');
-            const parsedStops = effectiveOrder.stops || firstCustom.stops || meta?.stops || 'No';
-            const parsedStopLocations = effectiveOrder.stopLocations || firstCustom.stopLocations || meta?.stopLocations || meta?.stop_locations || '';
-            const parsedLuggage = effectiveOrder.luggage || firstCustom.luggage || meta?.luggage || '';
+            const parsedWifi = isChauffeur
+                ? (effectiveOrder.wifi || firstCustom.wifi || meta?.wifi || (amenitiesStr.toLowerCase().includes('wifi') ? 'Yes' : 'No'))
+                : 'No';
+            const parsedRefreshments = isChauffeur
+                ? (effectiveOrder.refreshments || firstCustom.refreshments || meta?.refreshments || (amenitiesStr.toLowerCase().includes('refreshment') ? 'Yes' : 'No'))
+                : 'No';
+            const parsedCarSeat = isChauffeur
+                ? (effectiveOrder.carSeat || effectiveOrder.car_seat || firstCustom.carSeat || firstCustom.car_seat || meta?.carSeat || meta?.car_seat || (amenitiesStr.toLowerCase().includes('car seat') || amenitiesStr.toLowerCase().includes('baby') ? 'Yes' : 'No'))
+                : 'No';
+            const parsedStops = isChauffeur
+                ? (effectiveOrder.stops || firstCustom.stops || meta?.stops || 'No')
+                : 'No';
+            const parsedStopLocations = isChauffeur
+                ? (effectiveOrder.stopLocations || firstCustom.stopLocations || meta?.stopLocations || meta?.stop_locations || '')
+                : '';
+            const parsedLuggage = isChauffeur
+                ? (effectiveOrder.luggage || firstCustom.luggage || meta?.luggage || '')
+                : '';
 
             setFormData({
                 client: clientDisplayName,
@@ -318,25 +333,25 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 vendor: effectiveOrder.vendor || '',
                 vendorId: effectiveOrder.vendorId || effectiveOrder.vendor_id || '',
                 isPreferredVendor: !!(effectiveOrder.vendorId || effectiveOrder.vendor_id),
-                type: effectiveOrder.orderType || effectiveOrder.type || 'Custom Order',
+                type: effectiveOrder.orderType || effectiveOrder.type || (isChauffeur ? 'Chauffeur Service' : 'Custom Order'),
                 deliveryType: effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road',
                 pickupLocation: pickLoc,
-                pickupTime: effectiveOrder.pickupTime || firstCustom.pickupTime || '',
+                pickupTime: isChauffeur ? (effectiveOrder.pickupTime || firstCustom.pickupTime || '') : '',
                 totalDistance: effectiveOrder.totalDistance || effectiveOrder.total_distance || '',
-                serviceType: effectiveOrder.serviceType || firstCustom.serviceType || 'One Way',
-                returnDate: effectiveOrder.returnDate || firstCustom.returnDate || '',
-                returnTime: effectiveOrder.returnTime || firstCustom.returnTime || '',
-                returnLocation: effectiveOrder.returnLocation || '',
-                dailyDays: effectiveOrder.dailyDays || firstCustom.numberOfDays || 1,
+                serviceType: isChauffeur ? (effectiveOrder.serviceType || firstCustom.serviceType || 'One Way') : 'One Way',
+                returnDate: isChauffeur ? (effectiveOrder.returnDate || firstCustom.returnDate || '') : '',
+                returnTime: isChauffeur ? (effectiveOrder.returnTime || firstCustom.returnTime || '') : '',
+                returnLocation: isChauffeur ? (effectiveOrder.returnLocation || '') : '',
+                dailyDays: isChauffeur ? (effectiveOrder.dailyDays || firstCustom.numberOfDays || 1) : 1,
                 luggage: parsedLuggage,
-                passengerCount: effectiveOrder.numberOfPassengers || effectiveOrder.number_of_passengers || effectiveOrder.passengers || effectiveOrder.passengerCount || effectiveOrder.passenger_count || effectiveOrder.guestCount || effectiveOrder.guest_count || effectiveOrder.pax || (meta?.numberOfPassengers) || (meta?.passengers) || (meta?.passengerInfo?.count) || (meta?.passengerCount) || (firstCustom.numberOfPassengers) || (firstCustom.passengers) || (firstCustom.passengerCount) || (firstCustom.guestCount) || 1,
+                passengerCount: isChauffeur ? (effectiveOrder.numberOfPassengers || effectiveOrder.number_of_passengers || effectiveOrder.passengers || effectiveOrder.passengerCount || effectiveOrder.passenger_count || effectiveOrder.guestCount || effectiveOrder.guest_count || effectiveOrder.pax || (meta?.numberOfPassengers) || (meta?.passengers) || (meta?.passengerInfo?.count) || (meta?.passengerCount) || (firstCustom.numberOfPassengers) || (firstCustom.passengers) || (firstCustom.passengerCount) || (firstCustom.guestCount) || 1) : '',
                 passengerName: parsedGuestName,
                 stops: parsedStops,
                 stopLocations: parsedStopLocations,
                 wifi: parsedWifi,
                 refreshments: parsedRefreshments,
                 carSeat: parsedCarSeat,
-                amenities: amenitiesStr
+                amenities: isChauffeur ? amenitiesStr : ''
             });
         }
     }, [isOpen, effectiveOrder, modalType, customerOnlyForDropdown]);
@@ -402,6 +417,15 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         return formData.items.reduce((acc, item) => acc + (parseFloat(item.price || 0) * (parseInt(item.qty) || 0)), 0).toFixed(2);
     };
 
+    const isChauffeurOrder = React.useMemo(() => {
+        const typeStr = String(formData.type || effectiveOrder?.orderType || effectiveOrder?.type || '').toLowerCase();
+        const kindStr = String(effectiveOrder?.orderKind || effectiveOrder?.kind || '').toLowerCase();
+        const metaType = String(effectiveOrder?.metadata?.orderType || effectiveOrder?.metadata?.type || '').toLowerCase();
+        const firstItemName = String(formData.items?.[0]?.name || effectiveOrder?.items?.[0]?.name || effectiveOrder?.product || '').toLowerCase();
+
+        return typeStr.includes('chauffeur') || kindStr.includes('chauffeur') || metaType.includes('chauffeur') || firstItemName.includes('chauffeur service') || firstItemName.startsWith('vip chauffeur');
+    }, [formData.type, formData.items, effectiveOrder]);
+
     const handleSubmit = (e) => {
         e.preventDefault();
         if (modalType === 'add' && !canCreateManualOrder) {
@@ -428,10 +452,26 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             dueDate,
             totalAmount: parseFloat(calculateTotal()),
             clientId: parsedClientId || Number(formData.clientId) || undefined,
-            orderType: formData.type || 'Custom Order'
+            orderType: formData.type || (isChauffeurOrder ? 'Chauffeur Service' : 'Custom Order')
         };
         if (!canEditOrderStatus) {
             delete payload.status;
+        }
+        if (!isChauffeurOrder) {
+            delete payload.passengerCount;
+            delete payload.passengerName;
+            delete payload.luggage;
+            delete payload.stops;
+            delete payload.stopLocations;
+            delete payload.wifi;
+            delete payload.refreshments;
+            delete payload.carSeat;
+            delete payload.amenities;
+            delete payload.pickupLocation;
+            delete payload.pickupTime;
+            delete payload.returnDate;
+            delete payload.returnTime;
+            delete payload.returnLocation;
         }
         onSave(payload);
     };
@@ -656,7 +696,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                         </div>
                                     </div>
 
-                                    {(String(formData.type).toLowerCase().includes('chauffeur') || formData.passengerCount || formData.passengerName) && (
+                                    {isChauffeurOrder && (
                                         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-accent/5 rounded-2xl border border-accent/20 col-span-1 md:col-span-2">
                                             <div className="space-y-1">
                                                 <label className="text-[10px] font-black text-accent uppercase tracking-widest">No. of Passengers (PAX)</label>
@@ -727,25 +767,29 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                         </div>
                                     )}
 
-                                    {/* Pickup Location */}
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Pickup Location / Origin</label>
-                                        <div className="relative">
-                                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
-                                            <input
-                                                type="text"
-                                                value={formData.pickupLocation}
-                                                onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
-                                                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                                disabled={currentModalType === 'view'}
-                                                placeholder="Enter pickup location"
-                                            />
+                                    {/* Pickup Location - only for Chauffeur orders */}
+                                    {isChauffeurOrder && (
+                                        <div className="space-y-1">
+                                            <label className="text-[10px] font-bold text-muted uppercase">Pickup Location / Origin</label>
+                                            <div className="relative">
+                                                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                                                <input
+                                                    type="text"
+                                                    value={formData.pickupLocation}
+                                                    onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
+                                                    className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                                    disabled={currentModalType === 'view'}
+                                                    placeholder="Enter pickup location"
+                                                />
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
 
-                                    {/* Destination */}
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Destination Address / Drop Location</label>
+                                    {/* Destination / Delivery Location */}
+                                    <div className={`space-y-1 ${!isChauffeurOrder ? 'col-span-1 md:col-span-2' : ''}`}>
+                                        <label className="text-[10px] font-bold text-muted uppercase">
+                                            {isChauffeurOrder ? 'Destination Address / Drop Location' : 'Delivery Address / Destination'}
+                                        </label>
                                         <div className="relative">
                                             <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
                                             <input
@@ -754,7 +798,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 onChange={(e) => setFormData({ ...formData, location: e.target.value })}
                                                 className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
                                                 disabled={currentModalType === 'view'}
-                                                placeholder="Enter destination"
+                                                placeholder={isChauffeurOrder ? "Enter drop location" : "Enter delivery address"}
                                             />
                                         </div>
                                     </div>

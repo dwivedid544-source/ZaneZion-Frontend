@@ -7,6 +7,7 @@ import {
   Package, Heart, Users, Smartphone, Key, Eye, EyeOff
 } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { useQueryClient } from '@tanstack/react-query';
 import { useData } from '../../context/GlobalDataContext';
 import api from '../../services/api/setupAxios.js';
 import { resolvePortalRole } from '../../utils/authUtils';
@@ -14,6 +15,7 @@ import { shouldDenyStaffLogin } from '../../utils/staffLoginGate';
 
 const Login = ({ onLogin }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { users, setCurrentUser, setMenuPermissions } = useData();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -86,6 +88,18 @@ const Login = ({ onLogin }) => {
           setLoading(false);
           return;
         }
+
+        // Clear cached queries and localStorage overrides from previous sessions
+        try {
+          queryClient.clear();
+        } catch (_) {}
+        try {
+          localStorage.removeItem('deleted_chauffeur_ids');
+          localStorage.removeItem('updated_chauffeur_map');
+          localStorage.removeItem('pending_vendor_overrides_v1');
+          localStorage.removeItem('pending_vendor_drafts_v1');
+          localStorage.removeItem('customer_order_status_overrides_v1');
+        } catch (_) {}
 
         // Store in localStorage
         if (token) localStorage.setItem('token', token);

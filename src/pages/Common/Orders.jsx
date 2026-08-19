@@ -41,7 +41,7 @@ const Orders = () => {
   const queryClient = useQueryClient();
 
   const updateOrderStatusMutation = useUpdateOrderStatus();
-  const create = useCreateOrder();
+  const createOrderMutation = useCreateOrder();
   const updateOrderMutation = useUpdateOrder();
   const deleteOrderMutation = useDeleteOrder();
 

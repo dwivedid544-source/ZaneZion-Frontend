@@ -23,7 +23,7 @@ import {
 import { INVENTORY, VENDORS, ACCESS_PLANS } from "../utils/data";
 
 import { notifyStateChanged, getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from "../utils/stateSyncHelper";
-import { formatClientDisplayName } from "../utils/apiHelpers";
+import { formatClientDisplayName, BACKEND_ORIGIN } from "../utils/apiHelpers";
 
 const GlobalDataContext = createContext();
 
@@ -906,9 +906,8 @@ export const GlobalDataProvider = ({ children }) => {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
-    // Determine the base URL for the socket connection from the API URL
-    const baseURL = import.meta.env.VITE_API_URL || 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
-    const socketURL = baseURL.replace('/api/v1', '');
+    // Determine the base URL for the socket connection from the dynamic backend origin
+    const socketURL = BACKEND_ORIGIN;
 
     const socket = io(socketURL, {
       transports: ['websocket', 'polling']

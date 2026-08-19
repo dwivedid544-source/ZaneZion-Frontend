@@ -1,5 +1,21 @@
-const getApiBaseUrl = () => {
-  let envUrl = import.meta.env.VITE_API_URL || 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
+export const getApiBaseUrl = () => {
+  let envUrl = import.meta.env.VITE_API_URL;
+  if (!envUrl) {
+    const envMode = (import.meta.env.VITE_ENV_MODE || '').trim().toLowerCase();
+    const localUrl = import.meta.env.VITE_API_URL_LOCAL || 'http://localhost:8000/api/v1';
+    const prodUrl = import.meta.env.VITE_API_URL_PROD || 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
+
+    if (envMode === 'local' || envMode === 'dev' || envMode === 'development') {
+      envUrl = localUrl;
+    } else if (envMode === 'production' || envMode === 'prod' || envMode === 'live') {
+      envUrl = prodUrl;
+    } else if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      envUrl = localUrl;
+    } else {
+      envUrl = prodUrl;
+    }
+  }
+
   envUrl = envUrl.replace(/\/+$/, '');
   if (!envUrl.endsWith('/api/v1')) {
     if (envUrl.endsWith('/api')) return `${envUrl}/v1`;
@@ -8,9 +24,19 @@ const getApiBaseUrl = () => {
   }
   return envUrl;
 };
+
 export const API_BASE_URL = getApiBaseUrl();
 export const API_URL = API_BASE_URL;
-export const BACKEND_ORIGIN = import.meta.env.VITE_API_ORIGIN || 'https://zanezion-backend-production-a303.up.railway.app';
+
+export const getBackendOrigin = () => {
+  if (import.meta.env.VITE_API_ORIGIN) {
+    return import.meta.env.VITE_API_ORIGIN.replace(/\/+$/, '');
+  }
+  const base = getApiBaseUrl();
+  return base.replace(/\/api\/v1\/?$/, '').replace(/\/api\/?$/, '').replace(/\/+$/, '');
+};
+
+export const BACKEND_ORIGIN = getBackendOrigin();
 
 export const toAbsoluteImageUrl = (rawPath) => {
   if (!rawPath) return null;

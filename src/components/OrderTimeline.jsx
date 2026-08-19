@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { X, Clock, ArrowRight, User, MessageSquare, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
-import axios from 'axios';
+import api from '../services/api/setupAxios.js';
 
 const DEPT_COLORS = {
   draft:          'bg-zinc-500/20 text-zinc-300 border-zinc-500/30',
@@ -49,12 +49,8 @@ const OrderTimeline = ({ orderId, orderNumber, isOpen, onClose }) => {
     setLoading(true);
     setError(null);
     setData(null);
-    const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-    const base  = import.meta.env.VITE_API_URL || '/api';
-    axios
-      .get(`${base}/orders/${orderId}/timeline`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+    api
+      .get(`/orders/${orderId}/timeline`)
       .then((r) => setData(r.data?.data || r.data))
       .catch((e) => setError(e?.response?.data?.message || e.message || 'Failed to load timeline'))
       .finally(() => setLoading(false));

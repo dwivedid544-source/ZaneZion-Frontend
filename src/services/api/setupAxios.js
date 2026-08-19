@@ -1,29 +1,8 @@
 import axios from 'axios';
-
-const getBaseUrl = () => {
-  let envUrl = import.meta.env.VITE_API_URL;
-  if (!envUrl) {
-    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
-      envUrl = 'http://localhost:8000/api/v1';
-    } else {
-      envUrl = 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
-    }
-  }
-  envUrl = envUrl.replace(/\/+$/, '');
-  if (!envUrl.endsWith('/api/v1')) {
-    if (envUrl.endsWith('/api')) {
-      envUrl = `${envUrl}/v1`;
-    } else if (envUrl.endsWith('/v1')) {
-      envUrl = envUrl.replace(/\/v1$/, '/api/v1');
-    } else {
-      envUrl = `${envUrl}/api/v1`;
-    }
-  }
-  return envUrl;
-};
+import { getApiBaseUrl } from '../../utils/apiHelpers.js';
 
 const api = axios.create({
-  baseURL: getBaseUrl(),
+  baseURL: getApiBaseUrl(),
 });
 
 // Request Interceptor: Add Token

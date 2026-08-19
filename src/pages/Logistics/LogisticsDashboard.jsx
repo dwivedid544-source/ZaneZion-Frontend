@@ -38,6 +38,26 @@ const LogisticsDashboard = () => {
     fetchDeliveries();
     fetchMissions();
     fetchStaff();
+
+    const handleStateChanged = () => {
+      fetchDashboardStats();
+      fetchDeliveries();
+      fetchMissions();
+      fetchFleet();
+      fetchRoutes();
+    };
+    window.addEventListener('app:state-changed', handleStateChanged);
+
+    const interval = setInterval(() => {
+      fetchDashboardStats();
+      fetchDeliveries();
+      fetchMissions();
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('app:state-changed', handleStateChanged);
+      clearInterval(interval);
+    };
   }, [fetchDashboardStats, fetchFleet, fetchRoutes, fetchDeliveries, fetchMissions, fetchStaff]);
 
   // Merge deliveries + project-missions into a single unified dispatch list

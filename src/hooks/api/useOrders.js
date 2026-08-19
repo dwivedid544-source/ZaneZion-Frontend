@@ -31,6 +31,11 @@ export const useOrders = (page = 1, limit = 10, search = '', viewerRole = '') =>
       });
       return response.data;
     },
+    // Auto-refetch every 10 seconds so status changes from any portal reflect live
+    refetchInterval: 10000,
+    staleTime: 5000,
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: false,
   });
 };
 
@@ -83,16 +88,61 @@ export const useCreateOrder = () => {
   });
 };
 
+const matchOrderId = (order, targetId) => {
+  if (!order || !targetId) return false;
+  const t = String(targetId).trim().replace(/^#|^ORD-/i, '');
+  const oId = String(order.id || '').replace(/^#|^ORD-/i, '');
+  const oRawId = String(order.rawId || '').replace(/^#|^ORD-/i, '');
+  const oNum = String(order.orderNumber || '').replace(/^#|^ORD-/i, '');
+  return (
+    String(order.id) === String(targetId) ||
+    String(order.rawId) === String(targetId) ||
+    String(order.orderNumber) === String(targetId) ||
+    (t && oId && t === oId) ||
+    (t && oRawId && t === oRawId) ||
+    (t && oNum && t === oNum)
+  );
+};
+
 export const useUpdateOrderStatus = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, status }) => {
-      const response = await api.put(`/orders/${id}/status`, { status });
+      const cleanId = String(id).replace(/^#|^ORD-/i, '');
+      const response = await api.put(`/orders/${cleanId}/status`, { status });
       return response.data;
     },
+    // Instant optimistic update (0ms immediate UI flip)
+    onMutate: async ({ id, status }) => {
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      const previousData = queryClient.getQueriesData({ queryKey: ['orders'] });
+
+      queryClient.setQueriesData({ queryKey: ['orders'] }, (old) => {
+        if (!old) return old;
+        const patchOrders = (arr) =>
+          Array.isArray(arr)
+            ? arr.map(o => matchOrderId(o, id) ? { ...o, status, orderStatus: status } : o)
+            : arr;
+
+        if (Array.isArray(old)) return patchOrders(old);
+        if (Array.isArray(old?.data)) return { ...old, data: patchOrders(old.data) };
+        if (Array.isArray(old?.data?.orders))
+          return { ...old, data: { ...old.data, orders: patchOrders(old.data.orders) } };
+        if (Array.isArray(old?.orders)) return { ...old, orders: patchOrders(old.orders) };
+        return old;
+      });
+
+      return { previousData };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
-      notifyStateChanged(queryClient, ['orders', ['orders', variables.id], 'deliveries', 'dashboardStats']);
+      notifyStateChanged(queryClient, ['orders', ['orders', variables.id], 'deliveries', 'dashboardStats', 'chauffeurMissions']);
     },
   });
 };
@@ -101,11 +151,40 @@ export const useUpdateOrder = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, orderData }) => {
-      const response = await api.put(`/orders/${id}`, orderData);
+      const cleanId = String(id).replace(/^#|^ORD-/i, '');
+      const response = await api.put(`/orders/${cleanId}`, orderData);
       return response.data;
     },
+    // Instant optimistic update
+    onMutate: async ({ id, orderData }) => {
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      const previousData = queryClient.getQueriesData({ queryKey: ['orders'] });
+
+      queryClient.setQueriesData({ queryKey: ['orders'] }, (old) => {
+        if (!old) return old;
+        const patchOrders = (arr) =>
+          Array.isArray(arr)
+            ? arr.map(o => matchOrderId(o, id) ? { ...o, ...orderData } : o)
+            : arr;
+
+        if (Array.isArray(old)) return patchOrders(old);
+        if (Array.isArray(old?.data)) return { ...old, data: patchOrders(old.data) };
+        if (Array.isArray(old?.data?.orders))
+          return { ...old, data: { ...old.data, orders: patchOrders(old.data.orders) } };
+        if (Array.isArray(old?.orders)) return { ...old, orders: patchOrders(old.orders) };
+        return old;
+      });
+
+      return { previousData };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
       notifyStateChanged(queryClient, ['orders', ['orders', variables.id], 'deliveries', 'dashboardStats']);
     },
   });
@@ -115,11 +194,39 @@ export const useDeleteOrder = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (id) => {
-      const response = await api.delete(`/orders/${id}`);
+      const cleanId = String(id).replace(/^#|^ORD-/i, '');
+      const response = await api.delete(`/orders/${cleanId}`);
       return response.data;
     },
+    onMutate: async (id) => {
+      await queryClient.cancelQueries({ queryKey: ['orders'] });
+      const previousData = queryClient.getQueriesData({ queryKey: ['orders'] });
+
+      queryClient.setQueriesData({ queryKey: ['orders'] }, (old) => {
+        if (!old) return old;
+        const filterOrders = (arr) =>
+          Array.isArray(arr)
+            ? arr.filter(o => !matchOrderId(o, id))
+            : arr;
+
+        if (Array.isArray(old)) return filterOrders(old);
+        if (Array.isArray(old?.data)) return { ...old, data: filterOrders(old.data) };
+        if (Array.isArray(old?.data?.orders))
+          return { ...old, data: { ...old.data, orders: filterOrders(old.data.orders) } };
+        if (Array.isArray(old?.orders)) return { ...old, orders: filterOrders(old.orders) };
+        return old;
+      });
+
+      return { previousData };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.previousData) {
+        context.previousData.forEach(([queryKey, data]) => {
+          queryClient.setQueryData(queryKey, data);
+        });
+      }
+    },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['orders'] });
       notifyStateChanged(queryClient, ['orders', 'deliveries', 'dashboardStats']);
     },
   });

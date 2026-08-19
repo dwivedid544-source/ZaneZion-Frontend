@@ -5,32 +5,27 @@
  * @returns {string} - The normalized canonical role key.
  */
 export const normalizeRole = (role) => {
-    if (!role) return 'staff';
+    if (!role) return 'customer';
     
     // If role is an object (e.g., Prisma relation), extract its name
-    const roleStr = typeof role === 'object' ? (role.name || role.label || '') : String(role);
+    const roleStr = typeof role === 'object' ? (role.name || role.label || role.role || '') : String(role);
     
     const r = roleStr.toLowerCase().trim();
 
     if (r.includes('superadmin') || r.includes('super admin') || r.includes('super_admin')) return 'superadmin';
-    // 'admin' = either ZaneZion internal manager OR SaaS tenant admin — both get full access
     if (r === 'admin') return 'admin';
-    if (r === 'manager') return 'operations';
-    if (r === 'operation') return 'operations';
+    if (r === 'manager' || r === 'operation' || r.includes('operations')) return 'operations';
     if (r.includes('procurement')) return 'procurement';
-    if (r.includes('operations')) return 'operations';
     if (r.includes('logistics')) return 'logistics';
     if (r.includes('inventory') || r.includes('stock')) return 'inventory';
     if (r.includes('concierge')) return 'concierge';
-    // 'saas_client' kept for backward compat (old accounts before multi-tenant fix)
     if (r.includes('saas_client') || r.includes('saas client')) return 'saas_client';
-    if (r === 'customer' || r === 'personal_user' || r.includes('personal') || r.includes('individual_client') || r === 'individual') return 'customer';
-    // Business client aliases
-    if (r === 'client' || r === 'business_client' || r === 'business client') return 'client';
+    if (r === 'customer' || r === 'personal_user' || r.includes('personal') || r.includes('individual') || r.includes('membership') || r.includes('member')) return 'customer';
+    if (r === 'client' || r.includes('business_client') || r.includes('business client') || r === 'client_admin') return 'client';
     if (r.includes('vendor')) return 'vendor';
-    if (r.includes('staff')) return 'staff';
+    if (r.includes('staff') || r.includes('employee') || r.includes('driver')) return 'staff';
 
-    return 'staff';
+    return 'customer';
 };
 
 /**

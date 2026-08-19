@@ -144,7 +144,7 @@ const PersonalClientDashboard = () => {
   const isMyOrder = (o) => {
     if (!o) return false;
     const typeStr = String(o.orderType || o.type || '').toUpperCase();
-    if (typeStr === 'PROJECT' || typeStr === 'CHAUFFEUR' || typeStr.includes('CHAUFFEUR')) return false; 
+    if (typeStr === 'PROJECT' || typeStr === 'CHAUFFEUR' || typeStr.includes('CHAUFFEUR')) return false;
     const itemsNames = (o.items || []).map(i => String(i.name || '').toUpperCase());
     if (itemsNames.some(n => n.includes('CHAUFFEUR'))) return false;
 
@@ -301,8 +301,8 @@ const PersonalClientDashboard = () => {
 
         {/* KPI Row – Core Operations */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-          <StatCard label="Active Orders" value={activeOrders.length} icon={ShoppingCart} color="text-accent" bg="bg-accent/10" onClick={() => navigate('/dashboard/orders')} />
-          <StatCard label="In‑Transit Deliveries" value={activeDeliveries.length} icon={Truck} color="text-info" bg="bg-info/10" onClick={() => navigate('/dashboard/deliveries')} />
+          <StatCard label="Active Orders" value={activeOrders.length} icon={ShoppingCart} color="text-accent" bg="bg-accent/10" onClick={() => navigate('/dashboard/client-orders')} />
+          <StatCard label="In‑Transit Deliveries" value={activeDeliveries.length} icon={Truck} color="text-info" bg="bg-info/10" onClick={() => navigate('/dashboard/track-delivery')} />
           <StatCard label="Unpaid Invoices" value={unpaidInvoices.length} icon={CreditCard} color="text-danger" bg="bg-danger/10" onClick={() => navigate('/dashboard/invoices')} />
         </div>
 
@@ -311,7 +311,7 @@ const PersonalClientDashboard = () => {
           {/* Left Column */}
           <div className="xl:col-span-8 space-y-6 sm:space-y-8">
             {/* Unified Order & Transaction History Proof Ledger */}
-            <SectionCard title="Unified Order & Transaction History" icon={History} viewAllPath="/dashboard/orders" navigate={navigate}>
+            <SectionCard title="Unified Order & Transaction History" icon={History} viewAllPath="/dashboard/client-orders" navigate={navigate}>
               <div className="flex bg-background border border-border p-1 rounded-xl w-fit mb-6 overflow-x-auto max-w-full">
                 {['all', 'open', 'fulfilled', 'chauffeur', 'invoices'].map(tab => (
                   <button key={tab} onClick={() => setOrderTab(tab)}
@@ -461,7 +461,7 @@ const PersonalClientDashboard = () => {
             </SectionCard>
 
             {/* Concierge Requests */}
-            <SectionCard title="Concierge Requests" icon={HelpCircle} viewAllPath="/dashboard/client-events" navigate={navigate}>
+            <SectionCard title="Concierge Requests" icon={HelpCircle} viewAllPath="/dashboard/events" navigate={navigate}>
               <div className="space-y-3">
                 {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).slice(0, 3).map((event, i) => (
                   <div key={i} className="p-4 bg-white/5 border border-border rounded-xl">
@@ -470,12 +470,12 @@ const PersonalClientDashboard = () => {
                   </div>
                 ))}
                 {events.filter(e => e.clientId === clientData.id || e.client === clientData.name).length === 0 && (<EmptyState text="No active concierge logs found." />)}
-                <button onClick={() => navigate('/dashboard/client-events')} className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">Initiate Request</button>
+                <button onClick={() => navigate('/dashboard/events')} className="w-full mt-6 py-2.5 bg-white/5 border border-border text-white rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-white/10 transition-all">Initiate Request</button>
               </div>
             </SectionCard>
 
             {/* Delivery Tracking */}
-            <SectionCard title="Delivery Tracking" icon={Truck} viewAllPath="/dashboard/deliveries" navigate={navigate}>
+            <SectionCard title="Delivery Tracking" icon={Truck} viewAllPath="/dashboard/track-delivery" navigate={navigate}>
               <div className="grid grid-cols-3 gap-3 mb-4">
                 <div className="p-3 bg-info/5 border border-info/10 rounded-xl text-center"><p className="text-lg font-black text-info">{activeDeliveries.length}</p><p className="text-[9px] text-muted uppercase font-black tracking-widest">In Transit</p></div>
                 <div className="p-3 bg-success/5 border border-success/10 rounded-xl text-center"><p className="text-lg font-black text-success">{deliveries.filter(d => d.status === 'Delivered' && clientOrders.some(o => o.id === d.orderId)).length}</p><p className="text-[9px] text-muted uppercase font-black tracking-widest">Delivered</p></div>
@@ -552,7 +552,7 @@ const PersonalClientDashboard = () => {
       </div>
 
       {/* Modals */}
-      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} modalType={modalType} selectedOrder={selectedOrder} onSave={() => {}} onDelete={() => {}} role={currentUser?.role || 'client'} />
+      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} modalType={modalType} selectedOrder={selectedOrder} onSave={() => { }} onDelete={() => { }} role={currentUser?.role || 'client'} />
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title={`Invoice: ${viewingInvoice?.id}`}>
         {/* Minimal invoice view – details already displayed in the main list */}
       </Modal>

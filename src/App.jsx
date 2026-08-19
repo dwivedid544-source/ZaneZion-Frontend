@@ -93,20 +93,46 @@ const LoadingFallback = () => (
 
 const RoleProtectedRoute = ({ role, allowedRoles, children }) => {
   const location = useLocation();
-  if (!localStorage.getItem('token') || !localStorage.getItem('userRole')) {
+  const token = localStorage.getItem('token');
+  if (!token) {
     return <Navigate to="/login" replace />;
   }
-  // Full internal access — avoid missing a route in allowedRoles arrays
-  if (role === 'superadmin') {
+
+  // Resolve active role directly with highest fidelity
+  let effectiveRole = 'customer';
+  try {
+    const u = JSON.parse(localStorage.getItem('user') || '{}');
+    const r = u?.role?.name || u?.role || u?.userRole;
+    if (r) {
+      effectiveRole = normalizeRole(r);
+    } else if (localStorage.getItem('userRole')) {
+      effectiveRole = normalizeRole(localStorage.getItem('userRole'));
+    } else if (role) {
+      effectiveRole = normalizeRole(role);
+    }
+  } catch (_) {
+    const rawRole = localStorage.getItem('userRole') || role;
+    effectiveRole = normalizeRole(rawRole);
+  }
+
+  // Full internal access
+  if (effectiveRole === 'superadmin' || effectiveRole === 'admin') {
     return children;
   }
-  // Company admin: full portal access (sidebar fixed); staff / others use allowedRoles + menuPermissions
-  if (role === 'admin') {
+
+  // If no allowedRoles specified, grant access
+  if (!allowedRoles || (Array.isArray(allowedRoles) && allowedRoles.length === 0)) {
     return children;
   }
-  if (Array.isArray(allowedRoles) && allowedRoles.includes(role)) {
+
+  const normalizedAllowedRoles = Array.isArray(allowedRoles)
+    ? allowedRoles.map(r => normalizeRole(r))
+    : [];
+
+  if (normalizedAllowedRoles.includes(effectiveRole)) {
     return children;
   }
+
   try {
     const perms = JSON.parse(localStorage.getItem('menuPermissions') || '[]');
     if (perms.length > 0) {
@@ -118,6 +144,7 @@ const RoleProtectedRoute = ({ role, allowedRoles, children }) => {
       if (hasPermission) return children;
     }
   } catch (e) { /* ignore parse errors */ }
+
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -411,7 +438,7 @@ function App() {
               {/* Concierge Role Specific */}
               <Route path="events" element={
                 <RoleProtectedRoute role={auth.role} allowedRoles={['superadmin', 'concierge', 'client', 'admin', 'saas_client', 'customer']}>
-                  {['customer', 'client'].includes(auth.role) ? <ClientEvents /> : <Events />}
+                  {['customer', 'client', 'saas_client'].includes(normalizeRole(auth.role || localStorage.getItem('userRole'))) ? <ClientEvents /> : <Events />}
                 </RoleProtectedRoute>
               } />
               <Route path="guest-requests" element={
@@ -419,11 +446,13 @@ function App() {
                   <GuestRequests />
                 </RoleProtectedRoute>
               } />
+              <Route path="client-guest-requests" element={<Navigate to="/dashboard/guest-requests" replace />} />
               <Route path="luxury-items" element={
                 <RoleProtectedRoute role={auth.role} allowedRoles={['superadmin', 'concierge', 'client', 'admin', 'saas_client', 'customer']}>
                   <LuxuryItems />
                 </RoleProtectedRoute>
               } />
+              <Route path="client-luxury-items" element={<Navigate to="/dashboard/luxury-items" replace />} />
               <Route path="vip-access" element={
                 <RoleProtectedRoute role={auth.role} allowedRoles={['superadmin', 'concierge']}>
                   <ConciergeAccessPlans />
@@ -435,6 +464,8 @@ function App() {
                 </RoleProtectedRoute>
               } />
               <Route path="chauffeur-management" element={<Navigate to="/dashboard/chauffeur" replace />} />
+              <Route path="chauffeur-service" element={<Navigate to="/dashboard/chauffeur" replace />} />
+              <Route path="client-chauffeur" element={<Navigate to="/dashboard/chauffeur" replace />} />
 
               {/* Employee/Staff Routes */}
               <Route path="staff-terminal" element={
@@ -454,14 +485,13 @@ function App() {
                   <ClientOrders />
                 </RoleProtectedRoute>
               } />
-              <Route path="chauffeur-service" element={<Navigate to="/dashboard/chauffeur" replace />} />
               <Route path="client-events" element={
-                <RoleProtectedRoute role={auth.role} allowedRoles={['client', 'saas_client', 'admin']}>
+                <RoleProtectedRoute role={auth.role} allowedRoles={['client', 'saas_client', 'admin', 'customer', 'concierge']}>
                   <ClientEvents />
                 </RoleProtectedRoute>
               } />
               <Route path="order-history" element={
-                <RoleProtectedRoute role={auth.role} allowedRoles={['saas_client', 'client', 'admin']}>
+                <RoleProtectedRoute role={auth.role} allowedRoles={['saas_client', 'client', 'admin', 'customer']}>
                   <ClientOrders />
                 </RoleProtectedRoute>
               } />
@@ -470,6 +500,8 @@ function App() {
                   <ClientTracking />
                 </RoleProtectedRoute>
               } />
+              <Route path="client-tracking" element={<Navigate to="/dashboard/track-delivery" replace />} />
+              <Route path="tracking" element={<Navigate to="/dashboard/track-delivery" replace />} />
               <Route path="client-inventory" element={<Navigate to="/dashboard/inventory" replace />} />
               <Route path="support" element={
                 <RoleProtectedRoute role={auth.role} allowedRoles={['client', 'admin', 'saas_client', 'customer']}>
@@ -486,6 +518,7 @@ function App() {
                   <ClientStore />
                 </RoleProtectedRoute>
               } />
+              <Route path="marketplace" element={<Navigate to="/dashboard/store" replace />} />
             </Route>
 
             {/* Catch all */}

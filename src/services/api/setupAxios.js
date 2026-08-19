@@ -1,11 +1,13 @@
 import axios from 'axios';
 
 const getBaseUrl = () => {
-  const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
-  const fallbackUrl = isLocal ? 'http://localhost:8000/api/v1' : 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
-  let envUrl = import.meta.env.VITE_API_URL || fallbackUrl;
-  if (isLocal && envUrl.includes('railway.app')) {
-    envUrl = 'http://localhost:8000/api/v1';
+  let envUrl = import.meta.env.VITE_API_URL;
+  if (!envUrl) {
+    if (typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+      envUrl = 'http://localhost:8000/api/v1';
+    } else {
+      envUrl = 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
+    }
   }
   envUrl = envUrl.replace(/\/+$/, '');
   if (!envUrl.endsWith('/api/v1')) {

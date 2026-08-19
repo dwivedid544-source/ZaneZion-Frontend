@@ -137,7 +137,7 @@ const ClientStore = () => {
         };
         const timer = setTimeout(() => {
             calculateDistance();
-        }, 1000);
+        }, 250);
         return () => clearTimeout(timer);
     }, [catalogPickupAddress, catalogDeliveryAddress]);
 
@@ -157,7 +157,7 @@ const ClientStore = () => {
         };
         const timer = setTimeout(() => {
             calculateDistance();
-        }, 1000);
+        }, 250);
         return () => clearTimeout(timer);
     }, [customPickupAddress, destination]);
 
@@ -177,7 +177,7 @@ const ClientStore = () => {
         };
         const timer = setTimeout(() => {
             calculateDistance();
-        }, 1000);
+        }, 250);
         return () => clearTimeout(timer);
     }, [personalPickupAddress, personalDropAddress]);
 

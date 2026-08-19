@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied } from '../../utils/swal';
+import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied, swalLoading, swalClose } from '../../utils/swal';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
 import { useLocation } from 'react-router-dom';
 import {
   Plus, Search, Truck, MapPin, Camera,
-  Clock, Phone, Navigation, PackageCheck, PenTool, Image as ImageIcon, Ship, Plane, AlertCircle, RefreshCcw, CheckCircle2, Activity, Trash2, Car, UserPlus
+  Clock, Phone, Navigation, PackageCheck, PenTool, Image as ImageIcon, Ship, Plane, AlertCircle, RefreshCcw, CheckCircle2, Activity, Trash2, Car, UserPlus, User
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import Pagination from '../../components/Common/Pagination';
 import { useDeliveries, useCreateDelivery, useUpdateDelivery, useCancelDelivery, useDeleteDelivery, useCreateMission, useStartMission, useSubmitPOD } from '../../hooks/api/useLogistics';
+import { useQueryClient } from '@tanstack/react-query';
+import api from '../../services/api/setupAxios';
+import { notifyStateChanged } from '../../utils/stateSyncHelper';
 import { useItems } from '../../hooks/api/useInventory';
 
 import { useData } from '../../context/GlobalDataContext';
@@ -36,7 +39,7 @@ function displayDeliveryStatus(raw) {
 }
 
 const Deliveries = () => {
-  const { users, fleet, fetchFleet, fetchStaff, hasMenuPermission, warehouses, fetchWarehouses, currentUser, clients = [], fetchClients, customerUsers = [], fetchCustomerUsers, inventory, orders = [], chauffeurRequests = [], fetchOrders, fetchChauffeurRequests } = useData();
+  const { users, fleet, fetchFleet, fetchStaff, hasMenuPermission, warehouses, fetchWarehouses, currentUser, clients = [], fetchClients, customerUsers = [], fetchCustomerUsers, inventory, orders = [], chauffeurRequests = [], fetchOrders, fetchDeliveries, fetchChauffeurRequests } = useData();
   const { data: dbItemsData } = useItems(1, 100);
   const dbItems = Array.isArray(dbItemsData) ? dbItemsData : (Array.isArray(dbItemsData?.items) ? dbItemsData.items : []);
 
@@ -45,7 +48,7 @@ const Deliveries = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const { data: deliveriesData, isLoading, error } = useDeliveries(currentPage, itemsPerPage, debounceSearch);
+  const { data: deliveriesData, isLoading, error, refetch: refetchDeliveries } = useDeliveries(currentPage, itemsPerPage, debounceSearch);
   const deliveries = Array.isArray(deliveriesData?.data) ? deliveriesData.data : (deliveriesData?.data?.deliveries || []);
   const meta = {
     totalPages: deliveriesData?.data?.totalPages || deliveriesData?.totalPages || 1,
@@ -54,11 +57,81 @@ const Deliveries = () => {
 
   const createDeliveryMutation = useCreateDelivery();
   const updateDeliveryMutation = useUpdateDelivery();
+  const queryClient = useQueryClient();
   const cancelDeliveryMutation = useCancelDelivery();
   const deleteDeliveryMutation = useDeleteDelivery();
   const createMissionMutation = useCreateMission();
   const startMissionMutation = useStartMission();
   const submitPODMutation = useSubmitPOD();
+
+  const handleStartTransit = async (del) => {
+    const confirm = await swalConfirm(
+      'Dispatch Delivery?',
+      `Mark Dispatch #${del.id || del.deliveryNumber || del.orderId} as In Transit / Out for Delivery?`
+    );
+    if (!confirm?.isConfirmed) return;
+
+    const targetDelId = del.id;
+    const rawOrderId = del.orderId || del.order?.id || del.order_id;
+    const cleanOrderId = rawOrderId ? String(rawOrderId).replace(/^#|^ORD-/i, '') : '';
+
+    // 1. Instant optimistic update across Deliveries, Orders, and Chauffeur queries (0ms UI flip)
+    queryClient.setQueriesData({ queryKey: ['deliveries'] }, (old) => {
+      if (!old) return old;
+      const patchList = (arr) =>
+        Array.isArray(arr)
+          ? arr.map((item) =>
+              String(item.id) === String(targetDelId) || String(item.deliveryNumber) === String(targetDelId)
+                ? { ...item, status: 'In Transit' }
+                : item
+            )
+          : arr;
+      if (Array.isArray(old)) return patchList(old);
+      if (Array.isArray(old?.data)) return { ...old, data: patchList(old.data) };
+      if (Array.isArray(old?.data?.deliveries))
+        return { ...old, data: { ...old.data, deliveries: patchList(old.data.deliveries) } };
+      if (Array.isArray(old?.deliveries)) return { ...old, deliveries: patchList(old.deliveries) };
+      return old;
+    });
+
+    queryClient.setQueriesData({ queryKey: ['orders'] }, (old) => {
+      if (!old) return old;
+      const patchList = (arr) =>
+        Array.isArray(arr)
+          ? arr.map((item) =>
+              String(item.id) === String(cleanOrderId) || String(item.orderNumber) === String(rawOrderId)
+                ? { ...item, status: 'in_transit' }
+                : item
+            )
+          : arr;
+      if (Array.isArray(old)) return patchList(old);
+      if (Array.isArray(old?.data)) return { ...old, data: patchList(old.data) };
+      if (Array.isArray(old?.data?.orders))
+        return { ...old, data: { ...old.data, orders: patchList(old.data.orders) } };
+      if (Array.isArray(old?.orders)) return { ...old, orders: patchList(old.orders) };
+      return old;
+    });
+
+    // 2. Instant user feedback
+    swalSuccess('In Transit', `Dispatch #${del.id || del.deliveryNumber || del.orderId} is now Out for Delivery.`);
+
+    // 3. Execute backend mutations concurrently in the background
+    Promise.all([
+      updateDeliveryMutation.mutateAsync({
+        id: targetDelId,
+        data: { status: 'In Transit' }
+      }),
+      cleanOrderId ? api.put(`/orders/${cleanOrderId}/status`, { status: 'in_transit' }).catch(() => {}) : Promise.resolve()
+    ])
+      .then(() => {
+        notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
+      })
+      .catch((err) => {
+        console.error('Transit update error:', err);
+        const msg = err?.response?.data?.message || err?.message || 'Could not update delivery status.';
+        swalError('Error', msg);
+      });
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -68,6 +141,7 @@ const Deliveries = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // Real-time state listener: when an order or delivery updates anywhere, auto-refresh instantly
   useEffect(() => {
     fetchWarehouses();
     fetchStaff();
@@ -75,8 +149,18 @@ const Deliveries = () => {
     fetchCustomerUsers({ include_all: true, include_client_role: true });
     if (fetchFleet) fetchFleet();
     if (fetchOrders) fetchOrders();
+    if (fetchDeliveries) fetchDeliveries();
     if (fetchChauffeurRequests) fetchChauffeurRequests();
-  }, [fetchWarehouses, fetchStaff, fetchClients, fetchCustomerUsers, fetchFleet, fetchOrders, fetchChauffeurRequests]);
+
+    const handleStateChange = () => {
+      if (refetchDeliveries) refetchDeliveries();
+    };
+    window.addEventListener('app:state-changed', handleStateChange);
+
+    return () => {
+      window.removeEventListener('app:state-changed', handleStateChange);
+    };
+  }, [refetchDeliveries]);
 
   const clientOptions = React.useMemo(() => {
     const out = [];
@@ -398,10 +482,10 @@ const Deliveries = () => {
       route_distance: calcDist > 0 ? calcDist : prev.route_distance,
       delivery_fee: computedPayout > 0 ? computedPayout : prev.delivery_fee,
       passengerInfo: {
-        name: matchedOrder.passengerName || matchedOrder.passenger_name || firstCustom.passengerName || meta.passengerName || prev.passengerInfo?.name || '',
-        count: matchedOrder.numberOfPassengers || matchedOrder.passengers || matchedOrder.passengerCount || firstCustom.numberOfPassengers || meta.numberOfPassengers || prev.passengerInfo?.count || 1
+        name: (matchedOrder.passengerName && String(matchedOrder.passengerName).toLowerCase() !== 'personal client') ? matchedOrder.passengerName : (firstCustom.passengerName || firstCustom.guestName || meta.passengerName || meta.guestName || matchedOrder.passengerName || prev.passengerInfo?.name || ''),
+        count: parseInt(firstCustom.numberOfPassengers || firstCustom.passengers || firstCustom.passengerCount || meta.numberOfPassengers || meta.passengers || matchedOrder.numberOfPassengers || matchedOrder.passengers || matchedOrder.passengerCount || prev.passengerInfo?.count || 1, 10) || 1
       },
-      luggage: matchedOrder.luggage || matchedOrder.luggageOption || firstCustom.luggage || meta.luggage || prev.luggage || (isChauf ? 'Standard' : 'No')
+      luggage: firstCustom.luggage || meta.luggage || matchedOrder.luggage || matchedOrder.luggageOption || prev.luggage || (isChauf ? 'Standard' : 'No')
     }));
   }, [orders, chauffeurRequests, clients, users, customerUsers, clientOptions, warehouses, formData.staff_pay_rate]);
 
@@ -437,13 +521,7 @@ const Deliveries = () => {
     const rate = parseFloat(formData.staff_pay_rate ?? DEFAULT_RATE_PER_KM) || DEFAULT_RATE_PER_KM;
 
     if (pick && drop) {
-      if (formData.route_distance && Number(formData.route_distance) > 0) {
-        const dist = parseFloat(formData.route_distance);
-        const computedFee = parseFloat((dist * rate).toFixed(2));
-        if (formData.delivery_fee !== computedFee) {
-          setFormData(prev => ({ ...prev, delivery_fee: computedFee }));
-        }
-      } else {
+      const timer = setTimeout(() => {
         calculateOSRMRouteDistance(pick, drop, mode).then(res => {
           if (res && res.distanceKm != null) {
             const dist = parseFloat(res.distanceKm);
@@ -457,9 +535,10 @@ const Deliveries = () => {
         }).catch(err => {
           console.warn('Auto distance calculation error:', err);
         });
-      }
+      }, 250);
+      return () => clearTimeout(timer);
     }
-  }, [isModalOpen, formData.pickupLocation, formData.dropLocation, formData.location, formData.mode, formData.staff_pay_rate, formData.route_distance]);
+  }, [isModalOpen, formData.pickupLocation, formData.dropLocation, formData.location, formData.mode, formData.staff_pay_rate]);
 
   // Catch Order State for Auto-Mission Launch
   useEffect(() => {
@@ -517,7 +596,7 @@ const Deliveries = () => {
 
   const handleAction = (type, del) => {
     setSelectedDelivery(del || {});
-    const nextModalType = type === 'delivered' ? 'edit' : type;
+    const nextModalType = type;
     setModalType(nextModalType);
     const parseItems = (raw) => {
       if (Array.isArray(raw)) return raw;
@@ -561,6 +640,7 @@ const Deliveries = () => {
 
     const nextFormData = del && del.id ? {
       ...del,
+      status: type === 'delivered' ? 'Delivered' : (del.status || 'pending'),
       orderId: del.order?.orderNumber || del.deliveryNumber || del.orderId || '',
       clientId: parsedRemarks.clientId || String(del.clientId || ''),
       client: typeof del.client === 'object' ? del.client?.companyName : (del.clientName || ''),
@@ -682,53 +762,82 @@ const Deliveries = () => {
         ((clients && clients.length > 0) ? Number(clients[0].id) : 1);
 
       const matchedWarehouse = (warehouses || []).find(w => w.name === finalData.pickupLocation);
-      const itemsWithRealIds = finalData.items.map(item => {
+      const resolvedWarehouseId = matchedWarehouse?.id || (warehouses && warehouses.length > 0 ? warehouses[0].id : 1);
+
+      const itemsWithRealIds = (finalData.items || []).map(item => {
         const matchedItem = (dbItems || []).find(i =>
           String(i.name || '').trim().toLowerCase() === String(item.name || '').trim().toLowerCase()
         );
         const rawItemId = item.itemId || item.id;
         const validNumId = (!isNaN(Number(rawItemId)) && Number(rawItemId) > 0) ? Number(rawItemId) : null;
         return {
-          orderItemId: (item.orderItemId && !isNaN(Number(item.orderItemId))) ? Number(item.orderItemId) : null,
+          orderItemId: (item.orderItemId && !isNaN(Number(item.orderItemId)) && Number(item.orderItemId) > 0) ? Number(item.orderItemId) : null,
           itemId: matchedItem ? Number(matchedItem.id) : validNumId,
           name: item.name || 'VIP Chauffeur Service',
           quantity: Number(item.qty || item.quantity || 1)
         };
       });
 
-      // Resolve orderId: The backend can accept either a numeric ID or the string order reference (like ORD-272).
+      // Filter only items that have real database IDs for Prisma DeliveryItem relation
+      const validDbDeliveryItems = itemsWithRealIds.filter(it => it.itemId && it.orderItemId);
+
+      // Resolve orderId: extract pure numeric ID if possible
       const rawOrderId = finalData.orderId ? String(finalData.orderId).trim() : null;
-      const resolvedOrderId = rawOrderId;
+      const cleanNumericId = rawOrderId ? rawOrderId.replace(/\D/g, '') : '';
+      const resolvedOrderId = cleanNumericId ? Number(cleanNumericId) : rawOrderId;
+
+      // Show loading indicator immediately and close form modal
+      swalLoading("Dispatching Delivery", "Authenticating dispatch protocol and deploying mission...");
+      setIsModalOpen(false);
 
       // Create Delivery via backend
       createDeliveryMutation.mutateAsync({
         orderId: resolvedOrderId,
         clientId: resolvedClientId,
-        items: itemsWithRealIds,
-        warehouseId: matchedWarehouse ? matchedWarehouse.id : undefined,
+        items: validDbDeliveryItems.length > 0 ? validDbDeliveryItems : undefined,
+        warehouseId: resolvedWarehouseId,
         remarks: JSON.stringify(manifestMeta),
-        missionType: finalData.missionType,
-        transportMode: finalData.mode,
-        vehicleRef: finalData.vehicle || finalData.vesselOrFlight,
-        etaSchedule: finalData.eta,
-        requestDate: finalData.requestDate,
-        dueDate: finalData.dueDate,
-        pickupLocation: finalData.pickupLocation,
-        dropLocation: finalData.dropLocation,
+        missionType: finalData.missionType || 'Delivery',
+        transportMode: finalData.mode || 'Road',
+        vehicleRef: finalData.vehicle || finalData.vesselOrFlight || null,
+        etaSchedule: finalData.eta || null,
+        requestDate: finalData.requestDate || null,
+        dueDate: finalData.dueDate || null,
+        pickupLocation: finalData.pickupLocation || '',
+        dropLocation: finalData.dropLocation || '',
         routeDistance: finalData.route_distance ? Number(finalData.route_distance) : undefined,
         staffPayRate: finalData.staff_pay_rate ? Number(finalData.staff_pay_rate) : undefined,
         deliveryFee: finalData.delivery_fee ? Number(finalData.delivery_fee) : undefined,
+        assignedTo: finalData.assigned_driver ? Number(finalData.assigned_driver) : undefined
       })
-        .then(() => {
-          swalSuccess("Success", "Mission deployed successfully");
-          setIsModalOpen(false);
+        .then(async (res) => {
+          const createdDel = res?.data || res;
+          if (finalData.assigned_driver && createdDel?.id) {
+            try {
+              await createMissionMutation.mutateAsync({
+                deliveryId: createdDel.id,
+                assignedEmployeeId: finalData.assigned_driver,
+                vehicleId: 1
+              });
+            } catch (_) {}
+          }
+          if (resolvedOrderId) {
+            const cleanOrderId = String(resolvedOrderId).replace(/^#|^ORD-/i, '');
+            try {
+              await api.put(`/orders/${cleanOrderId}/status`, { status: finalData.assigned_driver ? 'assigned' : 'logistics' });
+            } catch (_) {}
+          }
+          notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
+          swalClose();
+          swalSuccess("Mission Dispatched", "Order has been dispatched and mission deployed successfully.");
         })
         .catch((err) => {
+          swalClose();
           console.error("Create delivery failed:", err);
           const msg = err?.response?.data?.message || err?.message || "Could not create delivery";
-          swalError("Error", msg);
+          swalError("Dispatch Failed", msg);
         });
-    } else if (modalType === 'edit') {
+    } else if (modalType === 'edit' || modalType === 'delivered') {
       const manifestMeta = {
         manifestItems: finalData.items,
         packageDetails: finalData.packageDetails || {},
@@ -756,56 +865,155 @@ const Deliveries = () => {
         remarks: JSON.stringify(manifestMeta)
       };
 
-      if (formData.status === 'Completed' || formData.status === 'Delivered') {
+      if (modalType === 'delivered' || formData.status === 'Completed' || formData.status === 'Delivered' || finalData.status === 'Completed' || finalData.status === 'Delivered') {
         // It's a POD completion
-        submitPODMutation.mutateAsync({
-          id: finalData.id,
-          podData: {
-            receiverName: typeof finalData.client === 'object'
-              ? (finalData.client?.name || finalData.client?.companyName || 'Authorized Receiver')
-              : (finalData.client || finalData.passengerInfo?.name || 'Authorized Receiver'),
-            receiverSignature: finalData.pod?.signature || '',
-            remarks: finalData.pod?.notes || 'Delivered'
-          }
-        })
-          .then(() => {
-            swalSuccess("Success", "POD submitted successfully");
-            setIsModalOpen(false);
-          })
-          .catch(() => swalError("Error", "Could not submit POD"));
+        swalLoading("Submitting POD", "Verifying proof of delivery and completing mission...");
+        setIsModalOpen(false);
+
+        const targetDelId = finalData.id || selectedDelivery?.id;
+        const rawOrderId = finalData.orderId || finalData.order?.id || finalData.order_id || selectedDelivery?.orderId || selectedDelivery?.order?.id;
+        const cleanOrderId = rawOrderId ? String(rawOrderId).replace(/^#|^ORD-/i, '') : '';
+
+        const resolvedReceiver =
+          formData.pod?.receiverName ||
+          formData.pod?.signature ||
+          finalData.pod?.receiverName ||
+          finalData.pod?.signature ||
+          (typeof finalData.client === 'object' ? (finalData.client?.name || finalData.client?.companyName) : finalData.client) ||
+          finalData.passengerInfo?.name ||
+          'Authorized Receiver';
+
+        const resolvedSignature = formData.pod?.signature || resolvedReceiver;
+        const resolvedPhoto = formData.pod?.image || finalData.pod?.image || null;
+        const resolvedNotes = formData.pod?.notes || finalData.pod?.notes || 'Delivered';
+
+        // 1. Instant optimistic update across Deliveries, Orders, and Chauffeur queries (0ms UI update)
+        queryClient.setQueriesData({ queryKey: ['deliveries'] }, (old) => {
+          if (!old) return old;
+          const patchList = (arr) =>
+            Array.isArray(arr)
+              ? arr.map((item) =>
+                  String(item.id) === String(targetDelId) || String(item.deliveryNumber) === String(targetDelId)
+                    ? { ...item, status: 'Delivered', clientConfirmed: true }
+                    : item
+                )
+              : arr;
+          if (Array.isArray(old)) return patchList(old);
+          if (Array.isArray(old?.data)) return { ...old, data: patchList(old.data) };
+          if (Array.isArray(old?.data?.deliveries))
+            return { ...old, data: { ...old.data, deliveries: patchList(old.data.deliveries) } };
+          if (Array.isArray(old?.deliveries)) return { ...old, deliveries: patchList(old.deliveries) };
+          return old;
+        });
+
+        queryClient.setQueriesData({ queryKey: ['orders'] }, (old) => {
+          if (!old) return old;
+          const patchList = (arr) =>
+            Array.isArray(arr)
+              ? arr.map((item) =>
+                  String(item.id) === String(cleanOrderId) || String(item.orderNumber) === String(rawOrderId)
+                    ? { ...item, status: 'completed' }
+                    : item
+                )
+              : arr;
+          if (Array.isArray(old)) return patchList(old);
+          if (Array.isArray(old?.data)) return { ...old, data: patchList(old.data) };
+          if (Array.isArray(old?.data?.orders))
+            return { ...old, data: { ...old.data, orders: patchList(old.data.orders) } };
+          if (Array.isArray(old?.orders)) return { ...old, orders: patchList(old.orders) };
+          return old;
+        });
+
+        queryClient.setQueriesData({ queryKey: ['chauffeurMissions'] }, (old) => {
+          if (!old) return old;
+          const patchList = (arr) =>
+            Array.isArray(arr)
+              ? arr.map((item) =>
+                  String(item.id) === String(cleanOrderId) || String(item.db_id) === String(cleanOrderId)
+                    ? { ...item, status: 'completed' }
+                    : item
+                )
+              : arr;
+          if (Array.isArray(old)) return patchList(old);
+          if (Array.isArray(old?.data)) return { ...old, data: patchList(old.data) };
+          return old;
+        });
+
+        // 2. Perform backend updates in parallel
+        Promise.all([
+          targetDelId ? api.put(`/deliveries/${targetDelId}`, { status: 'Delivered' }).catch(() => {}) : Promise.resolve(),
+          cleanOrderId ? api.put(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() => {}) : Promise.resolve(),
+          targetDelId ? submitPODMutation.mutateAsync({
+            id: targetDelId,
+            podData: {
+              receiverName: resolvedReceiver,
+              receiverSignature: resolvedSignature,
+              deliveryPhoto: resolvedPhoto,
+              remarks: resolvedNotes
+            }
+          }).catch(() => {}) : Promise.resolve()
+        ]).then(async () => {
+          if (refetchDeliveries) await refetchDeliveries();
+          notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'chauffeurMissions', 'dashboardStats']);
+          swalClose();
+          swalSuccess("Mission Delivered", "POD submitted and order marked as Delivered successfully.");
+        });
       } else {
+        // If driver is assigned in edit modal and status was pending, advance status to Assigned
+        if (finalData.driver || finalData.assigned_driver) {
+          if (!updatePayload.status || ['pending', 'pending_pickup', 'pending_review'].includes(String(updatePayload.status || '').toLowerCase())) {
+            updatePayload.status = 'Assigned';
+          }
+          const rawOrderId = finalData.orderId || finalData.order?.id || finalData.order_id;
+          if (rawOrderId) {
+            const cleanOrderId = String(rawOrderId).replace(/^#|^ORD-/i, '');
+            try {
+              api.put(`/orders/${cleanOrderId}/status`, { status: 'assigned' }).catch(() => {});
+            } catch (_) { }
+          }
+        }
+
+        swalLoading("Updating Protocol", "Saving dispatch details and updating driver assignments...");
+        setIsModalOpen(false);
+
         // Standard update of form fields
         updateDeliveryMutation.mutateAsync({ id: finalData.id, data: updatePayload })
-          .then(() => {
+          .then(async () => {
             // If driver is assigned, create mission
             if (finalData.assigned_driver) {
-              createMissionMutation.mutateAsync({
-                deliveryId: finalData.id,
-                assignedEmployeeId: finalData.assigned_driver,
-                vehicleId: 1
-              })
-                .then(() => {
-                  swalSuccess("Success", "Delivery updated and driver assigned successfully");
-                  setIsModalOpen(false);
-                })
-                .catch(() => {
-                  swalSuccess("Success", "Delivery updated successfully");
-                  setIsModalOpen(false);
+              try {
+                await createMissionMutation.mutateAsync({
+                  deliveryId: finalData.id,
+                  assignedEmployeeId: finalData.assigned_driver,
+                  vehicleId: 1
                 });
-            } else {
-              swalSuccess("Success", "Delivery updated successfully");
-              setIsModalOpen(false);
+              } catch (_) {}
             }
+            notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
+            swalClose();
+            swalSuccess("Protocol Updated", "Delivery protocol and driver assignment updated successfully.");
           })
-          .catch(() => swalError("Error", "Could not update delivery"));
+          .catch((err) => {
+            swalClose();
+            const msg = err?.response?.data?.message || err?.message || "Could not update delivery";
+            swalError("Error", msg);
+          });
       }
     } else if (modalType === 'delete') {
+      swalLoading("Deleting Delivery", "Removing dispatch record...");
+      setIsModalOpen(false);
+
       deleteDeliveryMutation.mutateAsync(selectedDelivery.id)
         .then(() => {
-          swalSuccess("Success", "Delivery deleted successfully");
-          setIsModalOpen(false);
+          notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
+          swalClose();
+          swalSuccess("Success", "Delivery deleted successfully.");
         })
-        .catch(() => swalError("Error", "Could not delete delivery"));
+        .catch((err) => {
+          swalClose();
+          const msg = err?.response?.data?.message || err?.message || "Could not delete delivery";
+          swalError("Error", msg);
+        });
     }
   };
 
@@ -1027,40 +1235,66 @@ const Deliveries = () => {
               canEdit={canAssignDriverUi}
               canDelete={hasMenuPermission('Deliveries', 'can_delete') || ['saas_client', 'client', 'business_client'].includes(portalRole)}
               customAction={(item) => {
-                const statusLower = String(item.status || '').toLowerCase();
+                const statusLower = String(item.status || '').toLowerCase().replace(/\s+/g, '_');
                 const isDelivered = statusLower === 'completed' || statusLower === 'delivered';
+                const isInTransit = statusLower === 'in_transit' || statusLower === 'out_for_delivery' || statusLower === 'en_route' || statusLower === 'dispatched';
+                const hasDriver = !!(item.driver || item.assigned_driver || item.driver_name || (typeof item.driver === 'object' && item.driver?.name));
+                const isAssigned = (statusLower === 'assigned' || statusLower === 'driver_assigned' || hasDriver) && !isInTransit && !isDelivered;
+                const isUnassigned = !isAssigned && !isInTransit && !isDelivered;
 
                 return (
-                  <div className="flex items-center gap-1 flex-wrap justify-end">
-                    {canAssignDriverUi && (
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    {/* 1. Unassigned / Pending Pickup -> Show Assign Driver button */}
+                    {isUnassigned && canAssignDriverUi && (
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
                           handleAction('edit', item);
                         }}
-                        className="px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide text-accent border border-accent/35 bg-accent/10 hover:bg-accent/20 transition-all flex items-center gap-1"
-                        title="Assign driver / vehicle and save"
+                        className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider text-accent border border-accent/40 bg-accent/10 hover:bg-accent/20 transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                        title="Assign driver & vehicle"
                       >
-                        <UserPlus size={12} /> Assign
+                        <UserPlus size={12} /> <span>Assign</span>
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        if (isDelivered) return;
-                        e.stopPropagation();
-                        handleAction('delivered', item);
-                      }}
-                      className={`px-2 py-1 rounded-md text-[10px] font-black uppercase tracking-wide transition-all ${isDelivered
-                        ? 'text-success/30 border border-success/10 bg-success/5 cursor-not-allowed opacity-50'
-                        : 'text-success border border-success/30 bg-success/10 hover:bg-success/20'
-                        }`}
-                      title={isDelivered ? "Already Delivered" : "Complete Delivery (POD)"}
-                      disabled={isDelivered}
-                    >
-                      {isDelivered ? 'Delivered' : 'Deliver'}
-                    </button>
+
+                    {/* 2. Driver Assigned -> Show In Transit button */}
+                    {isAssigned && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleStartTransit(item);
+                        }}
+                        className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider text-sky-400 border border-sky-500/40 bg-sky-500/10 hover:bg-sky-500/20 transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                        title="Dispatch delivery (Mark as In Transit)"
+                      >
+                        <Truck size={12} /> <span>In Transit</span>
+                      </button>
+                    )}
+
+                    {/* 3. In Transit / Out for Delivery -> Show Deliver (POD) button */}
+                    {isInTransit && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleAction('delivered', item);
+                        }}
+                        className="px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider text-emerald-400 border border-emerald-500/40 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                        title="Complete delivery with Proof of Delivery"
+                      >
+                        <PackageCheck size={12} /> <span>Deliver</span>
+                      </button>
+                    )}
+
+                    {/* 4. Delivered -> Show Delivered badge */}
+                    {isDelivered && (
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 flex items-center gap-1">
+                        <CheckCircle2 size={11} /> <span>Delivered</span>
+                      </span>
+                    )}
                   </div>
                 );
               }}
@@ -1136,8 +1370,9 @@ const Deliveries = () => {
         onClose={() => setIsModalOpen(false)}
         title={
           modalType === 'view' ? 'Institutional Dispatch Manifest' :
-            modalType === 'edit' ? 'Update Logistics State' :
-              modalType === 'delete' ? 'Decommission Dispatch' : 'Initiate Multi-modal Dispatch'
+            modalType === 'delivered' ? 'Proof of Delivery (POD) & Mission Handover' :
+              modalType === 'edit' ? 'Update Logistics State' :
+                modalType === 'delete' ? 'Decommission Dispatch' : 'Initiate Multi-modal Dispatch'
         }
       >
         {selectedDelivery && (
@@ -1951,10 +2186,11 @@ const Deliveries = () => {
                   </div>
                 </div>
 
-                {(formData.status === 'Completed' || formData.status === 'Delivered') && (
+                {/* Proof of Delivery (POD) Section - ONLY shown during delivery handover or when viewing completed delivery */}
+                {(modalType === 'delivered' || formData.status === 'Completed' || formData.status === 'Delivered' || selectedDelivery?.status === 'Delivered' || selectedDelivery?.status === 'Completed') && (
                   <div className="pt-4 border-t border-border/50">
                     <p className="text-[10px] font-black text-accent uppercase tracking-widest mb-3 flex items-center gap-2">
-                      <CheckCircle2 size={12} /> Proof of Delivery (POD)
+                      <CheckCircle2 size={14} /> Proof of Delivery (POD) & Recipient Sign-off
                     </p>
 
                     {/* Specialized Sea/Air Verification Option */}
@@ -1989,19 +2225,47 @@ const Deliveries = () => {
                       </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4">
-                      {/* Image — file upload in edit, static display in view */}
+                    {/* Recipient / Handover Name Input */}
+                    <div className="mb-4 space-y-1.5">
+                      <label className="text-[9px] font-black text-accent uppercase tracking-wider flex items-center gap-1.5">
+                        <User size={12} className="text-accent" /> Recipient Full Name (Who is taking the delivery?) *
+                      </label>
+                      {modalType !== 'view' ? (
+                        <input
+                          type="text"
+                          required
+                          placeholder="e.g. Johnathan Vance (Authorized Receiver)"
+                          value={formData.pod?.receiverName !== undefined ? formData.pod.receiverName : (formData.pod?.signature || (typeof formData.client === 'object' ? (formData.client?.name || formData.client?.companyName) : formData.client) || '')}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setFormData(prev => ({
+                              ...prev,
+                              pod: { ...prev.pod, receiverName: val, signature: val }
+                            }));
+                          }}
+                          className="w-full bg-background border border-accent/40 rounded-xl px-4 py-2.5 text-sm focus:border-accent outline-none font-bold text-primary placeholder:font-normal placeholder:text-muted/50"
+                        />
+                      ) : (
+                        <div className="px-4 py-2.5 bg-white/5 border border-white/10 rounded-xl text-sm font-bold text-primary">
+                          {formData.pod?.receiverName || formData.pod?.signature || 'Authorized Receiver'}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Image Upload / Capture */}
                       <div className="space-y-2">
-                        <label className="text-[8px] font-bold text-muted uppercase">Visual Evidence (Photo/Doc Scan)</label>
-                        {modalType === 'edit' ? (
+                        <label className="text-[8px] font-bold text-muted uppercase">Visual Evidence (Photo / Doc Scan)</label>
+                        {modalType !== 'view' ? (
                           <div className="space-y-2">
-                            <label className="relative aspect-video bg-white/5 border border-dashed border-accent/40 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-white/10 transition-all overflow-hidden group">
+                            <label className="relative aspect-video bg-white/5 border-2 border-dashed border-accent/40 rounded-xl flex flex-col items-center justify-center cursor-pointer hover:bg-white/10 transition-all overflow-hidden group">
                               {formData.pod?.image ? (
                                 <img src={formData.pod.image} className="absolute inset-0 w-full h-full object-cover rounded-xl" alt="POD" />
                               ) : (
                                 <>
-                                  <Camera size={20} className="text-accent" />
-                                  <span className="text-[8px] font-bold text-accent mt-1">Upload Receipt/Photo</span>
+                                  <Camera size={24} className="text-accent mb-1 group-hover:scale-110 transition-transform" />
+                                  <span className="text-[10px] font-bold text-accent">Upload Delivery Photo / Receipt</span>
+                                  <span className="text-[8px] text-muted mt-0.5">Click or drag image file</span>
                                 </>
                               )}
                               <input
@@ -2021,8 +2285,10 @@ const Deliveries = () => {
                               <button
                                 type="button"
                                 onClick={() => setFormData(prev => ({ ...prev, pod: { ...prev.pod, image: null } }))}
-                                className="text-[8px] text-danger font-bold uppercase tracking-wide"
-                              >Remove Image</button>
+                                className="text-[9px] text-danger font-bold uppercase tracking-wide flex items-center gap-1 hover:underline cursor-pointer"
+                              >
+                                <Trash2 size={11} /> Remove Photo
+                              </button>
                             )}
                           </div>
                         ) : (
@@ -2035,20 +2301,24 @@ const Deliveries = () => {
                         )}
                       </div>
 
-                      {/* Signature — text input in edit, styled display in view */}
+                      {/* Recipient Signature / Confirmation */}
                       <div className="space-y-2">
-                        <label className="text-[8px] font-bold text-muted uppercase">Recipient Signature {formData.mode === 'Road' ? '*' : '(Optional if Carrier Verified)'}</label>
-                        {modalType === 'edit' ? (
-                          <>
+                        <label className="text-[8px] font-bold text-muted uppercase">
+                          Recipient Sign-off / Signature {formData.mode === 'Road' ? '*' : '(Optional if Carrier Verified)'}
+                        </label>
+                        {modalType !== 'view' ? (
+                          <div className="space-y-1">
                             <input
                               type="text"
-                              placeholder="Recipient full name"
-                              value={formData.pod?.signature || ''}
+                              placeholder="Type recipient name as digital signature"
+                              value={formData.pod?.signature || formData.pod?.receiverName || ''}
                               onChange={(e) => setFormData(prev => ({ ...prev, pod: { ...prev.pod, signature: e.target.value } }))}
-                              className="w-full bg-background border border-accent/30 rounded-lg px-3 py-2 text-sm focus:border-accent outline-none font-bold italic placeholder:font-normal placeholder:not-italic placeholder:text-muted/50"
+                              className="w-full bg-background border border-accent/40 rounded-xl px-4 py-2.5 text-sm focus:border-accent outline-none font-bold italic placeholder:font-normal placeholder:not-italic placeholder:text-muted/50"
                             />
-                            <p className="text-[8px] text-muted">{formData.mode === 'Road' ? '* Required for road transit' : 'Signature or Carrier Verification Required'}</p>
-                          </>
+                            <p className="text-[8px] text-muted">
+                              {formData.mode === 'Road' ? '* Required for road transit confirmation' : 'Signature or Carrier Verification'}
+                            </p>
+                          </div>
                         ) : (
                           <div className="aspect-video bg-white/5 border border-dashed border-border rounded-xl flex items-center justify-center">
                             {formData.pod?.signature
@@ -2058,6 +2328,26 @@ const Deliveries = () => {
                           </div>
                         )}
                       </div>
+                    </div>
+
+                    {/* Delivery Notes / Remarks */}
+                    <div className="mt-3 space-y-1">
+                      <label className="text-[8px] font-bold text-muted uppercase">Delivery Handover Notes / Remarks</label>
+                      {modalType !== 'view' ? (
+                        <input
+                          type="text"
+                          placeholder="e.g. Delivered directly to recipient at front gate / lobby"
+                          value={formData.pod?.notes || ''}
+                          onChange={(e) => setFormData(prev => ({ ...prev, pod: { ...prev.pod, notes: e.target.value } }))}
+                          className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:border-accent outline-none"
+                        />
+                      ) : (
+                        formData.pod?.notes && (
+                          <p className="text-xs text-secondary italic bg-white/5 p-2 rounded-lg border border-white/5">
+                            "{formData.pod.notes}"
+                          </p>
+                        )
+                      )}
                     </div>
                     {formData.pod?.actualTime && (
                       <p className="text-[10px] text-success font-bold mt-4 flex items-center gap-2">
@@ -2096,7 +2386,7 @@ const Deliveries = () => {
                   {(createDeliveryMutation.isPending || updateDeliveryMutation.isPending || deleteDeliveryMutation.isPending || submitPODMutation.isPending) && (
                     <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                   )}
-                  {modalType === 'delete' ? 'Confirm Termination' : 'Authenticate Dispatch'}
+                  {modalType === 'delete' ? 'Confirm Termination' : (modalType === 'delivered' || formData.status === 'Delivered' || formData.status === 'Completed' ? 'Submit POD & Complete' : 'Authenticate Dispatch')}
                 </button>
               )}
             </div>

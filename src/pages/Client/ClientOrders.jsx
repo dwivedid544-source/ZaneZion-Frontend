@@ -156,10 +156,10 @@ const ClientOrders = () => {
                 const qty = parseInt(itm.qty || itm.quantity || 1) || 1;
                 const unitPrice = parseFloat(
                     itm.unitPrice !== undefined ? itm.unitPrice :
-                    itm.price !== undefined ? itm.price :
-                    itm.unit_price !== undefined ? itm.unit_price :
-                    itm.chauffeurFee !== undefined ? itm.chauffeurFee :
-                    itm.chauffeur_fee !== undefined ? itm.chauffeur_fee : 0
+                        itm.price !== undefined ? itm.price :
+                            itm.unit_price !== undefined ? itm.unit_price :
+                                itm.chauffeurFee !== undefined ? itm.chauffeurFee :
+                                    itm.chauffeur_fee !== undefined ? itm.chauffeur_fee : 0
                 ) || 0;
                 return { name, qty, price: unitPrice };
             });
@@ -225,39 +225,37 @@ const ClientOrders = () => {
             const isChauffeurOrder = o.orderType === 'CHAUFFEUR' || o.missionType === 'Chauffeur' || String(o.orderType).toUpperCase() === 'CHAUFFEUR' || String(o.id || '').startsWith('CH-');
             if (isChauffeurOrder) return;
 
-            const dbSt = String(o.status || '').toLowerCase();
+            const dbSt = String(o.status || '').toLowerCase().trim();
             let effectiveStatus = dbSt || 'pending';
 
             if (['completed', 'delivered', 'done'].includes(dbSt)) {
                 effectiveStatus = 'completed';
+            } else if (['cancelled', 'rejected', 'canceled'].includes(dbSt)) {
+                effectiveStatus = 'cancelled';
+            } else if (['operation', 'operations'].includes(dbSt)) {
+                effectiveStatus = 'operation';
+            } else if (['logistics'].includes(dbSt)) {
+                effectiveStatus = 'logistics';
+            } else if (['concierge'].includes(dbSt)) {
+                effectiveStatus = 'concierge';
+            } else if (['procurement'].includes(dbSt)) {
+                effectiveStatus = 'procurement';
+            } else if (['inventory'].includes(dbSt)) {
+                effectiveStatus = 'inventory';
+            } else if (['in_transit', 'en_route', 'out_for_delivery', 'dispatched'].includes(dbSt)) {
+                effectiveStatus = 'in_transit';
+            } else if (['assigned', 'accepted'].includes(dbSt)) {
+                effectiveStatus = 'assigned';
+            } else if (['pending', 'created', 'admin_review', 'pending_review', 'submitted', 'draft'].includes(dbSt)) {
+                effectiveStatus = 'pending';
             } else if (linkedDelivery) {
                 const delSt = String(linkedDelivery.status || '').toLowerCase();
                 if (['delivered', 'completed'].includes(delSt)) {
                     effectiveStatus = 'completed';
                 } else if (['in_transit', 'en_route', 'on_way'].includes(delSt)) {
                     effectiveStatus = 'in_transit';
-                } else if (['assigned', 'accepted'].includes(delSt) || linkedDelivery.driver) {
+                } else if (['assigned', 'accepted'].includes(delSt)) {
                     effectiveStatus = 'assigned';
-                } else {
-                    effectiveStatus = 'logistics';
-                }
-            } else if (linkedMission) {
-                const misSt = String(linkedMission.status || '').toLowerCase();
-                if (['delivered', 'completed', 'done'].includes(misSt)) {
-                    effectiveStatus = 'completed';
-                } else if (['in_transit', 'en_route', 'dispatched'].includes(misSt)) {
-                    effectiveStatus = 'in_transit';
-                } else if (['assigned', 'accepted', 'in_progress'].includes(misSt)) {
-                    effectiveStatus = 'assigned';
-                } else {
-                    effectiveStatus = 'logistics';
-                }
-            } else if (linkedProjects.length > 0) {
-                const hasCompletedPrj = linkedProjects.some(p => ['completed', 'delivered'].includes(String(p.status || '').toLowerCase()));
-                if (hasCompletedPrj) {
-                    effectiveStatus = 'completed';
-                } else {
-                    effectiveStatus = 'logistics';
                 }
             }
 
@@ -740,11 +738,10 @@ const ClientOrders = () => {
                                     key={cat}
                                     type="button"
                                     onClick={() => setCategoryFilter(cat)}
-                                    className={`px-3.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${
-                                        categoryFilter === cat
-                                            ? 'bg-accent text-black shadow-lg shadow-accent/20'
-                                            : 'bg-white/5 text-muted hover:text-white hover:bg-white/10'
-                                    }`}
+                                    className={`px-3.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all ${categoryFilter === cat
+                                        ? 'bg-accent text-black shadow-lg shadow-accent/20'
+                                        : 'bg-white/5 text-muted hover:text-white hover:bg-white/10'
+                                        }`}
                                 >
                                     {cat === 'All' ? 'All Services' : cat}
                                 </button>
@@ -758,11 +755,10 @@ const ClientOrders = () => {
                                     key={filter}
                                     type="button"
                                     onClick={() => setStatusFilter(filter)}
-                                    className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${
-                                        statusFilter === filter
-                                            ? 'bg-white/15 text-white shadow'
-                                            : 'text-muted hover:text-white'
-                                    }`}
+                                    className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${statusFilter === filter
+                                        ? 'bg-white/15 text-white shadow'
+                                        : 'text-muted hover:text-white'
+                                        }`}
                                 >
                                     {filter} Status
                                 </button>
@@ -976,11 +972,11 @@ const ClientOrders = () => {
                                         const firstItem = String(selectedTransaction.items?.[0]?.name || selectedTransaction.items?.[0]?.itemName || selectedTransaction.product || '').toLowerCase();
 
                                         if (
-                                            typeStr.includes('marketplace') || 
-                                            typeStr.includes('procurement') || 
-                                            typeStr.includes('provisioning') || 
-                                            typeStr.includes('inventory') || 
-                                            typeStr.includes('delivery') || 
+                                            typeStr.includes('marketplace') ||
+                                            typeStr.includes('procurement') ||
+                                            typeStr.includes('provisioning') ||
+                                            typeStr.includes('inventory') ||
+                                            typeStr.includes('delivery') ||
                                             typeStr.includes('product') ||
                                             kindStr.includes('marketplace')
                                         ) {
@@ -989,28 +985,48 @@ const ClientOrders = () => {
 
                                         const isChauffeur = catStr.includes('chauffeur') || typeStr.includes('chauffeur') || firstItem.includes('chauffeur service') || firstItem.startsWith('vip chauffeur');
                                         if (!isChauffeur) return null;
+                                        const c0 = (selectedTransaction.customItems && selectedTransaction.customItems[0]) || (selectedTransaction.metadata?.customItems && selectedTransaction.metadata.customItems[0]) || {};
+                                        const passName = (c0.passengerName && String(c0.passengerName).toLowerCase() !== 'personal client') ? c0.passengerName : (selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name || c0.guestName || '');
+                                        const passPax = c0.numberOfPassengers || c0.passengers || selectedTransaction.numberOfPassengers || selectedTransaction.passengers || selectedTransaction.passengerCount || 1;
+                                        const passLuggage = c0.luggage || selectedTransaction.luggage || (c0.bags ? `Yes — ${c0.bags} bag(s)` : 'Standard');
+                                        const rawAmenities = c0.amenities || selectedTransaction.amenities || selectedTransaction.metadata?.amenities || [];
+                                        const amenList = Array.isArray(rawAmenities) ? rawAmenities : (typeof rawAmenities === 'string' && rawAmenities.trim() ? rawAmenities.split(',').map(s => s.trim()) : []);
+
                                         return (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 rounded-2xl bg-accent/5 border border-accent/20">
-                                                <div>
-                                                    <p className="text-[9px] font-black text-accent uppercase tracking-widest">No. of Passengers</p>
-                                                    <p className="text-xs font-bold text-white">
-                                                        {selectedTransaction.numberOfPassengers || selectedTransaction.passengers || selectedTransaction.passengerCount || selectedTransaction.passengerInfo?.count || selectedTransaction.guestCount || 1} PAX
-                                                        {(selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name) ? ` (${selectedTransaction.passengerName || selectedTransaction.passengerInfo?.name})` : ''}
-                                                    </p>
+                                            <div className="space-y-3 p-4 rounded-2xl bg-accent/5 border border-accent/20">
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <p className="text-[9px] font-black text-accent uppercase tracking-widest">No. of Passengers</p>
+                                                        <p className="text-xs font-bold text-white">
+                                                            {passPax} PAX {passName ? `(${passName})` : ''}
+                                                        </p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-[9px] font-black text-accent uppercase tracking-widest">Luggage Protocol</p>
+                                                        <p className="text-xs font-bold text-white">
+                                                            {passLuggage}
+                                                        </p>
+                                                    </div>
+                                                    <div className="sm:col-span-2">
+                                                        <p className="text-[9px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</p>
+                                                        <p className="text-xs font-bold text-white">
+                                                            {selectedTransaction.serviceType || c0.serviceType || 'One Way'}
+                                                            {(selectedTransaction.serviceType === 'Round Trip' || c0.serviceType === 'Round Trip') ? ' (2× Round Trip Rate applied)' : (selectedTransaction.numberOfDays > 1 || selectedTransaction.dailyDays > 1 || c0.numberOfDays > 1) ? ` (${selectedTransaction.numberOfDays || selectedTransaction.dailyDays || c0.numberOfDays} Days)` : ''}
+                                                        </p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-[9px] font-black text-accent uppercase tracking-widest">Luggage Protocol</p>
-                                                    <p className="text-xs font-bold text-white">
-                                                        {selectedTransaction.luggage || selectedTransaction.luggageOption || 'Standard / Included'}
-                                                    </p>
-                                                </div>
-                                                <div className="sm:col-span-2">
-                                                    <p className="text-[9px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</p>
-                                                    <p className="text-xs font-bold text-white">
-                                                        {selectedTransaction.serviceType || 'One Way'}
-                                                        {selectedTransaction.serviceType === 'Round Trip' ? ' (2× Round Trip Rate applied)' : (selectedTransaction.numberOfDays > 1 || selectedTransaction.dailyDays > 1) ? ` (${selectedTransaction.numberOfDays || selectedTransaction.dailyDays} Days)` : ''}
-                                                    </p>
-                                                </div>
+                                                {amenList.length > 0 && (
+                                                    <div className="pt-2 border-t border-accent/10">
+                                                        <p className="text-[9px] font-black text-accent uppercase tracking-widest mb-1.5">Selected Amenities</p>
+                                                        <div className="flex flex-wrap gap-1.5">
+                                                            {amenList.map((am, i) => (
+                                                                <span key={i} className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-accent/15 text-accent border border-accent/30">
+                                                                    {am}
+                                                                </span>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
                                             </div>
                                         );
                                     })()}

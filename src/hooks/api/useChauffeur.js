@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
 import { notifyStateChanged, getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from '../../utils/stateSyncHelper';
+import { normalizeRole } from '../../utils/authUtils';
 
 export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
   let currentUser = null;
@@ -14,6 +15,12 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
   const currentUserEmail = currentUser?.email || null;
   const currentClientId = currentUser?.clientId || currentUser?.company_id || null;
 
+  // Determine if the user is a customer/client (should see only their own) vs admin/staff (should see all)
+  const rawRole = currentUser?.role;
+  const roleStr = typeof rawRole === 'object' && rawRole !== null ? rawRole.name : rawRole;
+  const normalizedRole = normalizeRole(roleStr);
+  const isCustomerRole = ['customer', 'client', 'saas_client'].includes(normalizedRole);
+
   return useQuery({
     queryKey: ['chauffeurMissions', currentUserId, currentUserTenant, page, limit, search],
     queryFn: async () => {
@@ -24,9 +31,11 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
           limit,
           search,
           orderType: 'CHAUFFEUR',
-          ...(currentUserId && { user_id: currentUserId }),
-          ...(currentUserEmail && { customer_email: currentUserEmail }),
-          ...(currentClientId && { clientId: currentClientId })
+          // Only scope to this user's data if they're a customer/client role.
+          // Admins, operations, staff etc. see all bookings in their tenant.
+          ...(isCustomerRole && currentUserId && { user_id: currentUserId }),
+          ...(isCustomerRole && currentUserEmail && { customer_email: currentUserEmail }),
+          ...(isCustomerRole && currentClientId && { clientId: currentClientId })
         }
       });
       // Ensure data matches what the UI expects
@@ -96,13 +105,13 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
             id: realId,
             db_id: order?.id,
             clientName: order?.client?.companyName || order?.client?.name || restCustomItem?.clientName || 'Guest Client',
-            status: order?.status,
             pickupLocation: resolvedPickup,
             pickup_location: resolvedPickup,
             dropLocation: resolvedDrop,
             drop_location: resolvedDrop,
             location: resolvedDrop,
-            ...(updatedMap?.[realId] || {})
+            ...(updatedMap?.[realId] || {}),
+            status: order?.status || 'pending'
           };
 
           const sType = combined.serviceType || restCustomItem.serviceType || 'One Way';
@@ -133,7 +142,13 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
           itemsPerPage: limit
         }
       };
-    }
+    },
+    // Auto-refetch every 8 seconds so all portals (admin, client, operations) stay in sync
+    // without needing a manual page refresh.
+    refetchInterval: 8000,
+    staleTime: 4000,
+    refetchOnWindowFocus: true,
+    refetchIntervalInBackground: false,
   });
 };
 
@@ -141,12 +156,19 @@ export const useCreateChauffeurMission = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (missionData) => {
-      const fee = Number(missionData.chauffeurFee || missionData.chauffeur_fee || 120);
+      const fee = Number(missionData.chauffeurFee || missionData.chauffeur_fee || missionData.totalAmount || missionData.total || 120);
       const pickupLoc = missionData.pickupLocation || missionData.pickup_location || '';
       const dropLoc = missionData.dropLocation || missionData.drop_location || missionData.location || missionData.deliveryAddress || missionData.delivery_address || '';
 
-      const fullItem = { ...missionData, pickupLocation: pickupLoc, dropLocation: dropLoc, location: dropLoc };
+      const fullItem = {
+        ...missionData,
+        pickupLocation: pickupLoc,
+        dropLocation: dropLoc,
+        location: dropLoc
+      };
+
       const payload = {
+        ...missionData,
         clientId: missionData.clientId,
         orderType: 'CHAUFFEUR',
         type: 'CHAUFFEUR',
@@ -160,9 +182,52 @@ export const useCreateChauffeurMission = () => {
         location: dropLoc,
         delivery_address: dropLoc,
         status: missionData.status || 'draft',
+        passengerName: missionData.passengerName || missionData.guestName,
+        guestName: missionData.guestName || missionData.passengerName,
+        numberOfPassengers: Number(missionData.numberOfPassengers || missionData.passengers || missionData.passengerCount || 1),
+        passengers: Number(missionData.passengers || missionData.numberOfPassengers || missionData.passengerCount || 1),
+        passengerCount: Number(missionData.passengerCount || missionData.numberOfPassengers || 1),
+        luggage: missionData.luggage || (Number(missionData.bags || 0) > 0 ? `Yes — ${missionData.bags} bag(s)` : 'No'),
+        bags: Number(missionData.bags || 0),
+        stops: missionData.stops || 'No',
+        stopLocations: missionData.stopLocations || null,
+        amenities: missionData.amenities || [],
+        wifi: missionData.wifi || (Array.isArray(missionData.amenities) && missionData.amenities.includes('WiFi') ? 'Yes' : 'No'),
+        refreshments: missionData.refreshments || (Array.isArray(missionData.amenities) && missionData.amenities.includes('Refreshments') ? 'Yes' : 'No'),
+        carSeat: missionData.carSeat || (Array.isArray(missionData.amenities) && (missionData.amenities.includes('Baby Car Seat') || missionData.amenities.includes('Car Seat')) ? 'Yes' : 'No'),
+        serviceType: missionData.serviceType || 'One Way',
+        returnDate: missionData.returnDate || null,
+        returnTime: missionData.returnTime || null,
+        pickupTime: missionData.pickupTime || null,
+        dueDate: missionData.dueDate || null,
         items: [fullItem],
         customItems: [fullItem],
         custom_items: [fullItem],
+        metadata: {
+          ...missionData,
+          pickupLocation: pickupLoc,
+          dropLocation: dropLoc,
+          location: dropLoc,
+          passengerName: missionData.passengerName || missionData.guestName,
+          guestName: missionData.guestName || missionData.passengerName,
+          numberOfPassengers: Number(missionData.numberOfPassengers || missionData.passengers || missionData.passengerCount || 1),
+          passengers: Number(missionData.passengers || missionData.numberOfPassengers || 1),
+          passengerCount: Number(missionData.passengerCount || missionData.numberOfPassengers || 1),
+          luggage: missionData.luggage || (Number(missionData.bags || 0) > 0 ? `Yes — ${missionData.bags} bag(s)` : 'No'),
+          bags: Number(missionData.bags || 0),
+          stops: missionData.stops || 'No',
+          stopLocations: missionData.stopLocations || null,
+          amenities: missionData.amenities || [],
+          wifi: missionData.wifi || (Array.isArray(missionData.amenities) && missionData.amenities.includes('WiFi') ? 'Yes' : 'No'),
+          refreshments: missionData.refreshments || (Array.isArray(missionData.amenities) && missionData.amenities.includes('Refreshments') ? 'Yes' : 'No'),
+          carSeat: missionData.carSeat || (Array.isArray(missionData.amenities) && (missionData.amenities.includes('Baby Car Seat') || missionData.amenities.includes('Car Seat')) ? 'Yes' : 'No'),
+          serviceType: missionData.serviceType || 'One Way',
+          returnDate: missionData.returnDate || null,
+          returnTime: missionData.returnTime || null,
+          pickupTime: missionData.pickupTime || null,
+          dueDate: missionData.dueDate || null,
+          customItems: [fullItem]
+        }
       };
       const response = await api.post('/orders', payload);
       return { success: true, data: response.data?.data || response.data };
@@ -177,12 +242,19 @@ export const useUpdateChauffeurMission = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }) => {
-      const fee = Number(data.chauffeurFee || data.chauffeur_fee || 120);
+      const fee = Number(data.chauffeurFee || data.chauffeur_fee || data.totalAmount || data.total || 120);
       const pickupLoc = data.pickupLocation || data.pickup_location || '';
       const dropLoc = data.dropLocation || data.drop_location || data.location || data.deliveryAddress || data.delivery_address || '';
 
-      const fullItem = { ...data, pickupLocation: pickupLoc, dropLocation: dropLoc, location: dropLoc };
+      const fullItem = {
+        ...data,
+        pickupLocation: pickupLoc,
+        dropLocation: dropLoc,
+        location: dropLoc
+      };
+
       const payload = {
+        ...data,
         clientId: data.clientId,
         status: data.status,
         totalAmount: fee,
@@ -194,9 +266,52 @@ export const useUpdateChauffeurMission = () => {
         drop_location: dropLoc,
         location: dropLoc,
         delivery_address: dropLoc,
+        passengerName: data.passengerName || data.guestName,
+        guestName: data.guestName || data.passengerName,
+        numberOfPassengers: Number(data.numberOfPassengers || data.passengers || data.passengerCount || 1),
+        passengers: Number(data.passengers || data.numberOfPassengers || 1),
+        passengerCount: Number(data.passengerCount || data.numberOfPassengers || 1),
+        luggage: data.luggage || (Number(data.bags || 0) > 0 ? `Yes — ${data.bags} bag(s)` : 'No'),
+        bags: Number(data.bags || 0),
+        stops: data.stops || 'No',
+        stopLocations: data.stopLocations || null,
+        amenities: data.amenities || [],
+        wifi: data.wifi || (Array.isArray(data.amenities) && data.amenities.includes('WiFi') ? 'Yes' : 'No'),
+        refreshments: data.refreshments || (Array.isArray(data.amenities) && data.amenities.includes('Refreshments') ? 'Yes' : 'No'),
+        carSeat: data.carSeat || (Array.isArray(data.amenities) && (data.amenities.includes('Baby Car Seat') || data.amenities.includes('Car Seat')) ? 'Yes' : 'No'),
+        serviceType: data.serviceType || 'One Way',
+        returnDate: data.returnDate || null,
+        returnTime: data.returnTime || null,
+        pickupTime: data.pickupTime || null,
+        dueDate: data.dueDate || null,
         items: [fullItem],
         customItems: [fullItem],
         custom_items: [fullItem],
+        metadata: {
+          ...data,
+          pickupLocation: pickupLoc,
+          dropLocation: dropLoc,
+          location: dropLoc,
+          passengerName: data.passengerName || data.guestName,
+          guestName: data.guestName || data.passengerName,
+          numberOfPassengers: Number(data.numberOfPassengers || data.passengers || data.passengerCount || 1),
+          passengers: Number(data.passengers || data.numberOfPassengers || 1),
+          passengerCount: Number(data.passengerCount || data.numberOfPassengers || 1),
+          luggage: data.luggage || (Number(data.bags || 0) > 0 ? `Yes — ${data.bags} bag(s)` : 'No'),
+          bags: Number(data.bags || 0),
+          stops: data.stops || 'No',
+          stopLocations: data.stopLocations || null,
+          amenities: data.amenities || [],
+          wifi: data.wifi || (Array.isArray(data.amenities) && data.amenities.includes('WiFi') ? 'Yes' : 'No'),
+          refreshments: data.refreshments || (Array.isArray(data.amenities) && data.amenities.includes('Refreshments') ? 'Yes' : 'No'),
+          carSeat: data.carSeat || (Array.isArray(data.amenities) && (data.amenities.includes('Baby Car Seat') || data.amenities.includes('Car Seat')) ? 'Yes' : 'No'),
+          serviceType: data.serviceType || 'One Way',
+          returnDate: data.returnDate || null,
+          returnTime: data.returnTime || null,
+          pickupTime: data.pickupTime || null,
+          dueDate: data.dueDate || null,
+          customItems: [fullItem]
+        }
       };
       const patchId = data.db_id || id;
       try {

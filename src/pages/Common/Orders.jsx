@@ -1,9 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm } from '../../utils/swal';
 import Table from '../../components/Table';
 import { useData } from '../../context/GlobalDataContext';
 import { isoDateSlice, displayOrderStatus } from '../../utils/orderWorkflow';
-import { Search, Plus, PackageCheck, PackageX, FileText, CheckCircle, ShoppingCart, Truck, Warehouse, ArrowRightCircle, RefreshCcw, History } from 'lucide-react';
+import { Search, Plus, PackageCheck, PackageX, FileText, CheckCircle, XCircle, ShoppingCart, Truck, Warehouse, ArrowRightCircle, RefreshCcw, History } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useOrders, useUpdateOrderStatus, useCreateOrder, useUpdateOrder, useDeleteOrder } from '../../hooks/api/useOrders';
 import { useQueryClient } from '@tanstack/react-query';
@@ -33,6 +33,7 @@ const Orders = () => {
     orders: contextOrders = [], deliveries, purchaseRequests, stockMovements,
     addProject, invoices, projects, missions, generateInvoiceFromOrder,
     currentUser, launchMissionFromOrder, convertOrderToProject,
+    fetchOrders, fetchDeliveries, fetchMissions, fetchProjects,
     fetchVendors, fetchClients, clients, users = [], customerUsers = [], fetchCustomerUsers,
     hasMenuPermission
   } = useData();
@@ -40,7 +41,7 @@ const Orders = () => {
   const queryClient = useQueryClient();
 
   const updateOrderStatusMutation = useUpdateOrderStatus();
-  const createOrderMutation = useCreateOrder();
+  const create = useCreateOrder();
   const updateOrderMutation = useUpdateOrder();
   const deleteOrderMutation = useDeleteOrder();
 
@@ -53,7 +54,16 @@ const Orders = () => {
   const portalRole = normalizeRole(currentUser?.role);
   const canStaffCreateOrder = roleCanCreateInstitutionalOrder(portalRole);
 
-  const { data: ordersData, isLoading, error } = useOrders(page, 10, searchTerm, portalRole);
+  const { data: ordersData, isLoading, error, refetch: refetchOrders } = useOrders(page, 50, searchTerm, portalRole);
+
+  // Real-time state listener: when an order updates anywhere, auto-refresh immediately
+  useEffect(() => {
+    const handleStateChange = () => {
+      if (refetchOrders) refetchOrders();
+    };
+    window.addEventListener('app:state-changed', handleStateChange);
+    return () => window.removeEventListener('app:state-changed', handleStateChange);
+  }, [refetchOrders]);
 
   const orders = React.useMemo(() => {
     const apiOrders = ordersData?.data?.orders || (Array.isArray(ordersData?.data) ? ordersData.data : (Array.isArray(ordersData?.orders) ? ordersData.orders : null));
@@ -83,72 +93,37 @@ const Orders = () => {
 
   const resolveLiveOrderStatus = (o) => {
     if (!o) return 'pending';
+    const rawSt = String(o.status || '').toLowerCase().trim();
+
+    // 1. Direct explicit database order status
+    if (['completed', 'delivered', 'done'].includes(rawSt)) return 'completed';
+    if (['cancelled', 'rejected', 'canceled'].includes(rawSt)) return 'cancelled';
+    if (['in_transit', 'en_route', 'out_for_delivery', 'dispatched'].includes(rawSt)) return 'in_transit';
+    if (['operation', 'operations'].includes(rawSt)) return 'operation';
+    if (['logistics'].includes(rawSt)) return 'logistics';
+    if (['concierge'].includes(rawSt)) return 'concierge';
+    if (['procurement'].includes(rawSt)) return 'procurement';
+    if (['inventory'].includes(rawSt)) return 'inventory';
+    if (['assigned', 'accepted'].includes(rawSt)) return 'assigned';
+    if (['pending', 'created', 'admin_review', 'pending_review', 'submitted', 'draft'].includes(rawSt)) return 'pending';
+
+    // 2. Fallback to linked delivery / mission if status is empty/unknown
     const oIdStr = String(o.id || '');
     const oRawIdStr = String(o.rawId || o.id || '').replace(/\D/g, '');
 
-    const dbStatus = String(o.status || '').toLowerCase();
-    if (['completed', 'delivered', 'done'].includes(dbStatus)) return 'completed';
-
-    // 1. Find linked projects by exact order reference
-    const linkedProjects = (projects || []).filter(p => {
-      const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
-      const pId = String(p.id || '');
-      return (
-        (pRef && (pRef === oIdStr || pRef === oRawIdStr || pRef === `ORD-${oIdStr}` || pRef === `ORD-${oRawIdStr}`)) ||
-        (pId && (pId === oIdStr || pId === oRawIdStr))
-      );
-    });
-    const linkedProjectIds = linkedProjects.map(p => String(p.id));
-
-    // 2. Find linked mission by exact order/project reference
-    const linkedMission = (missions || []).find(m => {
-      const mOrderId = String(m.orderId || m.order_id || m.order_id_raw || m.metadata?.orderId || m.metadata?.orderRef || m.metadata?.order_ref || '');
-      const mProjectId = String(m.projectId || m.project_id || m.metadata?.projectId || m.metadata?.projectRef || '');
-      return (
-        mOrderId === oIdStr ||
-        mOrderId === oRawIdStr ||
-        mOrderId === `ORD-${oIdStr}` ||
-        mOrderId === `ORD-${oRawIdStr}` ||
-        linkedProjectIds.includes(mOrderId) ||
-        linkedProjectIds.includes(mProjectId)
-      );
-    });
-
-    // 3. Find linked delivery by exact order reference
     const linkedDelivery = (deliveries || []).find(d => {
       const dOrderId = String(d.orderId || d.order_id_raw || d.order_id || '');
-      const dMissionId = String(d.mission_id || d.missionId || '');
-      return (
-        dOrderId === oIdStr ||
-        dOrderId === oRawIdStr ||
-        dOrderId === `ORD-${oIdStr}` ||
-        dOrderId === `ORD-${oRawIdStr}` ||
-        linkedProjectIds.includes(dOrderId) ||
-        (linkedMission && (dMissionId === String(linkedMission.id) || dOrderId === String(linkedMission.orderId)))
-      );
+      return dOrderId === oIdStr || dOrderId === oRawIdStr || dOrderId === `ORD-${oIdStr}`;
     });
 
     if (linkedDelivery) {
       const delSt = String(linkedDelivery.status || '').toLowerCase();
       if (['delivered', 'completed'].includes(delSt)) return 'completed';
       if (['in_transit', 'en_route', 'on_way'].includes(delSt)) return 'in_transit';
-      if (['assigned', 'accepted'].includes(delSt) || linkedDelivery.driver) return 'assigned';
-      return 'logistics';
-    }
-    if (linkedMission) {
-      const misSt = String(linkedMission.status || '').toLowerCase();
-      if (['delivered', 'completed', 'done'].includes(misSt)) return 'completed';
-      if (['in_transit', 'en_route', 'dispatched'].includes(misSt)) return 'in_transit';
-      if (['assigned', 'accepted', 'in_progress'].includes(misSt)) return 'assigned';
-      return 'logistics';
-    }
-    if (linkedProjects.length > 0) {
-      const hasCompletedPrj = linkedProjects.some(p => ['completed', 'delivered'].includes(String(p.status || '').toLowerCase()));
-      if (hasCompletedPrj) return 'completed';
-      return 'logistics';
+      if (['assigned', 'accepted'].includes(delSt)) return 'assigned';
     }
 
-    return dbStatus || 'pending';
+    return rawSt || 'pending';
   };
 
   const handleConvertToProject = async (order) => {
@@ -187,16 +162,56 @@ const Orders = () => {
     }
   };
 
-  const handleApprove = async (order, stage) => {
-    const result = await swalConfirm('Confirm Approval', `Are you sure you want to move Order #${order.id} to ${stage.toUpperCase()} stage?`);
-    if (result.isConfirmed) {
+  const handleAcceptOrder = async (order) => {
+    const isChauffeur = String(order.orderType || order.type || '').toLowerCase().includes('chauffeur') ||
+      (order.items || []).some(it => String(it.name || '').toLowerCase().includes('chauffeur'));
+    const isCustom = isCustomRequestFlowOrder(order);
+
+    // Marketplace/Product orders go to Logistics, Chauffeur orders go to Operations, Bespoke custom orders go to Concierge
+    const targetStatus = isChauffeur
+      ? 'operation'
+      : isCustom
+        ? 'concierge'
+        : 'logistics';
+
+    const destinationLabel = isChauffeur ? 'Operations' : isCustom ? 'Concierge' : 'Logistics / Dispatch';
+
+    const confirm = await swalConfirm(
+      `Accept Order #${order.id}?`,
+      `Are you sure you want to ACCEPT Order #${order.id}? It will be forwarded to ${destinationLabel} for fulfilment.`
+    );
+
+    if (confirm?.isConfirmed) {
       try {
-        await updateOrderStatusMutation.mutateAsync({ id: order.id, status: stage });
-        if (syncGlobalState) await syncGlobalState();
-        window.dispatchEvent(new CustomEvent('app:state-changed'));
-        swalSuccess(`Order #${order.id} has been successfully moved to ${stage}.`);
+        // onMutate optimistically updates the cache immediately, so UI flips before API responds
+        await updateOrderStatusMutation.mutateAsync({ id: order.id, status: targetStatus });
+        // onSuccess in the hook fires notifyStateChanged — no need for manual refetch here
+        swalSuccess(
+          'Order Accepted',
+          `Order #${order.id} has been accepted and forwarded to ${destinationLabel}.`
+        );
       } catch (err) {
-        const errMsg = err?.response?.data?.message || err?.message || 'Failed to update order status.';
+        const errMsg = err?.response?.data?.message || err?.message || 'Failed to accept order.';
+        swalError(errMsg);
+      }
+    }
+  };
+
+  const handleRejectOrder = async (order) => {
+    const confirm = await swalConfirm(
+      `Reject Order #${order.id}?`,
+      `Are you sure you want to REJECT Order #${order.id}? This will cancel the order.`
+    );
+
+    if (confirm?.isConfirmed) {
+      try {
+        await updateOrderStatusMutation.mutateAsync({ id: order.id, status: 'cancelled' });
+        swalSuccess(
+          'Order Rejected',
+          `Order #${order.id} has been rejected and cancelled.`
+        );
+      } catch (err) {
+        const errMsg = err?.response?.data?.message || err?.message || 'Failed to reject order.';
         swalError(errMsg);
       }
     }
@@ -211,13 +226,15 @@ const Orders = () => {
 
     let list = workflowTab === 'history'
       ? nonProjectOrders.filter(o => {
-          const status = resolveLiveOrderStatus(o);
-          return status === 'completed' || status === 'delivered';
-        })
-      : nonProjectOrders.filter(o => {
+        const status = resolveLiveOrderStatus(o);
+        return status === 'completed' || status === 'delivered';
+      })
+      : workflowTab === 'active'
+        ? nonProjectOrders.filter(o => {
           const status = resolveLiveOrderStatus(o);
           return status !== 'completed' && status !== 'delivered';
-        });
+        })
+        : nonProjectOrders;
 
     // Concierge Portal Visibility: Concierge sees Concierge Requests + Marketplace orders of upgraded clients only
     if (portalRole === 'concierge' || normalizedRole === 'concierge') {
@@ -396,14 +413,30 @@ const Orders = () => {
         const liveSt = resolveLiveOrderStatus(row);
         const isDone = ['completed', 'delivered'].includes(liveSt);
         const isTransit = ['in_transit', 'en_route'].includes(liveSt);
-        const isLogistics = liveSt === 'logistics' || liveSt === 'assigned';
-        const badgeCls = isDone ? 'bg-success/20 text-success border border-success/25' :
-          isTransit ? 'bg-info/20 text-info border border-info/25' :
-          isLogistics ? 'bg-accent/20 text-accent border border-accent/25' :
-          'bg-warning/20 text-warning border border-warning/25';
+        const isAssigned = liveSt === 'assigned';
+        const isLogistics = liveSt === 'logistics';
+        const isOperation = liveSt === 'operation';
+        const isConcierge = liveSt === 'concierge';
+        const isCancelled = ['cancelled', 'rejected'].includes(liveSt);
+
+        const badgeCls = isDone
+          ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30'
+          : isTransit
+            ? 'bg-sky-500/15 text-sky-400 border border-sky-500/30'
+            : isAssigned
+              ? 'bg-blue-500/15 text-blue-400 border border-blue-500/30'
+              : isLogistics
+                ? 'bg-amber-500/15 text-amber-300 border border-amber-500/30'
+                : isOperation
+                  ? 'bg-purple-500/15 text-purple-400 border border-purple-500/30'
+                  : isConcierge
+                    ? 'bg-indigo-500/15 text-indigo-400 border border-indigo-500/30'
+                    : isCancelled
+                      ? 'bg-rose-500/15 text-rose-400 border border-rose-500/30'
+                      : 'bg-yellow-500/15 text-yellow-400 border border-yellow-500/30';
 
         return (
-          <span className={`px-2 py-1 rounded-lg text-xs font-bold uppercase ${badgeCls}`}>
+          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider ${badgeCls}`}>
             {displayOrderStatus(liveSt)}
           </span>
         );
@@ -440,7 +473,7 @@ const Orders = () => {
             <div className="flex flex-col gap-1">
               <span className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase ${delivery.status === 'Completed' || delivery.status === 'Delivered' ? 'bg-success/20 text-success' :
                 delivery.status === 'In Transit' ? 'bg-info/20 text-info' :
-                delivery.status === 'Pending' || delivery.status === 'Pending Pickup' ? 'bg-warning/20 text-warning' : 'bg-muted/20 text-muted'
+                  delivery.status === 'Pending' || delivery.status === 'Pending Pickup' ? 'bg-warning/20 text-warning' : 'bg-muted/20 text-muted'
                 }`}>
                 {delivery.status === 'Pending Pickup' ? 'Awaiting Pickup' : delivery.status}
               </span>
@@ -567,15 +600,21 @@ const Orders = () => {
           {/* Workflow tabs */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-1 bg-white/5 rounded-xl p-1 border border-white/10">
-              {[{key:'all',label:'All Orders'},{key:'history',label:'Record / History'}].map(tab => (
+              {[
+                { key: 'all', label: 'All Orders' },
+                { key: 'active', label: 'Active Orders' },
+                { key: 'history', label: 'Record / History' }
+              ].map(tab => (
                 <button
                   key={tab.key}
-                  onClick={() => setWorkflowTab(tab.key)}
-                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                    workflowTab === tab.key
+                  onClick={() => {
+                    setWorkflowTab(tab.key);
+                    setPage(1);
+                  }}
+                  className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all ${workflowTab === tab.key
                       ? 'bg-accent text-white shadow'
                       : 'text-white/50 hover:text-white hover:bg-white/10'
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -622,183 +661,41 @@ const Orders = () => {
                 const liveSt = resolveLiveOrderStatus(item);
                 const isCompleted = ['completed', 'delivered'].includes(liveSt);
                 const rawSt = String(item.status || '').toLowerCase();
+                const isPending = ['created', 'admin_review', 'pending', 'pending_review', 'submitted', 'draft'].includes(rawSt) ||
+                  ['created', 'admin_review', 'pending', 'pending_review', 'submitted', 'draft'].includes(liveSt);
 
                 if (isCompleted) {
                   return null;
                 }
 
-                return canManageOrders ? (
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {/* Delivery / Fleet Action */}
-                  {(['superadmin', 'operations', 'admin', 'saas_client', 'logistics'].includes(normalizedRole) || isBusinessClient) && (
+                // Accept and Reject buttons are shown ONLY in the Admin section (superadmin, admin, saas_client)
+                const isAdmin = ['superadmin', 'admin', 'saas_client'].includes(normalizedRole);
+                if (!isAdmin || !isPending) {
+                  return null;
+                }
+
+                return (
+                  <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        const oid = item.id;
-                        const orderRef = item.orderNumber || String(oid);
-                        navigate('/dashboard/deliveries', {
-                          state: {
-                            prefillOrderId: oid,
-                            orderId: orderRef,
-                            items: (item.items && item.items.length > 0) ? item.items : (item.customItems || item.metadata?.customItems || []),
-                            client: item.client,
-                            clientId: item.clientId || item.client_id || item.customer_id || '',
-                            customerId: item.customer_id || item.clientId || item.client_id || '',
-                            location: item.location || item.delivery_address || '',
-                            pickupLocation: item.pickupLocation || item.pickup_location || '',
-                            dropLocation: item.location || item.delivery_address || item.deliveryAddress || '',
-                            mode: item.deliveryType || item.delivery_mode || item.deliveryMode || item.mode || 'Road',
-                            deliveryInstructions: item.delivery_instructions || item.deliveryInstructions || '',
-                            deliveryFee: 0,
-                          }
-                        });
-                      }}
-                      className="p-1.5 px-2.5 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1 border border-white/5"
-                      title="Dispatch / Delivery Fleet"
+                      onClick={() => handleAcceptOrder(item)}
+                      className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-400 hover:text-emerald-300 border border-emerald-500/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                      title="Accept & forward order for fulfilment"
                     >
-                      <Truck size={13} /> <span>{['logistics', 'in_transit', 'assigned'].includes(liveSt) ? 'Dispatch / Fleet' : 'Delivery'}</span>
+                      <CheckCircle size={13} className="text-emerald-400" />
+                      <span>Accept Order</span>
                     </button>
-                  )}
-
-                  {/* Admin Approval: For newly created/submitted/pending orders */}
-                  {['superadmin', 'admin', 'saas_client'].includes(normalizedRole) &&
-                    ['created', 'admin_review', 'pending_review', 'pending', 'submitted', 'draft'].includes(rawSt) && (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleApprove(item, isCustomRequestFlowOrder(item) ? 'concierge' : 'operation');
-                        }}
-                        className="p-1.5 px-2.5 rounded-lg text-success hover:text-white bg-success/10 hover:bg-success/20 transition-all flex items-center justify-center font-black text-[10px] gap-1.5 border border-success/30 shadow-sm"
-                        title={isCustomRequestFlowOrder(item) ? 'Approve & send to Concierge' : 'Approve & send to Operations'}
-                      >
-                        <CheckCircle size={14} className="text-success" />{' '}
-                        <span>{isCustomRequestFlowOrder(item) ? 'Approve → Concierge' : 'Approve Order'}</span>
-                      </button>
-                    )}
-
-                  {/* Concierge triage: forward into supply chain */}
-                  {['superadmin', 'concierge', 'admin', 'saas_client'].includes(normalizedRole) &&
-                    rawSt === 'concierge' && (
-                      <>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'operation'); }}
-                          className="p-1 px-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                          title="Hand off to Operations"
-                        >
-                          <ArrowRightCircle size={13} /> <span>To Operations</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'procurement'); }}
-                          className="p-1 px-2 rounded-lg text-secondary hover:text-warning hover:bg-warning/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                          title="Needs procurement / sourcing"
-                        >
-                          <ShoppingCart size={13} /> <span>To Procurement</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
-                          className="p-1 px-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20"
-                          title="Straight to dispatch when fulfilment is logistics-only"
-                        >
-                          <Truck size={13} /> <span>To Dispatch</span>
-                        </button>
-                      </>
-                    )}
-
-                  {/* Operations Actions: operation -> procurement OR inventory OR logistics */}
-                  {['superadmin', 'operations', 'admin', 'saas_client'].includes(normalizedRole) &&
-                    ['operation'].includes(rawSt) && (
-                      <>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'procurement'); }}
-                          className="p-1 px-2 rounded-lg text-secondary hover:text-warning hover:bg-warning/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                          title="Needs Procurement"
-                        >
-                          <ShoppingCart size={13} /> <span>Procure</span>
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'inventory'); }}
-                          className="p-1 px-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                          title="Move to Inventory"
-                        >
-                          <Warehouse size={13} /> <span>Stock</span>
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
-                          className="p-1 px-2 rounded-lg text-accent hover:text-white bg-accent/10 hover:bg-accent/20 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/25"
-                          title="Send to Logistics"
-                        >
-                          <Truck size={13} /> <span>To Logistics</span>
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleConvertToProject(item); }}
-                          disabled={!!routingOrderId}
-                          className={`p-1 px-2 rounded-lg transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20 shadow-lg shadow-accent/5 ${
-                            routingOrderId === item.id
-                              ? 'text-accent bg-accent/20 cursor-wait opacity-80'
-                              : routingOrderId
-                              ? 'text-muted/40 bg-white/5 cursor-not-allowed opacity-40'
-                              : 'text-secondary hover:text-accent hover:bg-accent/10 bg-accent/5'
-                          }`}
-                          title={routingOrderId === item.id ? 'Creating project...' : 'Route to Project'}
-                        >
-                          <ArrowRightCircle size={13} />
-                          <span>{routingOrderId === item.id ? 'Routing...' : 'Route to Project'}</span>
-                        </button>
-                      </>
-                    )}
-
-                  {/* Procurement to Inventory: procurement -> inventory */}
-                  {['superadmin', 'procurement', 'admin', 'saas_client'].includes(normalizedRole) &&
-                    ['procurement'].includes(rawSt) && (
-                      <>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'inventory'); }}
-                          className="p-1.5 px-2 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-white/5"
-                          title="Move to Inventory"
-                        >
-                          <Warehouse size={13} /> <span>Store</span>
-                        </button>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
-                          className="p-1.5 px-2 rounded-lg text-secondary hover:text-accent hover:bg-accent/10 transition-all flex items-center justify-center font-bold text-[9px] gap-1.5 border border-accent/20"
-                          title="Send for Dispatch"
-                        >
-                          <Truck size={13} /> <span>To Logistics</span>
-                        </button>
-                      </>
-                    )}
-
-                  {/* Inventory to Logistics: inventory -> logistics */}
-                  {['superadmin', 'inventory', 'admin', 'saas_client'].includes(normalizedRole) &&
-                    ['inventory'].includes(rawSt) && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleApprove(item, 'logistics'); }}
-                        className="p-1.5 px-2.5 rounded-lg text-secondary hover:text-info hover:bg-info/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1.5 border border-white/5"
-                        title="Send for Dispatch"
-                      >
-                        <Truck size={14} /> <span>Dispatch</span>
-                      </button>
-                    )}
-
-                  {/* Logistics to Completed: logistics -> completed */}
-                  {['superadmin', 'logistics', 'admin', 'saas_client'].includes(normalizedRole) &&
-                    ['logistics', 'assigned', 'in_transit'].includes(rawSt) && (
-                      <button
-                        onClick={(e) => { e.stopPropagation(); handleApprove(item, 'completed'); }}
-                        className="p-1.5 px-2.5 rounded-lg text-secondary hover:text-success hover:bg-success/10 transition-all flex items-center justify-center font-bold text-[10px] gap-1.5 border border-white/5"
-                        title="Mark as Delivered"
-                      >
-                        <PackageCheck size={14} /> <span>Deliver</span>
-                      </button>
-                    )}
-                </div>
-              ) : null;
-            }}
+                    <button
+                      type="button"
+                      onClick={() => handleRejectOrder(item)}
+                      className="p-1.5 rounded-lg text-secondary hover:text-rose-400 hover:bg-rose-500/10 border border-white/5 hover:border-rose-500/30 transition-all active:scale-95 cursor-pointer"
+                      title="Reject / Cancel Order"
+                    >
+                      <XCircle size={13} />
+                    </button>
+                  </div>
+                );
+              }}
             />
           )}
         </div>

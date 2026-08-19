@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied, swalLoading, swalClose } from '../../utils/swal';
 import {
     Car, Calendar, Clock, MapPin, Navigation,
@@ -15,6 +15,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useChauffeurMissions, useCreateChauffeurMission, useUpdateChauffeurMission, useDeleteChauffeurMission } from '../../hooks/api/useChauffeur';
 import { formatClientDisplayName } from '../../utils/apiHelpers';
 import { normalizeRole } from '../../utils/authUtils';
+import api from '../../services/api/setupAxios';
 
 const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
     const [eta, setEta] = useState(null);
@@ -133,14 +134,8 @@ const Chauffeur = () => {
         };
         window.addEventListener('app:state-changed', handleStateChanged);
 
-        const interval = setInterval(() => {
-            queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
-            if (syncGlobalState) syncGlobalState();
-        }, 3000);
-
         return () => {
             window.removeEventListener('app:state-changed', handleStateChanged);
-            clearInterval(interval);
         };
     }, [fetchStaff, fetchClients, fetchSystemSettings, fetchFleet, queryClient, syncGlobalState]);
 
@@ -183,6 +178,7 @@ const Chauffeur = () => {
 
     const [showModal, setShowModal] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const isSubmittingRef = useRef(false);
     const [bookingTab, setBookingTab] = useState('active'); // 'active' | 'history'
 
     const [modalType, setModalType] = useState('create'); // create, edit, view
@@ -300,7 +296,8 @@ const Chauffeur = () => {
 
     const handleSubmit = (e) => {
         e.preventDefault();
-        if (isSubmitting) return;
+        if (isSubmitting || isSubmittingRef.current) return;
+        isSubmittingRef.current = true;
 
         const formData = new FormData(e.target);
 
@@ -414,6 +411,7 @@ const Chauffeur = () => {
             const targetId = editingRequest.db_id || editingRequest.id;
             updateMutation.mutate({ id: targetId, data: { ...editingRequest, ...request } }, {
                 onSuccess: async () => {
+                    isSubmittingRef.current = false;
                     if (updateChauffeurRequestCtx) {
                         try { await updateChauffeurRequestCtx({ ...editingRequest, ...request, id: targetId, db_id: targetId }); } catch (_) {}
                     }
@@ -425,6 +423,7 @@ const Chauffeur = () => {
                     swalSuccess("Protocol Updated", "Chauffeur booking details updated successfully.");
                 },
                 onError: (err) => {
+                    isSubmittingRef.current = false;
                     swalClose();
                     setIsSubmitting(false);
                     const msg = err.response?.data?.message || err.message || "Failed to update chauffeur booking.";
@@ -434,6 +433,7 @@ const Chauffeur = () => {
         } else {
             createMutation.mutate(request, {
                 onSuccess: async () => {
+                    isSubmittingRef.current = false;
                     if (syncGlobalState) await syncGlobalState();
                     swalClose();
                     setIsSubmitting(false);
@@ -442,6 +442,7 @@ const Chauffeur = () => {
                     swalSuccess("Booking Confirmed", "Your chauffeur service has been booked successfully.");
                 },
                 onError: (err) => {
+                    isSubmittingRef.current = false;
                     swalClose();
                     setIsSubmitting(false);
                     const msg = err.response?.data?.message || err.message || "Failed to book chauffeur service.";
@@ -560,18 +561,43 @@ const Chauffeur = () => {
         if ((await swalConfirm('Complete Chauffeur Ride', `Mark Chauffeur booking ${row.id} as completed?`)).isConfirmed) {
             swalLoading("Updating Status", "Setting chauffeur ride to completed...");
             const targetId = row.db_id || row.id;
-            const updated = { ...row, status: 'completed' };
             try {
-                await updateMutation.mutateAsync({ id: targetId, data: updated });
-                if (updateChauffeurRequestCtx) {
-                    try { await updateChauffeurRequestCtx(updated); } catch (_) {}
-                }
-                if (syncGlobalState) await syncGlobalState();
+                // 1. Immediately update the local cache so UI flips status now
+                queryClient.setQueriesData({ queryKey: ['chauffeurMissions'] }, (old) => {
+                    if (!old || !old.data) return old;
+                    return {
+                        ...old,
+                        data: old.data.map(r =>
+                            (String(r.id) === String(targetId) || String(r.db_id) === String(targetId))
+                                ? { ...r, status: 'completed', chauffeur_status: 'completed' }
+                                : r
+                        )
+                    };
+                });
+
+                // 2. Persist status in localStorage updatedMap so refetches keep the latest status
+                const { setUpdatedChauffeurItem } = await import('../../utils/stateSyncHelper');
+                setUpdatedChauffeurItem(String(targetId), { status: 'completed', chauffeur_status: 'completed' });
+
+                // 3. Persist to backend
+                await api.put(`/orders/${targetId}/status`, { status: 'completed' });
+
                 swalClose();
                 swalSuccess("Ride Completed", `Chauffeur booking ${row.id} is now marked as Completed!`);
+
+                // 4. Broadcast state change to all open tabs/portals
+                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'chauffeur-complete', orderId: targetId } }));
+
+                // 5. Invalidate all relevant queries so server state is reflected
+                queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+                queryClient.invalidateQueries({ queryKey: ['orders'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
             } catch (err) {
+                // Revert optimistic update on failure
+                queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
                 swalClose();
-                swalError("Error", "Failed to update chauffeur status.");
+                const msg = err.response?.data?.message || err.message || 'Failed to update chauffeur status.';
+                swalError("Error", msg);
             }
         }
     };

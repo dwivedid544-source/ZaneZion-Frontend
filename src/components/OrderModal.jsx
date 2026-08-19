@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import Modal from './Modal';
-import { Clock, MapPin, Plus, Trash2, Tag, DollarSign, Package, Printer, CheckCircle } from 'lucide-react';
+import { Clock, MapPin, Plus, Trash2, Tag, DollarSign, Package, Printer, CheckCircle, Car, Navigation, User, Users, CheckCircle2, Calendar, Wifi, Coffee, Briefcase, ShieldCheck, ArrowRight } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
 import { useData } from '../context/GlobalDataContext';
 import { calculateOSRMRouteDistance } from '../utils/distanceHelper';
@@ -233,7 +233,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 !typeStr.includes('custom order') && 
                 !kindStr.includes('marketplace') && 
                 (typeStr.includes('chauffeur') || kindStr.includes('chauffeur') || firstItemName.includes('chauffeur service') || firstItemName.startsWith('vip chauffeur'));
-            const firstCustom = (meta?.customItems && meta.customItems[0]) || {};
+            const firstCustom = (meta?.customItems && meta.customItems[0]) || (effectiveOrder.customItems && effectiveOrder.customItems[0]) || (effectiveOrder.items && effectiveOrder.items[0]) || {};
+            const passInfo = effectiveOrder.passenger_info || meta?.passenger_info || meta?.passengerInfo || firstCustom.passenger_info || firstCustom.passengerInfo || {};
 
             let rawItems = (effectiveOrder.items && effectiveOrder.items.length > 0) ? effectiveOrder.items : (effectiveOrder.customItems || meta?.customItems || []);
             if (typeof rawItems === 'string') {
@@ -249,13 +250,11 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
             let parsedItems = [];
             if (isChauffeur) {
-                const sType = effectiveOrder.serviceType || firstCustom.serviceType || 'One Way';
+                const sType = firstCustom.serviceType || effectiveOrder.serviceType || 'One Way';
                 const days = parseInt(effectiveOrder.numberOfDays || effectiveOrder.dailyDays || firstCustom.numberOfDays || firstCustom.dailyDays || 1, 10) || 1;
                 const qtyMultiplier = sType === 'Round Trip' ? 2 : (sType === 'Daily Service' ? days : 1);
-                // Always use $120 as the base unit price — ignore any stored bloated values
                 const CHAUFFEUR_BASE = 120;
                 const finalUnitPrice = CHAUFFEUR_BASE;
-                const finalTotal = CHAUFFEUR_BASE * qtyMultiplier;
 
                 parsedItems = [{
                     name: `VIP Chauffeur Service (${sType}${sType === 'Daily Service' ? ` - ${days} Days` : ''})`,
@@ -264,10 +263,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 }];
             } else {
                 parsedItems = rawItems.map((itm, idx) => {
-                    // DB OrderItem row: name lives in itm.item.name; marketplace cart uses itm.name directly
                     const name = itm.name || itm.item?.name || itm.itemName || itm.title || itm.description || `Item ${idx + 1}`;
                     const qty = parseInt(itm.qty || itm.quantity || 1) || 1;
-                    // DB OrderItem uses unitPrice; marketplace cart uses price; also check totalPrice / unit_price
                     const price = itm.unitPrice !== undefined ? itm.unitPrice
                         : itm.price !== undefined ? itm.price
                         : itm.unit_price !== undefined ? itm.unit_price
@@ -295,7 +292,6 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
             const requestDate = normalizeIsoDate(effectiveOrder.requestDate || effectiveOrder.order_date || effectiveOrder.created_at) || todayIso();
             const dueDate = clampDueDateToRequest(requestDate, effectiveOrder.dueDate || effectiveOrder.due_date);
-            // Try to match existing order's client in dropdown list
             const existingClientId = effectiveOrder.clientId || effectiveOrder.client_id || '';
             const matchedDropdown = customerOnlyForDropdown.find(c =>
                 String(c.rawId) === String(existingClientId)
@@ -305,32 +301,76 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             const dropLoc = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || effectiveOrder.dropLocation || effectiveOrder.drop_location || firstCustom.dropLocation || firstCustom.location || firstCustom.deliveryAddress || meta?.location || meta?.deliveryAddress || meta?.delivery_address || meta?.dropLocation || meta?.drop_location || '';
             const pickLoc = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || firstCustom.pickupLocation || firstCustom.pickup_location || meta?.pickupLocation || meta?.pickup_location || '';
 
-            let rawAmenities = effectiveOrder.amenities || firstCustom.amenities || meta?.amenities || [];
-            let amenitiesList = Array.isArray(rawAmenities) ? rawAmenities : (typeof rawAmenities === 'string' && rawAmenities.trim() ? rawAmenities.split(',').map(s => s.trim()) : []);
-            let amenitiesStr = amenitiesList.join(', ');
+            // Prioritize actual specific passenger name over generic 'personal client'
+            const candidatePassengerNames = [
+                firstCustom.passengerName,
+                firstCustom.guestName,
+                firstCustom.clientName,
+                meta?.passengerName,
+                meta?.guestName,
+                meta?.client_name,
+                passInfo.name,
+                passInfo.passengerName,
+                effectiveOrder.passengerName,
+                effectiveOrder.guestName,
+                effectiveOrder.customer_name,
+                clientDisplayName
+            ].filter(n => n && typeof n === 'string' && n.trim() && n.toLowerCase() !== 'personal client');
 
             const parsedGuestName = isChauffeur
-                ? (effectiveOrder.passengerName || effectiveOrder.passenger_name || effectiveOrder.guestName || (meta?.passengerInfo?.name) || (meta?.passengerName) || (meta?.guestName) || (firstCustom.passengerName) || (firstCustom.passenger_name) || (firstCustom.guestName) || clientDisplayName || '')
+                ? (candidatePassengerNames[0] || effectiveOrder.passengerName || effectiveOrder.guestName || firstCustom.passengerName || firstCustom.guestName || clientDisplayName || 'Executive Passenger')
                 : '';
 
-            const parsedWifi = isChauffeur
-                ? (effectiveOrder.wifi || firstCustom.wifi || meta?.wifi || (amenitiesStr.toLowerCase().includes('wifi') ? 'Yes' : 'No'))
-                : 'No';
-            const parsedRefreshments = isChauffeur
-                ? (effectiveOrder.refreshments || firstCustom.refreshments || meta?.refreshments || (amenitiesStr.toLowerCase().includes('refreshment') ? 'Yes' : 'No'))
-                : 'No';
-            const parsedCarSeat = isChauffeur
-                ? (effectiveOrder.carSeat || effectiveOrder.car_seat || firstCustom.carSeat || firstCustom.car_seat || meta?.carSeat || meta?.car_seat || (amenitiesStr.toLowerCase().includes('car seat') || amenitiesStr.toLowerCase().includes('baby') ? 'Yes' : 'No'))
-                : 'No';
-            const parsedStops = isChauffeur
-                ? (effectiveOrder.stops || firstCustom.stops || meta?.stops || 'No')
-                : 'No';
-            const parsedStopLocations = isChauffeur
-                ? (effectiveOrder.stopLocations || firstCustom.stopLocations || meta?.stopLocations || meta?.stop_locations || '')
-                : '';
-            const parsedLuggage = isChauffeur
-                ? (effectiveOrder.luggage || firstCustom.luggage || meta?.luggage || '')
-                : '';
+            // Prioritize actual passenger count over default 1 if custom items had it
+            const candidatePax = [
+                firstCustom.numberOfPassengers,
+                firstCustom.passengers,
+                firstCustom.passengerCount,
+                passInfo.count,
+                meta?.numberOfPassengers,
+                meta?.passengers,
+                meta?.passengerCount,
+                effectiveOrder.numberOfPassengers,
+                effectiveOrder.passengers,
+                effectiveOrder.passengerCount
+            ].map(p => parseInt(p, 10)).find(p => !isNaN(p) && p > 0);
+            const parsedPax = candidatePax || 1;
+
+            // Amenities & luggage
+            const rawAmenities = [
+                ...(Array.isArray(firstCustom.amenities) ? firstCustom.amenities : []),
+                ...(Array.isArray(meta?.amenities) ? meta.amenities : []),
+                ...(Array.isArray(effectiveOrder.amenities) ? effectiveOrder.amenities : []),
+                ...(typeof firstCustom.amenities === 'string' ? firstCustom.amenities.split(',') : []),
+                ...(typeof meta?.amenities === 'string' ? meta.amenities.split(',') : []),
+                ...(typeof effectiveOrder.amenities === 'string' ? effectiveOrder.amenities.split(',') : [])
+            ].map(s => s.trim()).filter(Boolean);
+            const uniqueAmenities = [...new Set(rawAmenities)];
+            const amenitiesStr = uniqueAmenities.join(', ');
+            const amenitiesLower = uniqueAmenities.map(a => a.toLowerCase());
+
+            const parsedWifi = (firstCustom.wifi === 'Yes' || meta?.wifi === 'Yes' || effectiveOrder.wifi === 'Yes' || amenitiesLower.some(a => a.includes('wifi'))) ? 'Yes' : 'No';
+            const parsedRefreshments = (firstCustom.refreshments === 'Yes' || meta?.refreshments === 'Yes' || effectiveOrder.refreshments === 'Yes' || amenitiesLower.some(a => a.includes('refreshment'))) ? 'Yes' : 'No';
+            const parsedCarSeat = (firstCustom.carSeat === 'Yes' || firstCustom.car_seat === 'Yes' || meta?.carSeat === 'Yes' || meta?.car_seat === 'Yes' || effectiveOrder.carSeat === 'Yes' || amenitiesLower.some(a => a.includes('car seat') || a.includes('baby'))) ? 'Yes' : 'No';
+
+            const rawBags = [firstCustom.bags, meta?.bags, effectiveOrder.bags].map(b => parseInt(b, 10)).find(b => !isNaN(b) && b > 0) || 0;
+            const parsedLuggage = (firstCustom.luggage && firstCustom.luggage !== 'No')
+                ? (firstCustom.luggage.includes('bag') ? firstCustom.luggage : (rawBags > 0 ? `Yes — ${rawBags} bag(s)` : firstCustom.luggage))
+                : (meta?.luggage && meta.luggage !== 'No'
+                    ? (meta.luggage.includes('bag') ? meta.luggage : (rawBags > 0 ? `Yes — ${rawBags} bag(s)` : meta.luggage))
+                    : (effectiveOrder.luggage && effectiveOrder.luggage !== 'No'
+                        ? (effectiveOrder.luggage.includes('bag') ? effectiveOrder.luggage : (rawBags > 0 ? `Yes — ${rawBags} bag(s)` : effectiveOrder.luggage))
+                        : (rawBags > 0 ? `Yes — ${rawBags} bag(s)` : 'No')));
+
+            const parsedStops = (firstCustom.stops === 'Yes' || meta?.stops === 'Yes' || effectiveOrder.stops === 'Yes') ? 'Yes' : 'No';
+            const parsedStopLocations = firstCustom.stopLocations || meta?.stopLocations || effectiveOrder.stopLocations || '';
+            const parsedServiceType = firstCustom.serviceType || meta?.serviceType || effectiveOrder.serviceType || 'One Way';
+            const parsedReturnDate = firstCustom.returnDate || meta?.returnDate || effectiveOrder.returnDate || '';
+            const parsedReturnTime = firstCustom.returnTime || meta?.returnTime || effectiveOrder.returnTime || '';
+            const parsedPickupTime = firstCustom.pickupTime || meta?.pickupTime || effectiveOrder.pickupTime || '';
+
+            const initialDist = effectiveOrder.totalDistance || effectiveOrder.total_distance || effectiveOrder.distance || meta?.totalDistance || meta?.total_distance || meta?.distance_km || meta?.distanceKm || meta?.distance || firstCustom.totalDistance || firstCustom.total_distance || firstCustom.distance || '';
+            const formattedDist = initialDist ? (String(initialDist).toLowerCase().includes('km') ? String(initialDist) : `${initialDist} km`) : '';
 
             setFormData({
                 client: clientDisplayName,
@@ -348,15 +388,15 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 type: isChauffeur ? 'Chauffeur Service' : ((effectiveOrder.orderType === 'PRODUCT' || meta?.order_kind === 'marketplace') ? 'Procurement' : (effectiveOrder.orderType || effectiveOrder.type || 'Custom Order')),
                 deliveryType: effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road',
                 pickupLocation: pickLoc,
-                pickupTime: isChauffeur ? (effectiveOrder.pickupTime || firstCustom.pickupTime || '') : '',
-                totalDistance: effectiveOrder.totalDistance || effectiveOrder.total_distance || '',
-                serviceType: isChauffeur ? (effectiveOrder.serviceType || firstCustom.serviceType || 'One Way') : 'One Way',
-                returnDate: isChauffeur ? (effectiveOrder.returnDate || firstCustom.returnDate || '') : '',
-                returnTime: isChauffeur ? (effectiveOrder.returnTime || firstCustom.returnTime || '') : '',
-                returnLocation: isChauffeur ? (effectiveOrder.returnLocation || '') : '',
-                dailyDays: isChauffeur ? (effectiveOrder.dailyDays || firstCustom.numberOfDays || 1) : 1,
+                pickupTime: isChauffeur ? parsedPickupTime : '',
+                totalDistance: formattedDist,
+                serviceType: isChauffeur ? parsedServiceType : 'One Way',
+                returnDate: isChauffeur ? parsedReturnDate : '',
+                returnTime: isChauffeur ? parsedReturnTime : '',
+                returnLocation: isChauffeur ? (effectiveOrder.returnLocation || firstCustom.returnLocation || '') : '',
+                dailyDays: isChauffeur ? (effectiveOrder.dailyDays || firstCustom.numberOfDays || meta?.numberOfDays || 1) : 1,
                 luggage: parsedLuggage,
-                passengerCount: isChauffeur ? (effectiveOrder.numberOfPassengers || effectiveOrder.number_of_passengers || effectiveOrder.passengers || effectiveOrder.passengerCount || effectiveOrder.passenger_count || effectiveOrder.guestCount || effectiveOrder.guest_count || effectiveOrder.pax || (meta?.numberOfPassengers) || (meta?.passengers) || (meta?.passengerInfo?.count) || (meta?.passengerCount) || (firstCustom.numberOfPassengers) || (firstCustom.passengers) || (firstCustom.passengerCount) || (firstCustom.guestCount) || 1) : '',
+                passengerCount: isChauffeur ? parsedPax : '',
                 passengerName: parsedGuestName,
                 stops: parsedStops,
                 stopLocations: parsedStopLocations,
@@ -365,6 +405,18 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 carSeat: parsedCarSeat,
                 amenities: isChauffeur ? amenitiesStr : ''
             });
+
+            // If distance was missing, calculate it automatically in background
+            if (!formattedDist && pickLoc && dropLoc) {
+                calculateOSRMRouteDistance(pickLoc, dropLoc, effectiveOrder.deliveryType || 'Road').then(res => {
+                    if (res && res.distanceKm != null) {
+                        setFormData(prev => ({
+                            ...prev,
+                            totalDistance: `${res.distanceKm} km`
+                        }));
+                    }
+                }).catch(() => {});
+            }
         }
     }, [isOpen, effectiveOrder, modalType, customerOnlyForDropdown]);
 
@@ -417,7 +469,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             if (formData.pickupLocation && formData.location) {
                 triggerCalculateDistance(formData.pickupLocation, formData.location, formData.deliveryType);
             }
-        }, currentModalType === 'view' ? 50 : 400);
+        }, currentModalType === 'view' ? 50 : 200);
         return () => clearTimeout(timer);
     }, [formData.pickupLocation, formData.location, formData.deliveryType, currentModalType, triggerCalculateDistance]);
 
@@ -653,262 +705,429 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                         </div>
                                     )}
 
-                                    <div className="col-span-1 md:col-span-2 space-y-3">
-                                        <div className="flex items-center justify-between pb-2 border-b border-white/5">
-                                            <div className="flex flex-col">
-                                                <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em]">Institutional Requisition Items</label>
-                                                <p className="text-[9px] text-secondary italic uppercase tracking-tighter mt-0.5">Define multi-line asset specifications below</p>
-                                            </div>
-                                            {currentModalType !== 'view' && (
-                                                <button
-                                                    type="button"
-                                                    onClick={handleAddItem}
-                                                    className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/30 rounded-xl text-[10px] font-black text-accent hover:bg-accent hover:text-black transition-all shadow-lg shadow-accent/5 group"
-                                                >
-                                                    <Plus size={14} className="group-hover:rotate-90 transition-transform duration-300" /> ADD ITEM PROTOCOL
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            {(Array.isArray(formData.items) ? formData.items : []).map((item, index) => (
-                                                <div key={index} className="p-3 bg-white/[0.02] border border-border/50 rounded-2xl">
-                                                    <div className="grid grid-cols-2 gap-3">
-                                                        <div className="space-y-1">
-                                                            <label className="text-[9px] font-bold text-muted uppercase ml-1">Item Name</label>
-                                                            <div className="relative">
-                                                                <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={12} />
-                                                                <input
-                                                                    type="text"
-                                                                    value={item.name}
-                                                                    onChange={(e) => handleItemChange(index, 'name', e.target.value)}
-                                                                    placeholder="e.g. Vintage Champagne"
-                                                                    className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
-                                                                    disabled={currentModalType === 'view'}
-                                                                    required
-                                                                />
-                                                            </div>
+                                    {isChauffeurOrder && currentModalType === 'view' ? (
+                                        <div className="col-span-1 md:col-span-2 space-y-4">
+                                            {/* VIP Header Card */}
+                                            <div className="p-4 rounded-2xl bg-gradient-to-r from-accent/15 via-accent/5 to-transparent border border-accent/30 flex items-center justify-between flex-wrap gap-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="w-11 h-11 rounded-xl bg-accent/20 border border-accent/40 flex items-center justify-center text-accent shadow-lg shadow-accent/10">
+                                                        <Car size={22} />
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="text-[10px] font-black uppercase tracking-[0.2em] text-accent">VIP Chauffeur Protocol</span>
+                                                            <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-white/10 text-white border border-white/10">
+                                                                {formData.serviceType || 'One Way'}
+                                                            </span>
                                                         </div>
-                                                        <div className="space-y-1">
-                                                            <label className="text-[9px] font-bold text-muted uppercase ml-1">Qty</label>
-                                                            <input
-                                                                type="number"
-                                                                value={item.qty}
-                                                                onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
-                                                                className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:border-accent outline-none text-center font-bold"
-                                                                disabled={currentModalType === 'view'}
-                                                                min="1"
-                                                                required
-                                                            />
-                                                        </div>
-                                                        <div className="space-y-1">
-                                                            <label className="text-[9px] font-bold text-muted uppercase ml-1">Unit Price</label>
-                                                            <div className="relative">
-                                                                <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 text-muted" size={12} />
-                                                                <input
-                                                                    type="number"
-                                                                    value={item.price}
-                                                                    onChange={(e) => handleItemChange(index, 'price', e.target.value)}
-                                                                    placeholder="0.00"
-                                                                    className="w-full bg-background border border-border rounded-lg pl-6 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
-                                                                    disabled={currentModalType === 'view'}
-                                                                    step="0.01"
-                                                                />
-                                                            </div>
-                                                        </div>
-                                                        <div className="space-y-1 flex gap-2 items-end">
-                                                            <div className="flex-1 space-y-1">
-                                                                <label className="text-[9px] font-bold text-muted uppercase ml-1">Line Total</label>
-                                                                <div className="w-full bg-white/[0.04] border border-border rounded-lg px-3 py-2 text-xs text-accent font-black">
-                                                                    ${(parseFloat(item.price || 0) * (parseInt(item.qty) || 0)).toFixed(2)}
-                                                                </div>
-                                                            </div>
-                                                            {currentModalType !== 'view' && formData.items.length > 1 && (
-                                                                <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 mb-0.5 text-danger hover:bg-danger/10 rounded-lg transition-colors shrink-0">
-                                                                    <Trash2 size={16} />
-                                                                </button>
-                                                            )}
-                                                        </div>
+                                                        <h3 className="text-base font-black italic tracking-tight text-white mt-0.5">
+                                                            {formData.passengerName || formData.client || 'Executive Passenger'}
+                                                        </h3>
                                                     </div>
                                                 </div>
-                                            ))}
-                                        </div>
-                                        {currentModalType !== 'view' && (
-                                            <p className="text-[9px] text-muted italic">* Prices can be left empty if currently unknown (e.g. pending store visit).</p>
-                                        )}
-
-                                        <div className="flex justify-end pt-2 border-t border-white/5 mt-4">
-                                            <div className="text-right p-4 bg-accent/[0.03] border border-accent/10 rounded-2xl min-w-[200px]">
-                                                <p className="text-[10px] font-black text-muted uppercase tracking-widest">Grand Total (Estimated)</p>
-                                                <p className="text-2xl font-black text-accent">${calculateTotal()}</p>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {isChauffeurOrder && (
-                                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-accent/5 rounded-2xl border border-accent/20 col-span-1 md:col-span-2">
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">No. of Passengers (PAX)</label>
-                                                <input
-                                                    type="number"
-                                                    min="1"
-                                                    value={formData.passengerCount || 1}
-                                                    onChange={(e) => setFormData({ ...formData, passengerCount: e.target.value })}
-                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
-                                                    disabled={currentModalType === 'view'}
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Guest Name / Passenger</label>
-                                                <input
-                                                    type="text"
-                                                    value={formData.passengerName || formData.client || ''}
-                                                    onChange={(e) => setFormData({ ...formData, passengerName: e.target.value })}
-                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
-                                                    placeholder="Guest Name (Auto: Client Name)"
-                                                    disabled={currentModalType === 'view'}
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Luggage Option</label>
-                                                <input
-                                                    type="text"
-                                                    value={formData.luggage || 'No'}
-                                                    onChange={(e) => setFormData({ ...formData, luggage: e.target.value })}
-                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
-                                                    disabled={currentModalType === 'view'}
-                                                />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Wi-Fi</label>
-                                                <div className={`w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold ${formData.wifi === 'Yes' ? 'text-success' : 'text-muted'}`}>
-                                                    {formData.wifi || 'No'}
+                                                <div className="text-right">
+                                                    <p className="text-[9px] font-black text-muted uppercase tracking-widest">Total Estimated Fare</p>
+                                                    <p className="text-2xl font-black italic tracking-tight text-accent">${calculateTotal()}</p>
                                                 </div>
                                             </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Refreshments</label>
-                                                <div className={`w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold ${formData.refreshments === 'Yes' ? 'text-success' : 'text-muted'}`}>
-                                                    {formData.refreshments || 'No'}
+
+                                            {/* Route & Trajectory Card */}
+                                            <div className="p-5 rounded-2xl bg-white/[0.02] border border-white/10 space-y-4">
+                                                <div className="flex items-center justify-between border-b border-white/5 pb-2">
+                                                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted flex items-center gap-1.5">
+                                                        <Navigation size={12} className="text-accent" /> Journey Trajectory & Schedule
+                                                    </span>
+                                                    <span className="text-[10px] font-black text-accent uppercase tracking-wider bg-accent/10 px-2.5 py-0.5 rounded-md border border-accent/20">
+                                                        {formData.totalDistance ? (String(formData.totalDistance).toLowerCase().includes('km') ? formData.totalDistance : `${formData.totalDistance} km`) : (isCalculatingDistance ? 'Calculating route...' : 'Direct Route')}
+                                                    </span>
+                                                </div>
+
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 relative">
+                                                    {/* Pickup Origin */}
+                                                    <div className="p-3.5 rounded-xl bg-black/30 border border-white/5 space-y-1.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-accent flex items-center gap-1">
+                                                                <MapPin size={11} /> Starting / Pickup
+                                                            </span>
+                                                            <span className="text-[9px] font-bold text-muted flex items-center gap-1">
+                                                                <Clock size={10} /> {formData.pickupTime || 'As scheduled'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-sm font-black text-white">{formData.pickupLocation || 'Not specified'}</p>
+                                                        <p className="text-[10px] text-muted font-bold flex items-center gap-1">
+                                                            <Calendar size={10} /> Date: {formData.requestDate || todayIso()}
+                                                        </p>
+                                                    </div>
+
+                                                    {/* Drop Destination */}
+                                                    <div className="p-3.5 rounded-xl bg-black/30 border border-white/5 space-y-1.5">
+                                                        <div className="flex items-center justify-between">
+                                                            <span className="text-[9px] font-black uppercase tracking-widest text-emerald-400 flex items-center gap-1">
+                                                                <Navigation size={11} /> Destination / Drop-off
+                                                            </span>
+                                                            <span className="text-[9px] font-bold text-muted">
+                                                                {formData.deliveryType || 'Executive Road Fleet'}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-sm font-black text-white">{formData.location || 'Not specified'}</p>
+                                                        <p className="text-[10px] text-muted font-bold flex items-center gap-1">
+                                                            <Clock size={10} /> Target Due: {formData.dueDate || formData.requestDate || todayIso()}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Return Schedule if Round Trip */}
+                                                {formData.serviceType === 'Round Trip' && (
+                                                    <div className="p-3 rounded-xl bg-sky-500/10 border border-sky-500/20 flex items-center justify-between flex-wrap gap-2 text-xs">
+                                                        <div className="flex items-center gap-2">
+                                                            <span className="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[9px] font-black uppercase tracking-wider">
+                                                                Round Trip Return
+                                                            </span>
+                                                            <span className="text-white font-bold">
+                                                                {formData.returnDate ? `Date: ${formData.returnDate}` : 'Return Date: As Scheduled'}
+                                                            </span>
+                                                        </div>
+                                                        <span className="text-sky-300 font-bold text-[11px]">
+                                                            {formData.returnTime ? `Return Departure: ${formData.returnTime}` : ''}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Passenger & Amenities Grid */}
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                                                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted flex items-center gap-1">
+                                                        <Users size={11} className="text-accent" /> Passengers (PAX)
+                                                    </span>
+                                                    <p className="text-sm font-black text-white">{formData.passengerCount || 1} PAX</p>
+                                                </div>
+
+                                                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted flex items-center gap-1">
+                                                        <Briefcase size={11} className="text-accent" /> Luggage
+                                                    </span>
+                                                    <p className="text-sm font-black text-white">{formData.luggage || 'Standard Luggage'}</p>
+                                                </div>
+
+                                                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted flex items-center gap-1">
+                                                        <Wifi size={11} className="text-accent" /> On-Board Wi-Fi
+                                                    </span>
+                                                    <p className={`text-sm font-black ${formData.wifi === 'Yes' ? 'text-emerald-400' : 'text-muted'}`}>
+                                                        {formData.wifi === 'Yes' ? '✓ Included' : 'No'}
+                                                    </p>
+                                                </div>
+
+                                                <div className="p-3 rounded-xl bg-white/[0.02] border border-white/5 space-y-1">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted flex items-center gap-1">
+                                                        <Coffee size={11} className="text-accent" /> Refreshments
+                                                    </span>
+                                                    <p className={`text-sm font-black ${formData.refreshments === 'Yes' ? 'text-emerald-400' : 'text-muted'}`}>
+                                                        {formData.refreshments === 'Yes' ? '✓ Included' : 'No'}
+                                                    </p>
                                                 </div>
                                             </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Car Seat</label>
-                                                <div className={`w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold ${formData.carSeat === 'Yes' ? 'text-success' : 'text-muted'}`}>
-                                                    {formData.carSeat || 'No'}
+
+                                            {/* Extra Specs Bar */}
+                                            <div className="p-3.5 rounded-xl bg-white/[0.02] border border-white/5 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                                <div>
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted block mb-0.5">Child Safety Seat</span>
+                                                    <span className={`font-bold ${formData.carSeat === 'Yes' ? 'text-emerald-400' : 'text-muted'}`}>
+                                                        {formData.carSeat === 'Yes' ? '✓ Premium Child Safety Seat Included' : 'Not Requested'}
+                                                    </span>
+                                                </div>
+                                                <div>
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted block mb-0.5">Extra En-Route Stops</span>
+                                                    <span className={`font-bold ${formData.stops === 'Yes' ? 'text-white' : 'text-muted'}`}>
+                                                        {formData.stops === 'Yes' ? `✓ Stops: ${formData.stopLocations || 'Requested'}` : 'Direct Journey (Non-stop)'}
+                                                    </span>
                                                 </div>
                                             </div>
-                                            <div className="space-y-1 sm:col-span-2 md:col-span-3">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Extra Stops</label>
-                                                <div className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white">
-                                                    {formData.stops === 'Yes' ? `Yes ${formData.stopLocations ? `— ${formData.stopLocations}` : ''}` : 'No'}
+
+                                            {/* Fare Details */}
+                                            <div className="p-4 rounded-2xl bg-black/40 border border-white/10 flex items-center justify-between text-xs">
+                                                <div className="space-y-0.5">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted">Pricing Protocol</span>
+                                                    <p className="text-white font-bold">
+                                                        $120.00 base rate × {formData.serviceType === 'Round Trip' ? '2 (Round Trip)' : formData.dailyDays > 1 ? `${formData.dailyDays} Days` : '1 (One Way)'}
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-muted">Final Amount</span>
+                                                    <p className="text-lg font-black text-accent">${calculateTotal()}</p>
                                                 </div>
                                             </div>
-                                            <div className="space-y-1 sm:col-span-2 md:col-span-3">
-                                                <label className="text-[10px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</label>
-                                                <input
-                                                    type="text"
-                                                    value={`${formData.serviceType || 'One Way'}${formData.serviceType === 'Round Trip' ? ' (2× Round Trip Rate applied)' : formData.dailyDays > 1 ? ` (${formData.dailyDays} Days)` : ''}`}
-                                                    onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
-                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
-                                                    disabled={currentModalType === 'view'}
-                                                />
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="col-span-1 md:col-span-2 space-y-3">
+                                                <div className="flex items-center justify-between pb-2 border-b border-white/5">
+                                                    <div className="flex flex-col">
+                                                        <label className="text-[10px] font-black text-muted uppercase tracking-[0.2em]">Institutional Requisition Items</label>
+                                                        <p className="text-[9px] text-secondary italic uppercase tracking-tighter mt-0.5">Define multi-line asset specifications below</p>
+                                                    </div>
+                                                    {currentModalType !== 'view' && (
+                                                        <button
+                                                            type="button"
+                                                            onClick={handleAddItem}
+                                                            className="flex items-center gap-2 px-4 py-2 bg-accent/10 border border-accent/30 rounded-xl text-[10px] font-black text-accent hover:bg-accent hover:text-black transition-all shadow-lg shadow-accent/5 group"
+                                                        >
+                                                            <Plus size={14} className="group-hover:rotate-90 transition-transform duration-300" /> ADD ITEM PROTOCOL
+                                                        </button>
+                                                    )}
+                                                </div>
+
+                                                <div className="space-y-4">
+                                                    {(Array.isArray(formData.items) ? formData.items : []).map((item, index) => (
+                                                        <div key={index} className="p-3 bg-white/[0.02] border border-border/50 rounded-2xl">
+                                                            <div className="grid grid-cols-2 gap-3">
+                                                                <div className="space-y-1">
+                                                                    <label className="text-[9px] font-bold text-muted uppercase ml-1">Item Name</label>
+                                                                    <div className="relative">
+                                                                        <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={12} />
+                                                                        <input
+                                                                            type="text"
+                                                                            value={item.name}
+                                                                            onChange={(e) => handleItemChange(index, 'name', e.target.value)}
+                                                                            placeholder="e.g. Vintage Champagne"
+                                                                            className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
+                                                                            disabled={currentModalType === 'view'}
+                                                                            required
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <label className="text-[9px] font-bold text-muted uppercase ml-1">Qty</label>
+                                                                    <input
+                                                                        type="number"
+                                                                        value={item.qty}
+                                                                        onChange={(e) => handleItemChange(index, 'qty', e.target.value)}
+                                                                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs focus:border-accent outline-none text-center font-bold"
+                                                                        disabled={currentModalType === 'view'}
+                                                                        min="1"
+                                                                        required
+                                                                    />
+                                                                </div>
+                                                                <div className="space-y-1">
+                                                                    <label className="text-[9px] font-bold text-muted uppercase ml-1">Unit Price</label>
+                                                                    <div className="relative">
+                                                                        <DollarSign className="absolute left-2 top-1/2 -translate-y-1/2 text-muted" size={12} />
+                                                                        <input
+                                                                            type="number"
+                                                                            value={item.price}
+                                                                            onChange={(e) => handleItemChange(index, 'price', e.target.value)}
+                                                                            placeholder="0.00"
+                                                                            className="w-full bg-background border border-border rounded-lg pl-6 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
+                                                                            disabled={currentModalType === 'view'}
+                                                                            step="0.01"
+                                                                        />
+                                                                    </div>
+                                                                </div>
+                                                                <div className="space-y-1 flex gap-2 items-end">
+                                                                    <div className="flex-1 space-y-1">
+                                                                        <label className="text-[9px] font-bold text-muted uppercase ml-1">Line Total</label>
+                                                                        <div className="w-full bg-white/[0.04] border border-border rounded-lg px-3 py-2 text-xs text-accent font-black">
+                                                                            ${(parseFloat(item.price || 0) * (parseInt(item.qty) || 0)).toFixed(2)}
+                                                                        </div>
+                                                                    </div>
+                                                                    {currentModalType !== 'view' && formData.items.length > 1 && (
+                                                                        <button type="button" onClick={() => handleRemoveItem(index)} className="p-2 mb-0.5 text-danger hover:bg-danger/10 rounded-lg transition-colors shrink-0">
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                                {currentModalType !== 'view' && (
+                                                    <p className="text-[9px] text-muted italic">* Prices can be left empty if currently unknown (e.g. pending store visit).</p>
+                                                )}
+
+                                                <div className="flex justify-end pt-2 border-t border-white/5 mt-4">
+                                                    <div className="text-right p-4 bg-accent/[0.03] border border-accent/10 rounded-2xl min-w-[200px]">
+                                                        <p className="text-[10px] font-black text-muted uppercase tracking-widest">Grand Total (Estimated)</p>
+                                                        <p className="text-2xl font-black text-accent">${calculateTotal()}</p>
+                                                    </div>
+                                                </div>
                                             </div>
-                                        </div>
-                                    )}
 
-                                    {/* Starting / Pickup Location */}
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Starting / Pickup Location</label>
-                                        <div className="relative">
-                                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
-                                            <input
-                                                type="text"
-                                                value={formData.pickupLocation}
-                                                onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
-                                                onBlur={() => triggerCalculateDistance()}
-                                                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                                disabled={currentModalType === 'view'}
-                                                placeholder="Enter starting / pickup location"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Destination / Delivery Location */}
-                                    <div className="space-y-1">
-                                        <label className="text-[10px] font-bold text-muted uppercase">Destination / Delivery Location</label>
-                                        <div className="relative">
-                                            <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
-                                            <input
-                                                type="text"
-                                                value={formData.location}
-                                                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                                                onBlur={() => triggerCalculateDistance()}
-                                                className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                                disabled={currentModalType === 'view'}
-                                                placeholder="Enter destination / delivery address"
-                                            />
-                                        </div>
-                                    </div>
-
-                                    {/* Total Distance */}
-                                    <div className="space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <label className="text-[10px] font-bold text-accent uppercase tracking-widest pl-1">Total Distance (km)</label>
-                                            {isCalculatingDistance ? (
-                                                <span className="text-[9px] text-accent font-bold animate-pulse">Calculating...</span>
-                                            ) : (
-                                                currentModalType !== 'view' && formData.pickupLocation && formData.location && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => triggerCalculateDistance()}
-                                                        className="text-[9px] text-accent hover:underline font-bold"
-                                                    >
-                                                        Recalculate
-                                                    </button>
-                                                )
+                                            {isChauffeurOrder && currentModalType !== 'view' && (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 p-4 bg-accent/5 rounded-2xl border border-accent/20 col-span-1 md:col-span-2">
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest">No. of Passengers (PAX)</label>
+                                                        <input
+                                                            type="number"
+                                                            min="1"
+                                                            value={formData.passengerCount || 1}
+                                                            onChange={(e) => setFormData({ ...formData, passengerCount: e.target.value })}
+                                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest">Guest Name / Passenger</label>
+                                                        <input
+                                                            type="text"
+                                                            value={formData.passengerName || formData.client || ''}
+                                                            onChange={(e) => setFormData({ ...formData, passengerName: e.target.value })}
+                                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                            placeholder="Guest Name (Auto: Client Name)"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest">Luggage Option</label>
+                                                        <input
+                                                            type="text"
+                                                            value={formData.luggage || 'No'}
+                                                            onChange={(e) => setFormData({ ...formData, luggage: e.target.value })}
+                                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest">Wi-Fi</label>
+                                                        <select
+                                                            value={formData.wifi || 'No'}
+                                                            onChange={(e) => setFormData({ ...formData, wifi: e.target.value })}
+                                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                        >
+                                                            <option value="No">No</option>
+                                                            <option value="Yes">Yes</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest">Refreshments</label>
+                                                        <select
+                                                            value={formData.refreshments || 'No'}
+                                                            onChange={(e) => setFormData({ ...formData, refreshments: e.target.value })}
+                                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                        >
+                                                            <option value="No">No</option>
+                                                            <option value="Yes">Yes</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest">Car Seat</label>
+                                                        <select
+                                                            value={formData.carSeat || 'No'}
+                                                            onChange={(e) => setFormData({ ...formData, carSeat: e.target.value })}
+                                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                        >
+                                                            <option value="No">No</option>
+                                                            <option value="Yes">Yes</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="space-y-1 sm:col-span-2 md:col-span-3">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest">Extra Stops</label>
+                                                        <input
+                                                            type="text"
+                                                            value={formData.stopLocations || ''}
+                                                            onChange={(e) => setFormData({ ...formData, stopLocations: e.target.value, stops: e.target.value ? 'Yes' : 'No' })}
+                                                            placeholder="En-route stop addresses (leave empty if none)"
+                                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1 sm:col-span-2 md:col-span-3">
+                                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest">Service Protocol & Pricing</label>
+                                                        <input
+                                                            type="text"
+                                                            value={`${formData.serviceType || 'One Way'}${formData.serviceType === 'Round Trip' ? ' (2× Round Trip Rate applied)' : formData.dailyDays > 1 ? ` (${formData.dailyDays} Days)` : ''}`}
+                                                            onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
+                                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-white outline-none focus:border-accent"
+                                                        />
+                                                    </div>
+                                                </div>
                                             )}
-                                        </div>
-                                        <input
-                                            type="text"
-                                            value={formData.totalDistance}
-                                            onChange={(e) => setFormData({ ...formData, totalDistance: e.target.value })}
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-accent font-black focus:border-accent outline-none"
-                                            disabled={currentModalType === 'view'}
-                                            placeholder={isCalculatingDistance ? "Calculating route distance..." : "Distance auto-calculated..."}
-                                        />
-                                    </div>
-                                    {currentModalType === 'view' && String(effectiveOrder?.delivery_instructions || '').trim() && (
-                                        <div className="space-y-1 p-4 rounded-xl border border-warning/25 bg-warning/5">
-                                            <label className="text-[10px] font-bold text-warning uppercase tracking-widest">Customer delivery instructions</label>
-                                            <p className="text-sm text-secondary font-medium whitespace-pre-wrap leading-relaxed">
-                                                {effectiveOrder.delivery_instructions}
-                                            </p>
-                                        </div>
-                                    )}
-                                    <div className="space-y-3 pt-2">
-                                        <div className="flex items-center justify-between">
-                                            <label className="text-[10px] font-bold text-muted uppercase">Vendor (Optional)</label>
-                                        </div>
 
-                                        <select
-                                            value={formData.vendorId}
-                                            onChange={(e) => {
-                                                const selectedVendor = marketplaceVendors.find(v => v.id.toString() === e.target.value);
-                                                setFormData({
-                                                    ...formData,
-                                                    vendorId: e.target.value,
-                                                    vendor: selectedVendor ? selectedVendor.name : ''
-                                                });
-                                            }}
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
-                                            disabled={currentModalType === 'view'}
-                                        >
-                                            <option value="">Select Vendor...</option>
-                                            {marketplaceVendors.map(v => (
-                                                <option key={v.id} value={v.id}>{v.name} {v.category ? `(${v.category})` : ''}</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                            {/* Starting / Pickup Location */}
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-muted uppercase">Starting / Pickup Location</label>
+                                                <div className="relative">
+                                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                                                    <input
+                                                        type="text"
+                                                        value={formData.pickupLocation}
+                                                        onChange={(e) => setFormData({ ...formData, pickupLocation: e.target.value })}
+                                                        onBlur={() => triggerCalculateDistance()}
+                                                        className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                                        disabled={currentModalType === 'view'}
+                                                        placeholder="Enter starting / pickup location"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Destination / Delivery Location */}
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-bold text-muted uppercase">Destination / Delivery Location</label>
+                                                <div className="relative">
+                                                    <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={14} />
+                                                    <input
+                                                        type="text"
+                                                        value={formData.location}
+                                                        onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                                                        onBlur={() => triggerCalculateDistance()}
+                                                        className="w-full bg-background border border-border rounded-lg pl-10 pr-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                                        disabled={currentModalType === 'view'}
+                                                        placeholder="Enter destination / delivery address"
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            {/* Total Distance */}
+                                            <div className="space-y-1">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-[10px] font-bold text-accent uppercase tracking-widest pl-1">Total Distance (km)</label>
+                                                    {isCalculatingDistance ? (
+                                                        <span className="text-[9px] text-accent font-bold animate-pulse">Calculating...</span>
+                                                    ) : (
+                                                        currentModalType !== 'view' && formData.pickupLocation && formData.location && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => triggerCalculateDistance()}
+                                                                className="text-[9px] text-accent hover:underline font-bold"
+                                                            >
+                                                                Recalculate
+                                                            </button>
+                                                        )
+                                                    )}
+                                                </div>
+                                                <input
+                                                    type="text"
+                                                    value={formData.totalDistance}
+                                                    onChange={(e) => setFormData({ ...formData, totalDistance: e.target.value })}
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-accent font-black focus:border-accent outline-none"
+                                                    disabled={currentModalType === 'view'}
+                                                    placeholder={isCalculatingDistance ? "Calculating route distance..." : "Distance auto-calculated..."}
+                                                />
+                                            </div>
+
+                                            <div className="space-y-3 pt-2">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-[10px] font-bold text-muted uppercase">Vendor (Optional)</label>
+                                                </div>
+
+                                                <select
+                                                    value={formData.vendorId}
+                                                    onChange={(e) => {
+                                                        const selectedVendor = marketplaceVendors.find(v => v.id.toString() === e.target.value);
+                                                        setFormData({
+                                                            ...formData,
+                                                            vendorId: e.target.value,
+                                                            vendor: selectedVendor ? selectedVendor.name : ''
+                                                        });
+                                                    }}
+                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
+                                                    disabled={currentModalType === 'view'}
+                                                >
+                                                    <option value="">Select Vendor...</option>
+                                                    {marketplaceVendors.map(v => (
+                                                        <option key={v.id} value={v.id}>{v.name} {v.category ? `(${v.category})` : ''}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                        </>
+                                    )}
+
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-muted uppercase">Request Date</label>
                                         <input type="text" value={formData.requestDate} disabled className="w-full bg-background/50 border border-border rounded-lg px-4 py-2 text-sm text-muted focus:outline-none" />
@@ -959,71 +1178,6 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                             <option>Chauffeur Service</option>
                                         </select>
                                     </div>
-
-                                    {formData.type === 'Chauffeur Service' && (
-                                        <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 mt-4 p-4 border border-accent/20 rounded-2xl bg-accent/5">
-                                            <h4 className="col-span-1 md:col-span-2 text-xs font-black text-accent uppercase tracking-widest mb-2 border-b border-accent/10 pb-2">Chauffeur Mission Details</h4>
-
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-muted uppercase">Service Type</label>
-                                                <select
-                                                    value={formData.serviceType}
-                                                    onChange={(e) => setFormData({ ...formData, serviceType: e.target.value })}
-                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"
-                                                    disabled={currentModalType === 'view'}
-                                                >
-                                                    <option>One Way</option>
-                                                    <option>Return</option>
-                                                    <option>Daily</option>
-                                                </select>
-                                            </div>
-
-                                            {formData.serviceType === 'Daily' && (
-                                                <div className="space-y-1">
-                                                    <label className="text-[10px] font-bold text-muted uppercase">Number of Days</label>
-                                                    <input type="number" min="1" value={formData.dailyDays} onChange={e => setFormData({ ...formData, dailyDays: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
-                                                </div>
-                                            )}
-
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-muted uppercase">Pick-up Location</label>
-                                                <input type="text" value={formData.pickupLocation} onChange={e => setFormData({ ...formData, pickupLocation: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. LPIA Airport" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-muted uppercase">Pick-up Time</label>
-                                                <input type="time" value={formData.pickupTime} onChange={e => setFormData({ ...formData, pickupTime: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
-                                            </div>
-
-                                            {formData.serviceType === 'Return' && (
-                                                <>
-                                                    <div className="space-y-1">
-                                                        <CustomDatePicker label="Return Date" selectedDate={formData.returnDate} onChange={date => setFormData({ ...formData, returnDate: date })} disabled={currentModalType === 'view'} />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <label className="text-[10px] font-bold text-muted uppercase">Return Time</label>
-                                                        <input type="time" value={formData.returnTime} onChange={e => setFormData({ ...formData, returnTime: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
-                                                    </div>
-                                                    <div className="col-span-1 md:col-span-2 space-y-1">
-                                                        <label className="text-[10px] font-bold text-muted uppercase">Return Location</label>
-                                                        <input type="text" value={formData.returnLocation} onChange={e => setFormData({ ...formData, returnLocation: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} />
-                                                    </div>
-                                                </>
-                                            )}
-
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-muted uppercase">Luggage Specification</label>
-                                                <input type="text" value={formData.luggage} onChange={e => setFormData({ ...formData, luggage: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. 2 large suitcases, 1 carry-on" />
-                                            </div>
-                                            <div className="space-y-1">
-                                                <label className="text-[10px] font-bold text-muted uppercase">Required Stops</label>
-                                                <input type="text" value={formData.stops} onChange={e => setFormData({ ...formData, stops: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. Stop at pharmacy" />
-                                            </div>
-                                            <div className="col-span-1 md:col-span-2 space-y-1">
-                                                <label className="text-[10px] font-bold text-muted uppercase">Special Amenities</label>
-                                                <input type="text" value={formData.amenities} onChange={e => setFormData({ ...formData, amenities: e.target.value })} className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none" disabled={currentModalType === 'view'} placeholder="e.g. Baby Car Seat, Wheelchair, Stroller, Champagne" />
-                                            </div>
-                                        </div>
-                                    )}
                                 </div>
 
                                 {currentModalType === 'view' && effectiveOrder?.createdAt && (

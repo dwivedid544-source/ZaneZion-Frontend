@@ -907,7 +907,7 @@ export const GlobalDataProvider = ({ children }) => {
 
   useEffect(() => {
     // Determine the base URL for the socket connection from the API URL
-    const baseURL = import.meta.env.VITE_API_URL || 'https://zanezion-backend-production.up.railway.app/api/v1';
+    const baseURL = import.meta.env.VITE_API_URL || 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
     const socketURL = baseURL.replace('/api/v1', '');
 
     const socket = io(socketURL, {
@@ -2018,7 +2018,7 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchOrders = React.useCallback(async () => {
     try {
-      const res = await api.get("/orders");
+      const res = await api.get("/orders", { params: { limit: 500 } });
       let rawData = res.data?.success
         ? res.data.data
         : Array.isArray(res.data)
@@ -2052,8 +2052,8 @@ export const GlobalDataProvider = ({ children }) => {
         }
 
         return {
-          ...o,
           ...meta,
+          ...o,
           items: itemsArr,
           clientId: o.customer_id || o.client_id || o.clientId,
           companyId: o.company_id || o.tenantId,
@@ -2069,8 +2069,8 @@ export const GlobalDataProvider = ({ children }) => {
           requestDate: displayDate,
           dueDate: dueDay,
           due_date: dueDay || o.due_date,
-          status: statusForUi,
-          statusLabel: displayOrderStatus(statusForUi),
+          status: statusForUi || o.status,
+          statusLabel: displayOrderStatus(statusForUi || o.status),
           delivery_instructions:
             o.delivery_instructions || o.deliveryInstructions || meta.delivery_instructions || meta.deliveryInstructions || null,
           location: o.delivery_address || o.location || o.deliveryAddress || meta.delivery_address || meta.location || meta.deliveryAddress || "",
@@ -2670,59 +2670,31 @@ export const GlobalDataProvider = ({ children }) => {
       setLoading(false);
       return;
     }
-    setLoading(true);
+    // Instantly render UI without artificial blocking
+    setLoading(false);
+
     try {
       const role = normalizeRole(currentUser?.role);
-      // Roles that have access to Personnel (users) endpoint
       const canAccessUsers = ["superadmin", "admin", "saas_client", "operations"].includes(role);
-      // Roles that have access to Security (roles) endpoint
       const canAccessRoles = ["superadmin", "admin", "saas_client"].includes(role);
-      const canAccessStock = ["superadmin", "admin", "operations", "inventory", "inventorymanager", "procurement", "logistics"].includes(role);
 
-      const fetches = [
+      // Fetch primary dashboard essentials in background
+      Promise.allSettled([
         fetchDashboardStats(),
         fetchDashboardLogs(),
-        fetchSystemSettings(),
-        fetchInventoryAlerts(),
-        fetchTracking(),
-        fetchUrgentTasks(),
         fetchTickets(),
         fetchNotifications(),
-      ];
-
-      if (canAccessStock) {
-        fetches.push(fetchStockMovements());
-        fetches.push(fetchLossAssessments());
-      }
-
-      // Only fetch users if the role has Personnel menu permission
-      if (canAccessUsers) {
-        fetches.push(fetchStaff());
-      }
-
-      // If the user is staff, fetch their specific data
-      if (
-        ["staff", "operations", "logistics", "inventory"].includes(role)
-      ) {
-        fetches.push(fetchSupportingDocs());
-        fetches.push(fetchDeliveries());
-        fetches.push(fetchPayHistory());
-      }
-
-      // Only fetch roles if the role has Security menu permission or can access users
-      if (canAccessRoles || canAccessUsers) {
-        fetches.push(api.get('/roles?limit=100').then(res => {
-          const rawData = res.data?.data;
-          const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
-          setRoles(rolesArray);
-        }).catch(() => { }));
-      }
-      await Promise.all(fetches);
+        canAccessUsers ? fetchStaff() : Promise.resolve(),
+        (canAccessRoles || canAccessUsers)
+          ? api.get('/roles?limit=100').then(res => {
+              const rawData = res.data?.data;
+              const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
+              setRoles(rolesArray);
+            }).catch(() => {})
+          : Promise.resolve(),
+      ]);
     } catch (err) {
       console.error("Error fetching initial context data:", err);
-      setError(err.message);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -4203,6 +4175,7 @@ export const GlobalDataProvider = ({ children }) => {
   };
 
   const generateInvoiceFromOrder = async (order) => {
+    swalLoading("Generating Invoice", "Creating institutional invoice ledger from order...");
     try {
       const items = (order.items && order.items.length > 0)
         ? order.items.map(item => ({
@@ -4224,13 +4197,24 @@ export const GlobalDataProvider = ({ children }) => {
         ? new Date(order.dueDate).toISOString()
         : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
+      const rawOrderId = order.rawId || order.id;
+      const numericOrderId = Number(String(rawOrderId).replace(/\D/g, '')) || 1;
+      const parsedClientId = order.clientId
+        ? (String(order.clientId).startsWith('user_') ? Number(String(order.clientId).replace('user_', '')) : Number(order.clientId))
+        : undefined;
+
       const reqData = {
-        deliveryId: order.id,
+        deliveryId: numericOrderId,
+        orderId: numericOrderId,
         dueDate: isoDueDate,
-        items
+        items,
+        ...(parsedClientId ? { clientId: parsedClientId } : {})
       };
 
-      await api.post("/invoices", reqData);
+      const res = await api.post("/invoices", reqData);
+      swalClose();
+      const invNum = res?.data?.data?.invoiceNumber || res?.data?.invoiceNumber || 'Created';
+      swalSuccess("Invoice Generated", `Institutional Ledger ${invNum} generated successfully.`);
 
       // Re-fetch to sync
       await fetchFinance();
@@ -4241,7 +4225,10 @@ export const GlobalDataProvider = ({ children }) => {
         type: "system",
       });
     } catch (error) {
+      swalClose();
       console.error("Failed to generate invoice:", error);
+      const hint = error.response?.data?.message || error.message;
+      swalError("Invoice Generation Failed", hint || "Please ensure the order/delivery is completed with POD.");
     }
   };
 
@@ -7307,50 +7294,19 @@ export const GlobalDataProvider = ({ children }) => {
   ]);
 
   useEffect(() => {
+    let debounceTimer = null;
     const handleStateChanged = () => {
-      syncGlobalState();
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (syncGlobalState) syncGlobalState();
+      }, 500);
     };
     window.addEventListener('app:state-changed', handleStateChanged);
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       window.removeEventListener('app:state-changed', handleStateChanged);
     };
   }, [syncGlobalState]);
-
-  // Keep cross-portal operational state in sync when another role changes an order or delivery.
-  useEffect(() => {
-    if (!currentUser || !localStorage.getItem("token")) return;
-    const role = normalizeRole(currentUser?.role);
-    const canAccessOrders = true; // All authenticated dashboards sync their orders automatically
-    const canAccessProjects = ["superadmin", "admin", "saas_client", "operations", "client", "business_client"].includes(role);
-    const canAccessDeliveries = ["superadmin", "admin", "saas_client", "operations", "logistics", "driver", "client", "business_client", "personal_client", "staff", "employee"].includes(role);
-
-    const refreshOperationalState = () => {
-      if (canAccessOrders && fetchOrders) fetchOrders();
-      if (canAccessDeliveries && fetchDeliveries) fetchDeliveries();
-      if (canAccessProjects && fetchProjects) fetchProjects();
-      if (fetchTickets) fetchTickets();
-      if (fetchChauffeurRequests) fetchChauffeurRequests();
-      if (queryClient) {
-        queryClient.invalidateQueries({ queryKey: ['orders'] });
-        queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-        queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-      }
-    };
-    refreshOperationalState();
-    const interval = setInterval(refreshOperationalState, 3000);
-
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        refreshOperationalState();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      clearInterval(interval);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, [currentUser, fetchOrders, fetchDeliveries, fetchProjects, fetchTickets, fetchChauffeurRequests, queryClient]);
 
   return (
     <GlobalDataContext.Provider

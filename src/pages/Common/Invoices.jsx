@@ -10,7 +10,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import StatusBadge from '../../components/StatusBadge';
 import { useInvoices, useCreateInvoice, useUpdateInvoiceStatus, useCreatePayment, useUpdateInvoice, useDeleteInvoice } from '../../hooks/api/useFinance';
-import { swalSuccess, swalError, swalConfirm } from '../../utils/swal';
+import { swalSuccess, swalError, swalConfirm, swalLoading, swalClose } from '../../utils/swal';
 import { RefreshCcw } from 'lucide-react';
 import Pagination from '../../components/Common/Pagination';
 import { normalizeRole } from '../../utils/authUtils';
@@ -133,14 +133,15 @@ const Invoices = () => {
         e.preventDefault();
         if (procurementInvoiceReadOnly && (modalType === 'add' || modalType === 'edit')) return;
         if (modalType === 'add') {
+            const rawOrderIdNum = Number(String(formData.orderId).replace(/\D/g, ''));
             const matchedDelivery = (deliveries || []).find(d => {
-                const rowOrderNum = Number(formData.orderId);
                 const deliveryOrderNum = Number(d?.order_id_raw) || Number(String(d?.orderId ?? '').replace(/\D/g, '')) || null;
-                return rowOrderNum != null && deliveryOrderNum != null && rowOrderNum === deliveryOrderNum;
+                const dId = Number(d?.id || d?.db_id);
+                return rawOrderIdNum != null && (deliveryOrderNum === rawOrderIdNum || dId === rawOrderIdNum);
             });
-            const deliveryId = matchedDelivery ? Number(matchedDelivery.db_id) : Number(formData.orderId);
+            const deliveryId = matchedDelivery ? Number(matchedDelivery.id || matchedDelivery.db_id) : rawOrderIdNum;
 
-            const selectedOrder = orders.find(o => String(o.id) === String(formData.orderId));
+            const selectedOrder = (orders || []).find(o => String(o.id) === String(formData.orderId) || String(o.orderNumber) === String(formData.orderId));
             const items = (selectedOrder?.items && selectedOrder.items.length > 0)
                 ? selectedOrder.items.map(item => ({
                     itemId: Number(item.itemId || item.id || 1),
@@ -159,23 +160,34 @@ const Invoices = () => {
 
             const isoDueDate = formData.dueDate ? new Date(formData.dueDate).toISOString() : new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-            const parsedClientId = String(formData.clientId).startsWith('user_')
-                ? Number(String(formData.clientId).replace('user_', ''))
-                : Number(formData.clientId);
+            const rawClient = String(formData.clientId || '');
+            const parsedClientId = rawClient.startsWith('user_')
+                ? Number(rawClient.replace('user_', ''))
+                : (Number(rawClient) || (selectedOrder?.clientId ? Number(selectedOrder.clientId) : (matchedDelivery?.clientId ? Number(matchedDelivery.clientId) : 1)));
+
+            setIsModalOpen(false);
+            swalLoading("Generating Invoice", "Creating institutional invoice ledger and calculating totals...");
 
             try {
-                await createInvoiceMutation.mutateAsync({
-                    deliveryId,
+                const res = await createInvoiceMutation.mutateAsync({
+                    deliveryId: deliveryId || rawOrderIdNum || 1,
+                    orderId: rawOrderIdNum,
                     dueDate: isoDueDate,
                     items,
                     clientId: parsedClientId,
                     paidAmount: Number(formData.paidAmount) || 0
                 });
+                swalClose();
+                const invNum = res?.data?.invoiceNumber || res?.invoiceNumber || 'Created';
+                swalSuccess("Invoice Generated", `Invoice ${invNum} generated successfully.`);
             } catch (err) {
+                swalClose();
                 const apiErrorMsg = err.response?.data?.message || err.message || '';
-                alert(`Failed to generate invoice. ${apiErrorMsg || "Please ensure the order/delivery is completed with POD."}`);
+                swalError("Invoice Generation Failed", apiErrorMsg || "Please ensure the order/delivery is completed with POD.");
             }
         } else if (modalType === 'edit') {
+            setIsModalOpen(false);
+            swalLoading("Updating Invoice", "Saving changes to invoice ledger...");
             try {
                 await updateInvoiceMutation.mutateAsync({
                     // Always use the integer primary key (row.id) — never invoiceNumber
@@ -190,13 +202,14 @@ const Invoices = () => {
                         dueDate: formData.dueDate ? new Date(formData.dueDate).toISOString() : undefined
                     }
                 });
-                swalSuccess(`Invoice ${selectedInvoice.invoiceNumber || selectedInvoice.id} updated successfully.`);
+                swalClose();
+                swalSuccess("Invoice Updated", `Invoice ${selectedInvoice.invoiceNumber || selectedInvoice.id} updated successfully.`);
             } catch (err) {
+                swalClose();
                 const apiErrorMsg = err.response?.data?.message || err.message || '';
-                swalError(`Failed to update invoice. ${apiErrorMsg}`);
+                swalError("Update Failed", `Failed to update invoice. ${apiErrorMsg}`);
             }
         }
-        setIsModalOpen(false);
         setFormData({ orderId: '', clientId: '', totalAmount: 0, paidAmount: 0, status: 'Unpaid', dueDate: '' });
     };
 

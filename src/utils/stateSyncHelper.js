@@ -8,17 +8,23 @@ export const notifyStateChanged = (queryClient, queryKeys = []) => {
   if (queryClient) {
     if (Array.isArray(queryKeys) && queryKeys.length > 0) {
       queryKeys.forEach((key) => {
-        queryClient.invalidateQueries({ queryKey: Array.isArray(key) ? key : [key] });
+        const k = Array.isArray(key) ? key : [key];
+        try {
+          queryClient.invalidateQueries({ queryKey: k });
+          queryClient.refetchQueries({ queryKey: k });
+        } catch (_) {}
       });
     }
-    // Always invalidate root dashboard stats and queries
-    queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
-    queryClient.invalidateQueries({ queryKey: ['orders'] });
-    queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-    queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+    // Always invalidate and actively refetch root dashboard stats and operational queries
+    ['dashboardStats', 'orders', 'deliveries', 'chauffeurMissions', 'missions', 'projects'].forEach((k) => {
+      try {
+        queryClient.invalidateQueries({ queryKey: [k] });
+        queryClient.refetchQueries({ queryKey: [k] });
+      } catch (_) {}
+    });
   }
 
-  // Dispatch custom window event so GlobalDataContext and non-React Query listeners refetch state
+  // Dispatch custom window event so GlobalDataContext and active components refetch state immediately
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { queryKeys } }));
   }

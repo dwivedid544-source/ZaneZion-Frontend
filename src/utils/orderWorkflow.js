@@ -79,17 +79,25 @@ export function isoDateSlice(v) {
 export function displayOrderStatus(dbStatus) {
     const key = String(dbStatus || '').toLowerCase();
     const map = {
-        created: 'Submitted',
+        created: 'Pending Review',
         admin_review: 'Pending Review',
+        pending: 'Pending Review',
+        pending_review: 'Pending Review',
+        draft: 'Pending Review',
+        submitted: 'Pending Review',
         concierge: 'Concierge',
         operation: 'In Operations',
         procurement: 'Procurement',
         inventory: 'Inventory',
         logistics: 'Logistics / Dispatch',
+        assigned: 'Driver Assigned',
+        in_transit: 'In Transit',
         completed: 'Completed',
-        cancelled: 'Cancelled'
+        delivered: 'Delivered',
+        cancelled: 'Cancelled',
+        rejected: 'Rejected'
     };
-    return map[key] || (dbStatus ? String(dbStatus).replace(/_/g, ' ') : 'Unknown');
+    return map[key] || (dbStatus ? String(dbStatus).replace(/_/g, ' ') : 'Pending Review');
 }
 
 export const ORDER_STATUS_OPTIONS = [

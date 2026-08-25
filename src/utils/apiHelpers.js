@@ -3,7 +3,7 @@ export const getApiBaseUrl = () => {
   if (!envUrl) {
     const envMode = (import.meta.env.VITE_ENV_MODE || '').trim().toLowerCase();
     const localUrl = import.meta.env.VITE_API_URL_LOCAL || 'http://localhost:8000/api/v1';
-    const prodUrl = import.meta.env.VITE_API_URL_PROD || 'https://zanezion-backend-production-a303.up.railway.app/api/v1';
+    const prodUrl = import.meta.env.VITE_API_URL_PROD || 'https://zanezoin-backend-production.up.railway.app/api/v1';
 
     if (envMode === 'local' || envMode === 'dev' || envMode === 'development') {
       envUrl = localUrl;

@@ -1,6 +1,6 @@
 const axios = require('axios');
 const api = axios.create({
-  baseURL: 'https://zainzone-new-production.up.railway.app/api/v1',
+  baseURL: 'https://zanezoin-backend-production.up.railway.app/api/v1',
 });
 
 async function test() {

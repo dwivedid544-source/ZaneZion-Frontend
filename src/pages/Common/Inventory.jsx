@@ -26,15 +26,19 @@ function normClientEnum(v) {
 
 /** Client-owner dropdown: only rows classified as Business (not SaaS / personal / website). */
 function isBusinessPortfolioClient(c) {
-  const ct = normClientEnum(c?.client_type ?? c?.clientType ?? c?.client_kind ?? c?.clientKind);
+  if (!c) return false;
+  const ct = normClientEnum(c?.client_type ?? c?.clientType ?? c?.client_kind ?? c?.clientKind ?? c?.type ?? c?.accountType);
   const tt = normClientEnum(c?.tenant_type ?? c?.tenantType);
-  return ct === 'business' || tt === 'business';
+  const isPersonal = ct === 'personal' || ct === 'individual' || ct === 'customer' || ct === 'guest';
+  const isSaaS = ct === 'saas' || ct === 'saas_client' || tt === 'saas' || c?.source === 'Subscriber';
+  return ct === 'business' || ct === 'business_client' || ct === 'client' || tt === 'business' || (!isPersonal && !isSaaS && ct !== '');
 }
 
 function isSaaSPortfolioClient(c) {
-  const ct = normClientEnum(c?.client_type ?? c?.clientType ?? c?.client_kind ?? c?.clientKind);
+  if (!c) return false;
+  const ct = normClientEnum(c?.client_type ?? c?.clientType ?? c?.client_kind ?? c?.clientKind ?? c?.type ?? c?.accountType);
   const tt = normClientEnum(c?.tenant_type ?? c?.tenantType);
-  return ct === 'saas' || tt === 'saas' || c?.source === 'Subscriber';
+  return ct === 'saas' || ct === 'saas_client' || tt === 'saas' || c?.source === 'Subscriber';
 }
 
 const compressImageFile = (file, maxWidth = 400, quality = 0.7) => {
@@ -106,14 +110,34 @@ const Inventory = () => {
   const [page, setPage] = useState(1);
   const [searchTerm, setSearchTerm] = useState('');
 
-  /** API sometimes returns []; keep seed clients so "Client owner" dropdown always has options in dev. */
+  /** API clients + seed clients so "Client owner" dropdown always has options. */
   const clientListForSelect = useMemo(() => {
-    const list = Array.isArray(clients) && clients.length > 0 ? clients : CLIENTS_SEED;
-    return list.map((c) => ({
-      ...c,
-      id: c.id ?? c.client_id ?? c.clientId,
-      companyName: c.business_name || c.companyName || c.name,
-    }));
+    const fromProps = Array.isArray(clients) && clients.length > 0 ? clients : [];
+    const seen = new Set();
+    const merged = [];
+    for (const c of fromProps) {
+      const id = c.id ?? c.client_id ?? c.clientId;
+      if (id != null && !seen.has(String(id))) {
+        seen.add(String(id));
+        merged.push({
+          ...c,
+          id,
+          companyName: c.companyName || c.business_name || c.name || `Client #${id}`,
+        });
+      }
+    }
+    for (const c of CLIENTS_SEED) {
+      const id = c.id ?? c.client_id ?? c.clientId;
+      if (id != null && !seen.has(String(id))) {
+        seen.add(String(id));
+        merged.push({
+          ...c,
+          id,
+          companyName: c.companyName || c.business_name || c.name || `Client #${id}`,
+        });
+      }
+    }
+    return merged;
   }, [clients]);
 
   const { data: itemsData, isLoading, error } = useItems(page, 10, searchTerm);
@@ -231,13 +255,16 @@ const Inventory = () => {
   /** API sometimes returns []; keep seed clients so "Client owner" dropdown always has options in dev. */
   // Moved to top declaration area to prevent TDZ ReferenceError with inventory mapping
 
-  const businessClientsForInventorySelect = useMemo(
-    () =>
-      clientListForSelect.filter(
-        (c) => isBusinessPortfolioClient(c) && c.id != null && String(c.id).trim() !== '',
-      ),
-    [clientListForSelect],
-  );
+  const businessClientsForInventorySelect = useMemo(() => {
+    const matched = clientListForSelect.filter(
+      (c) => isBusinessPortfolioClient(c) && c.id != null && String(c.id).trim() !== ''
+    );
+    if (matched.length > 0) return matched;
+    return clientListForSelect.filter(c => {
+      const ct = normClientEnum(c?.client_type ?? c?.clientType ?? c?.type);
+      return ct !== 'personal' && ct !== 'individual' && ct !== 'customer' && ct !== 'saas' && c.id != null;
+    });
+  }, [clientListForSelect]);
   const saasClientsForInventorySelect = useMemo(
     () =>
       clientListForSelect.filter(
@@ -265,12 +292,10 @@ const Inventory = () => {
   const isConciergeRole = userRoleNorm === 'concierge';
 
   const displayedInventory = inventory.filter(i => {
-    // Exclude custom orders, ad-hoc deliveries, and zero-price internal items from inventory catalog
+    // Exclude zero-price ad-hoc service line items (delivery fees, chauffeur services)
     const isCustomAdHoc = Boolean(
-      (Number(i.price) === 0 && (Number(i.qty) === 0 || Number(i.quantity) === 0)) ||
-      i.inventoryType === 'INTERNAL' ||
-      i.inventory_type === 'INTERNAL' ||
-      (i.sku && String(i.sku).startsWith('ITEM-')) ||
+      Number(i.price) === 0 &&
+      (Number(i.qty) === 0 || Number(i.quantity) === 0) &&
       /\b(delivery|chauffeur|custom order|custom item|document pickup)\b/i.test(i.name || '')
     );
     if (isCustomAdHoc) return false;
@@ -320,6 +345,7 @@ const Inventory = () => {
 
   const handleAction = (type, item, projectContext = null, prContext = null) => {
     if (type !== 'view' && !canManageInventory) return;
+    if (fetchClients) fetchClients();
     setSelectedItem(item);
     setModalType(type);
     setImageFile(null);

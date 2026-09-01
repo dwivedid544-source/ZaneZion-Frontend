@@ -218,12 +218,13 @@ function mapClientFromApi(c) {
   const clientTypeRaw =
     c.client_type ??
     c.clientType ??
+    c.type ??
     c.client_kind ??
     c.clientKind ??
     c.account_type ??
     c.accountType ??
     (roleRaw === "saas_client" ? "SaaS" : null) ??
-    (roleRaw === "client" ? "Business" : null) ??
+    (roleRaw === "business_client" || roleRaw === "client" ? "Business" : null) ??
     (roleRaw === "customer" ? "Personal" : null) ??
     null;
   const tenantTypeRaw = c.tenant_type ?? c.tenantType ?? c.tenant ?? null;

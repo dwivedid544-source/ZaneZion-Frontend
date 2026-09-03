@@ -192,14 +192,18 @@ const Login = ({ onLogin }) => {
     }
   };
 
+  const [selectedRole, setSelectedRole] = useState(null);
+
   const handleQuickLogin = (role) => {
     const credentials = demoCredentials[role];
     if (credentials) {
       setEmail(credentials.email);
       setPassword(credentials.password);
+      setSelectedRole(role);
       setError(null);
-      // Auto-submit immediately with the credentials
-      performLogin(credentials.email, credentials.password);
+      if (view !== 'login') {
+        setView('login');
+      }
     } else {
       setError(`Credentials for ${role} not found.`);
     }
@@ -447,18 +451,28 @@ const Login = ({ onLogin }) => {
           </div>
 
           <div className="grid grid-cols-3 xs:grid-cols-3 sm:grid-cols-5 lg:grid-cols-5 gap-2 lg:gap-3">
-            {roles.map(role => (
-              <button
-                key={role.id}
-                onClick={() => handleQuickLogin(role.id)}
-                className="flex flex-col items-center gap-2 p-2 lg:p-3 bg-white/[0.03] border border-border rounded-xl lg:rounded-2xl hover:bg-white/[0.08] hover:border-accent/40 transition-all group"
-              >
-                <div className={`p-1.5 lg:p-2 rounded-lg lg:rounded-xl bg-opacity-10 ${role.color.replace('bg-', 'text-')} group-hover:scale-110 transition-transform`}>
-                  <role.icon size={16} className="lg:w-[18px] lg:h-[18px]" />
-                </div>
-                <span className="text-[8px] lg:text-[9px] font-bold text-secondary group-hover:text-white uppercase tracking-tight text-center">{role.label}</span>
-              </button>
-            ))}
+            {roles.map(role => {
+              const isSelected = selectedRole === role.id || (email && email.toLowerCase() === demoCredentials[role.id]?.email?.toLowerCase());
+              return (
+                <button
+                  key={role.id}
+                  type="button"
+                  onClick={() => handleQuickLogin(role.id)}
+                  className={`flex flex-col items-center gap-2 p-2 lg:p-3 rounded-xl lg:rounded-2xl transition-all group ${
+                    isSelected
+                      ? 'bg-white/[0.1] border border-accent ring-1 ring-accent/40 shadow-lg shadow-accent/10 scale-[1.02]'
+                      : 'bg-white/[0.03] border border-border hover:bg-white/[0.08] hover:border-accent/40'
+                  }`}
+                >
+                  <div className={`p-1.5 lg:p-2 rounded-lg lg:rounded-xl bg-opacity-10 ${role.color.replace('bg-', 'text-')} group-hover:scale-110 transition-transform`}>
+                    <role.icon size={16} className="lg:w-[18px] lg:h-[18px]" />
+                  </div>
+                  <span className={`text-[8px] lg:text-[9px] font-bold uppercase tracking-tight text-center ${isSelected ? 'text-accent' : 'text-secondary group-hover:text-white'}`}>
+                    {role.label}
+                  </span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="pt-4 text-center space-y-2">

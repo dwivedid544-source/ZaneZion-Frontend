@@ -276,18 +276,18 @@ const Inventory = () => {
   const canManageInventory = roleCanManageInventoryVendorsWarehouses(currentUser?.role);
   const isAdmin = canManageInventory;
 
-  const isB2BClient = userRoleNorm === 'client';
-
   const isCustomer = ['customer'].includes(userRoleNorm);
+  const isB2BClient = userRoleNorm === 'client';
+  const isSaaSPortal = userRoleNorm === 'saas_client';
 
-  const myClient = isCustomer ? (clients || []).find(c =>
+  const myClient = (clients || []).find(c =>
     String(c.id) === String(currentUser?.clientId) ||
     String(c.id).replace('CLT-', '') === String(currentUser?.clientId).replace('CLT-', '') ||
-    c.email === currentUser?.email ||
-    c.name === currentUser?.name
-  ) : null;
+    (c.email && currentUser?.email && c.email.toLowerCase() === currentUser.email.toLowerCase()) ||
+    (c.name && currentUser?.name && c.name.toLowerCase() === currentUser.name.toLowerCase()) ||
+    (c.companyName && currentUser?.name && c.companyName.toLowerCase() === currentUser.name.toLowerCase())
+  );
 
-  const isSaaSPortal = userRoleNorm === 'saas_client' || userRoleNorm === 'client';
   // Concierge sees all inventory (Marketplace + Business + SaaS) without restriction
   const isConciergeRole = userRoleNorm === 'concierge';
 
@@ -300,12 +300,12 @@ const Inventory = () => {
     );
     if (isCustomAdHoc) return false;
 
-    if (isCustomer) {
-      // Customer sees only their own Client inventory
-      return i.inventoryType === 'Client' && (
-        (myClient && (String(i.clientId) === String(myClient.id))) ||
-        i.issuedTo === currentUser?.name
-      );
+    if (isCustomer || isB2BClient) {
+      // Customer / Business Client sees only their own company's assets in Warehouse Ledger
+      const matchesClientId = myClient && (String(i.clientId) === String(myClient.id));
+      const matchesTenant = currentUser?.tenantId && Number(currentUser.tenantId) !== 1 && Number(i.tenantId) === Number(currentUser.tenantId);
+      const matchesName = i.client_name === currentUser?.name || i.clientName === currentUser?.name || i.issuedTo === currentUser?.name || (myClient && (i.client === myClient.companyName || i.client === myClient.name));
+      return Boolean(matchesClientId || matchesTenant || matchesName);
     }
     if (isSaaSPortal) {
       // SaaS Client portal displays all inventory items belonging to their tenant

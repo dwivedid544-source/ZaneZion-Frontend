@@ -459,9 +459,9 @@ const ClientStore = () => {
 
     const myClient = (clients || []).find(c => {
         const cId = String(c.id).replace('CLT-', '');
-        const uId = String(currentUser?.clientId).replace('CLT-', '');
-        return (currentUser?.clientId && cId === uId) ||
-            (currentUser?.email && c.email?.toLowerCase() === currentUser.email?.toLowerCase()) ||
+        const uId = String(currentUser?.clientId || currentUser?.id).replace('CLT-', '');
+        return (currentUser?.email && c.email?.toLowerCase() === currentUser.email?.toLowerCase()) ||
+            (currentUser?.clientId && cId === uId) ||
             (currentUser?.name && c.name?.toLowerCase() === currentUser.name?.toLowerCase());
     });
 
@@ -469,8 +469,24 @@ const ClientStore = () => {
         if (isPlacingOrder) return;
 
         let items = activeTab === 'catalog'
-            ? cart.map(i => ({ name: i.name || 'Unknown Item', qty: i.qty || 1, price: i.price || 0, vendorName: i.vendorName }))
-            : customItems.filter(i => i?.name?.trim() !== '').map(i => ({ name: i.name, qty: parseInt(i.qty) || 1, price: parseFloat(i.price || 0), custom: true }));
+            ? cart.map(i => ({
+                id: i.id,
+                itemId: i.id,
+                name: i.name || 'Unknown Item',
+                qty: i.qty || 1,
+                quantity: i.qty || 1,
+                price: parseFloat(i.price || 0),
+                unitPrice: parseFloat(i.price || 0),
+                vendorName: i.vendorName || i.vendor_name || null
+            }))
+            : customItems.filter(i => i?.name?.trim() !== '').map(i => ({
+                name: i.name,
+                qty: parseInt(i.qty) || 1,
+                quantity: parseInt(i.qty) || 1,
+                price: parseFloat(i.price || 0),
+                unitPrice: parseFloat(i.price || 0),
+                custom: true
+            }));
 
         if (activeTab === 'sheet' && isRetailPersonal) {
             const line = String(personalNotes || '').trim();
@@ -481,7 +497,9 @@ const ClientStore = () => {
             items = [{
                 name: `${String(customRequestSubtype || 'request').replace(/_/g, ' ')} — ${line}`,
                 qty: 1,
+                quantity: 1,
                 price: personalPickupDeliveryServiceTotal,
+                unitPrice: personalPickupDeliveryServiceTotal,
                 custom: true,
             }];
         }
@@ -550,6 +568,8 @@ const ClientStore = () => {
             client: myClient?.name || currentUser?.name || 'Client',
             clientId: myClient?.id || currentUser?.clientId || 1,
             items,
+            customItems: items,
+            manifestItems: items,
             deliveryType: deliveryMode,
             pickupLocation: resolvedPickupLocation || null,
             pickup_location: resolvedPickupLocation || null,
@@ -563,6 +583,9 @@ const ClientStore = () => {
             chauffeur_fee_mode: chauffeurFeeIncludedInCheckout ? 'included' : 'separate',
             subtotal: Number(cartSubtotal.toFixed(2)),
             estimated_total: Number(estimatedGrandTotal.toFixed(2)),
+            total: Number(estimatedGrandTotal.toFixed(2)),
+            total_amount: Number(estimatedGrandTotal.toFixed(2)),
+            totalAmount: Number(estimatedGrandTotal.toFixed(2)),
             location: deliveryAddress.trim(),
             deliveryAddress: deliveryAddress.trim(),
             date: orderPlacementDate,

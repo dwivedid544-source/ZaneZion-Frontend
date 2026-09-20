@@ -94,9 +94,9 @@ const ClientOrders = () => {
         return (clients || []).find(c => {
             const cId = String(c.id).replace('CLT-', '');
             const uId = String(currentUser?.clientId || currentUser?.company_id || currentUser?.id).replace('CLT-', '');
-            return (currentUser?.clientId && cId === uId) ||
+            return (currentUser?.email && c.email?.toLowerCase() === currentUser?.email?.toLowerCase()) ||
+                (currentUser?.clientId && cId === uId) ||
                 String(c.id) === String(currentUser?.company_id) ||
-                (currentUser?.email && c.email?.toLowerCase() === currentUser?.email?.toLowerCase()) ||
                 (currentUser?.name && c.name?.toLowerCase() === currentUser?.name?.toLowerCase());
         });
     }, [clients, currentUser]);
@@ -109,8 +109,8 @@ const ClientOrders = () => {
     const isMyRecord = (item) => {
         if (!item) return false;
         const itemClientId = String(item.clientId || item.client_id || item.companyId || item.company_id || '');
-        const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || '');
-        const itemEmail = String(item.email || item.client_email || item.customer_email || '').toLowerCase();
+        const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || item.metadata?.customer_id || item.metadata?.user_id || item.metadata?.userId || '');
+        const itemEmail = String(item.email || item.client_email || item.customer_email || item.metadata?.email || item.metadata?.customer_email || item.client?.email || '').toLowerCase();
 
         const myUserId = String(currentUser?.id || '');
         const myClientIdStr = String(myClientId || '');
@@ -134,54 +134,9 @@ const ClientOrders = () => {
         }).forEach(o => {
             const isCustom = o.order_kind === 'custom_request' || o.orderKind === 'custom_request' || String(o.type || '').toLowerCase().includes('custom');
 
-            // Robustly parse items from all possible locations
-            let rawItems = o.items;
-            if (typeof rawItems === 'string') {
-                try { rawItems = JSON.parse(rawItems); } catch { rawItems = []; }
-            }
-            if (!Array.isArray(rawItems) || rawItems.length === 0) {
-                let meta = o.metadata;
-                if (typeof meta === 'string') {
-                    try { meta = JSON.parse(meta); } catch { meta = {}; }
-                }
-                meta = meta || {};
-                rawItems = meta.customItems || meta.custom_items || meta.manifestItems || meta.items || meta.cart || o.customItems || [];
-            }
-
-            const orderTotal = parseFloat(o.total ?? o.total_amount ?? o.totalAmount ?? o.estimated_total ?? o.amount ?? 0);
-
-            // Normalize each item: extract name, qty, and unit price
-            let normalizedItems = (Array.isArray(rawItems) ? rawItems : []).map((itm, idx) => {
-                const name = itm.name || itm.item?.name || itm.itemName || itm.title || itm.description || `Item ${idx + 1}`;
-                const qty = parseInt(itm.qty || itm.quantity || 1) || 1;
-                const unitPrice = parseFloat(
-                    itm.unitPrice !== undefined ? itm.unitPrice :
-                        itm.price !== undefined ? itm.price :
-                            itm.unit_price !== undefined ? itm.unit_price :
-                                itm.chauffeurFee !== undefined ? itm.chauffeurFee :
-                                    itm.chauffeur_fee !== undefined ? itm.chauffeur_fee : 0
-                ) || 0;
-                return { name, qty, price: unitPrice };
-            });
-
-            if (normalizedItems.length === 0) {
-                let meta = o.metadata;
-                if (typeof meta === 'string') {
-                    try { meta = JSON.parse(meta); } catch { meta = {}; }
-                }
-                meta = meta || {};
-                const fallbackName = o.product || meta.product || o.notes || meta.notes || meta.delivery_instructions || o.delivery_instructions || (o.vendor_name ? `${o.vendor_name} Order` : 'Marketplace Item');
-                normalizedItems = [{
-                    name: fallbackName,
-                    qty: 1,
-                    price: orderTotal
-                }];
-            }
-
-            // Collect all identifiers & item titles for Order o
+            // Collect all identifiers for Order o
             const oIdStr = String(o.id || '');
             const oRawIdStr = String(o.rawId || o.id || '').replace(/\D/g, '');
-            const firstItemName = (normalizedItems?.[0]?.name || o.product || '').toLowerCase().trim();
 
             // 1. Find linked projects (by exact orderRef or orderId)
             const linkedProjects = (projects || []).filter(p => {
@@ -221,6 +176,93 @@ const ClientOrders = () => {
                     (linkedMission && (dMissionId === String(linkedMission.id) || dOrderId === String(linkedMission.orderId)))
                 );
             });
+
+            // Robustly parse items from all possible locations
+            let rawItems = o.items;
+            if (typeof rawItems === 'string') {
+                try { rawItems = JSON.parse(rawItems); } catch { rawItems = []; }
+            }
+            if (!Array.isArray(rawItems) || rawItems.length === 0) {
+                let meta = o.metadata;
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch { meta = {}; }
+                }
+                meta = meta || {};
+                rawItems = meta.customItems || meta.custom_items || meta.manifestItems || meta.items || meta.cart || meta.package_details || o.customItems || [];
+            }
+
+            // Check linked delivery remarks if rawItems is still empty
+            if (!Array.isArray(rawItems) || rawItems.length === 0) {
+                if (linkedDelivery) {
+                    let delRemarks = linkedDelivery.remarks;
+                    if (typeof delRemarks === 'string') {
+                        try { delRemarks = JSON.parse(delRemarks); } catch { delRemarks = {}; }
+                    }
+                    delRemarks = delRemarks || {};
+                    let pkgDetails = delRemarks.package_details || delRemarks.manifestItems || linkedDelivery.items;
+                    if (typeof pkgDetails === 'string') {
+                        try { pkgDetails = JSON.parse(pkgDetails); } catch { pkgDetails = []; }
+                    }
+                    if (Array.isArray(pkgDetails) && pkgDetails.length > 0) {
+                        rawItems = pkgDetails;
+                    }
+                }
+            }
+
+            // Check o.remarks if rawItems is still empty
+            if (!Array.isArray(rawItems) || rawItems.length === 0) {
+                let oRemarks = o.remarks;
+                if (typeof oRemarks === 'string') {
+                    try { oRemarks = JSON.parse(oRemarks); } catch { oRemarks = {}; }
+                }
+                oRemarks = oRemarks || {};
+                let pkgDetails = oRemarks.package_details || oRemarks.manifestItems;
+                if (typeof pkgDetails === 'string') {
+                    try { pkgDetails = JSON.parse(pkgDetails); } catch { pkgDetails = []; }
+                }
+                if (Array.isArray(pkgDetails) && pkgDetails.length > 0) {
+                    rawItems = pkgDetails;
+                }
+            }
+
+            // Normalize each item: extract name, qty, and unit price
+            let normalizedItems = (Array.isArray(rawItems) ? rawItems : []).map((itm, idx) => {
+                const name = itm.name || itm.item?.name || itm.itemName || itm.title || itm.productName || itm.description || `Item ${idx + 1}`;
+                const qty = parseInt(itm.qty || itm.quantity || 1, 10) || 1;
+                const unitPrice = parseFloat(
+                    itm.unitPrice !== undefined ? itm.unitPrice :
+                        itm.price !== undefined ? itm.price :
+                            itm.unit_price !== undefined ? itm.unit_price :
+                                itm.item?.price !== undefined ? itm.item.price :
+                                    itm.chauffeurFee !== undefined ? itm.chauffeurFee :
+                                        itm.chauffeur_fee !== undefined ? itm.chauffeur_fee :
+                                            (itm.totalPrice ? itm.totalPrice / qty : (itm.total ? itm.total / qty : 0))
+                ) || 0;
+                return { name, qty, price: unitPrice };
+            });
+
+            // Calculate total from order fields or sum of line items
+            let orderTotal = parseFloat(o.total ?? o.total_amount ?? o.totalAmount ?? o.estimated_total ?? o.amount ?? o.subtotal ?? 0) || 0;
+            const computedItemsSum = normalizedItems.reduce((acc, it) => acc + (it.price * it.qty), 0);
+            if (orderTotal === 0 && computedItemsSum > 0) {
+                orderTotal = computedItemsSum;
+            }
+
+            if (normalizedItems.length === 0) {
+                let meta = o.metadata;
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch { meta = {}; }
+                }
+                meta = meta || {};
+                const fallbackName = o.product || meta.product || o.notes || meta.notes || meta.delivery_instructions || o.delivery_instructions || (o.vendor_name ? `${o.vendor_name} Order` : 'Marketplace Item');
+                normalizedItems = [{
+                    name: fallbackName,
+                    qty: 1,
+                    price: orderTotal
+                }];
+            } else if (normalizedItems.length === 1 && normalizedItems[0].price === 0 && orderTotal > 0) {
+                normalizedItems[0].price = orderTotal;
+            }
 
             const isChauffeurOrder = o.orderType === 'CHAUFFEUR' || o.missionType === 'Chauffeur' || String(o.orderType).toUpperCase() === 'CHAUFFEUR' || String(o.id || '').startsWith('CH-');
             if (isChauffeurOrder) return;
@@ -269,7 +311,8 @@ const ClientOrders = () => {
                 requestDate: o.createdAt || o.created_at || o.order_date || o.requestDate || o.date,
                 dueDate: o.due_date || o.dueDate || null,
                 status: effectiveStatus,
-                location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || 'Client Address',
+                location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || o.dropLocation || 'Client Address',
+                pickupLocation: linkedDelivery?.pickupLocation || o.pickupLocation || o.pickup_location || null,
                 driverName: linkedDelivery?.driver || o.driverName || null,
                 source: 'orders',
                 originalRecord: o

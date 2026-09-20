@@ -2028,6 +2028,13 @@ export const GlobalDataProvider = ({ children }) => {
         rawData = rawData.data || rawData.items || rawData.orders || rawData.missions || rawData.invoices || rawData.projects || Object.values(rawData).find(Array.isArray) || [];
       }
       const mappedOrders = rawData.map((o) => {
+        let meta = {};
+        if (typeof o.metadata === "string") {
+          try { meta = JSON.parse(o.metadata); } catch (e) { }
+        } else if (o.metadata && typeof o.metadata === "object") {
+          meta = o.metadata;
+        }
+
         let parsedItems = o.items;
         if (typeof parsedItems === "string") {
           try {
@@ -2036,7 +2043,11 @@ export const GlobalDataProvider = ({ children }) => {
             parsedItems = [];
           }
         }
-        const itemsArr = Array.isArray(parsedItems) ? parsedItems : [];
+        let itemsArr = Array.isArray(parsedItems) ? parsedItems : [];
+        if (itemsArr.length === 0) {
+          const candidates = meta.customItems || meta.custom_items || meta.manifestItems || meta.items || meta.package_details || [];
+          itemsArr = Array.isArray(candidates) ? candidates : [];
+        }
         const totalVal = mapOrderDisplayTotal(o, itemsArr);
         const createdDay = isoDateSlice(o.created_at);
         const orderDay = isoDateSlice(o.order_date);
@@ -2044,12 +2055,6 @@ export const GlobalDataProvider = ({ children }) => {
         const displayDate = orderDay || createdDay;
         const statusForUi = o.status;
         const transportMode = extractTransportModeFromOrder(o);
-        let meta = {};
-        if (typeof o.metadata === "string") {
-          try { meta = JSON.parse(o.metadata); } catch (e) { }
-        } else if (o.metadata && typeof o.metadata === "object") {
-          meta = o.metadata;
-        }
 
         return {
           ...meta,
@@ -3997,6 +4002,7 @@ export const GlobalDataProvider = ({ children }) => {
 
       const res = await api.post("/orders", {
         clientId: isCustomer ? (currentUser?.clientId || targetClientId) : targetClientId,
+        tenantId: isCustomer ? (currentUser?.tenantId || 1) : undefined,
         companyId: isCustomer
           ? customerOrderCompanyId
           : userRole !== "super_admin"
@@ -4027,6 +4033,7 @@ export const GlobalDataProvider = ({ children }) => {
         routed_department: routedDepartment,
         route_department: routedDepartment,
         total_amount: totalAmountVal,
+        totalAmount: totalAmountVal,
         subtotal: subtotalVal,
         estimated_total: totalAmountVal,
         status: requestedStatus,

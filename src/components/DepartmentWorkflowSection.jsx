@@ -51,13 +51,13 @@ const DepartmentWorkflowSection = ({ departmentKey, departmentLabel }) => {
         if (typeUpper.includes('CONCIERGE')) return "Bespoke Concierge Request";
 
         let itms = row.items && row.items.length > 0 ? row.items : (row.customItems || []);
-        if (!itms || itms.length === 0) return row.product || row.type || "VIP Chauffeur Service";
+        if (!itms || itms.length === 0) return row.product || row.type || "General Order";
         const firstItemName = itms[0]?.item?.name || itms[0]?.name;
         if (firstItemName && firstItemName !== "Unknown Item") {
           if (itms.length === 1) return firstItemName;
           return `${firstItemName} (+${itms.length - 1} more)`;
         }
-        return row.product || row.type || "VIP Chauffeur Service";
+        return row.product || row.type || "General Order";
       }
     },
     {

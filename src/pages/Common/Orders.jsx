@@ -218,10 +218,10 @@ const Orders = () => {
   };
 
   const currentOrders = (() => {
-    // Exclude converted Project records from the Orders list (they belong in Projects view)
+    // Exclude converted Project records and Chauffeur bookings from the Orders list (they belong in Projects / Chauffeur views)
     const nonProjectOrders = orders.filter(o => {
       const typeStr = String(o.orderType || o.type || '').toUpperCase();
-      return typeStr !== 'PROJECT';
+      return typeStr !== 'PROJECT' && typeStr !== 'CHAUFFEUR' && !typeStr.includes('CHAUFFEUR');
     });
 
     let list = workflowTab === 'history'
@@ -362,7 +362,7 @@ const Orders = () => {
           }
         }
 
-        return row.product || row.type || "VIP Chauffeur Service";
+        return row.product || row.type || "General Order";
       }
     },
     { header: "Vendor", accessor: "vendor", render: (row) => row.vendor_name || row.vendor?.name || row.vendor?.companyName || (typeof row.vendor === 'string' ? row.vendor : null) || "N/A" },

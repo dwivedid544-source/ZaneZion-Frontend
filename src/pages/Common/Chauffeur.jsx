@@ -263,26 +263,29 @@ const Chauffeur = () => {
 
     const filteredRequests = useMemo(() => {
         console.log("RAW BACKEND DATA (chauffeurRequests):", chauffeurRequests);
-        if (!isCustomer && !isClientAdmin) return chauffeurRequests;
-        const myUserId = String(currentUser?.id || '').trim();
-        const myClientId = String(currentUser?.clientId || currentUser?.company_id || '').trim();
-        const myEmail = String(currentUser?.email || '').toLowerCase().trim();
-        const myName = String(currentUser?.name || '').toLowerCase().trim();
+        const list = (!isCustomer && !isClientAdmin)
+            ? [...(chauffeurRequests || [])]
+            : (chauffeurRequests || []).filter(req => {
+                const reqUserId = String(req.userId || req.user_id || req.customer_id || req.metadata?.userId || req.metadata?.user_id || req.metadata?.customer_id || req.created_by || req.createdById || req.metadata?.created_by || '').trim();
+                const reqClientId = String(req.clientId || req.client_id || '').trim();
+                const reqEmail = String(req.email || req.clientEmail || req.customerEmail || req.customer_email || req.metadata?.email || req.metadata?.user_email || req.metadata?.customer_email || '').toLowerCase().trim();
+                const reqClientName = String(req.clientName || req.client || req.guestName || req.passengerName || req.customer_name || '').toLowerCase().trim();
 
-        return (chauffeurRequests || []).filter(req => {
-            const reqUserId = String(req.userId || req.user_id || req.customer_id || req.metadata?.userId || req.metadata?.user_id || req.metadata?.customer_id || req.created_by || req.createdById || req.metadata?.created_by || '').trim();
-            const reqClientId = String(req.clientId || req.client_id || '').trim();
-            const reqEmail = String(req.email || req.clientEmail || req.customerEmail || req.customer_email || req.metadata?.email || req.metadata?.user_email || req.metadata?.customer_email || '').toLowerCase().trim();
-            const reqClientName = String(req.clientName || req.client || req.guestName || req.passengerName || req.customer_name || '').toLowerCase().trim();
+                if (myUserId && reqUserId && reqUserId === myUserId) return true;
+                if (myClientId && reqClientId && reqClientId === myClientId) return true;
+                if (myEmail && reqEmail && reqEmail === myEmail) return true;
+                if (myName && reqClientName && reqClientName.includes(myName)) return true;
 
-            console.log("Checking Order ID:", req.id, "reqUserId:", reqUserId, "myUserId:", myUserId, "Status:", req.status);
+                return false;
+            });
 
-            if (myUserId && reqUserId && reqUserId === myUserId) return true;
-            if (myClientId && reqClientId && reqClientId === myClientId) return true;
-            if (myEmail && reqEmail && reqEmail === myEmail) return true;
-            if (myName && reqClientName && reqClientName.includes(myName)) return true;
-
-            return false;
+        return list.sort((a, b) => {
+            const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
+            const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
+            if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
+            const numA = parseInt(String(a.db_id || a.id || 0).replace(/\D/g, ''), 10) || 0;
+            const numB = parseInt(String(b.db_id || b.id || 0).replace(/\D/g, ''), 10) || 0;
+            return numB - numA;
         });
     }, [chauffeurRequests, isCustomer, isClientAdmin, currentUser]);
 

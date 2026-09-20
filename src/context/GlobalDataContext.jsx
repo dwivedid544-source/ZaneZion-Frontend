@@ -5956,6 +5956,11 @@ export const GlobalDataProvider = ({ children }) => {
           const baseMapped = {
             id: order.id,
             db_id: order.id,
+            createdAt: order.createdAt || order.created_at || order.order_date || order.date || null,
+            created_at: order.createdAt || order.created_at || order.order_date || order.date || null,
+            order_date: order.order_date || order.createdAt || order.created_at || order.date || null,
+            requestDate: order.order_date || order.createdAt || order.created_at || order.date || null,
+            date: order.order_date || order.createdAt || order.created_at || order.date || null,
             clientId: order.clientId || order.client_id || detail?.clientId || 'CLT-GUEST',
             company_id: compId,
             companyId: compId,

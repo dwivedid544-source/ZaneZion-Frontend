@@ -328,7 +328,7 @@ const PersonalClientDashboard = () => {
                       txId: `CH-${r.id}`,
                       type: `VIP Chauffeur (${r.serviceType || 'One Way'})`,
                       date: r.dueDate || r.requestDate || 'N/A',
-                      rawDate: r.createdAt || r.created_at || r.requestDate || r.dueDate,
+                      rawDate: r.createdAt || r.created_at || r.order_date || r.date || r.requestDate || null,
                       rawId: r.id,
                       amount: parseFloat(r.chauffeurFee || r.chauffeur_fee || 120),
                       status: r.status,
@@ -380,6 +380,13 @@ const PersonalClientDashboard = () => {
                     seenTxKeys.add(key);
                     return true;
                   }).sort((a, b) => {
+                    const isOrderA = a.category === 'order' || a.category === 'chauffeur';
+                    const isOrderB = b.category === 'order' || b.category === 'chauffeur';
+                    if (isOrderA && isOrderB) {
+                      const numA = parseInt(String(a.rawId || a.txId || 0).replace(/\D/g, ''), 10) || 0;
+                      const numB = parseInt(String(b.rawId || b.txId || 0).replace(/\D/g, ''), 10) || 0;
+                      if (numA > 0 && numB > 0 && numA !== numB) return numB - numA;
+                    }
                     const timeA = new Date(a.rawDate || a.date || 0).getTime();
                     const timeB = new Date(b.rawDate || b.date || 0).getTime();
                     if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;

@@ -301,6 +301,7 @@ const ClientOrders = () => {
                 }
             }
 
+            const orderCreated = o.createdAt || o.created_at || o.order_date || o.requestDate || o.date || null;
             unified.push({
                 id: o.id ? (String(o.id).startsWith('ORD-') ? o.id : `ORD-${o.id}`) : 'ORD-000',
                 rawId: o.id,
@@ -308,7 +309,9 @@ const ClientOrders = () => {
                 serviceType: o.type || (isCustom ? 'Custom Requisition' : 'Marketplace Purchase'),
                 items: normalizedItems,
                 total: orderTotal,
-                requestDate: o.createdAt || o.created_at || o.order_date || o.requestDate || o.date,
+                createdAt: orderCreated,
+                created_at: orderCreated,
+                requestDate: orderCreated,
                 dueDate: o.due_date || o.dueDate || null,
                 status: effectiveStatus,
                 location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || o.dropLocation || 'Client Address',
@@ -328,6 +331,7 @@ const ClientOrders = () => {
             const unitPrice = req.unitPrice ? parseFloat(req.unitPrice) : (isDaily && numDays > 1 ? Number((feeVal / numDays).toFixed(2)) : feeVal);
             const totalFee = isDaily && numDays > 1 && feeVal === unitPrice ? Number((unitPrice * numDays).toFixed(2)) : feeVal;
 
+            const reqOrderDate = req.createdAt || req.created_at || req.order_date || req.date || req.requestDate || req.originalRecord?.createdAt || req.originalRecord?.created_at || req.originalRecord?.order_date || null;
             unified.push({
                 id: req.id ? (String(req.id).startsWith('CH-') ? req.id : `CH-ORD-${req.id}`) : 'CH-000',
                 rawId: req.id,
@@ -340,7 +344,9 @@ const ClientOrders = () => {
                     total: totalFee
                 }],
                 total: totalFee,
-                requestDate: req.createdAt || req.created_at || req.requestDate || req.dueDate,
+                createdAt: reqOrderDate,
+                created_at: reqOrderDate,
+                requestDate: reqOrderDate || req.dueDate,
                 dueDate: req.dueDate || req.returnDate || null,
                 status: req.status || req.chauffeur_status || 'pending',
                 location: req.pickupLocation ? `${req.pickupLocation} -> ${req.dropLocation || 'Destination'}` : 'Nassau Hub',
@@ -409,12 +415,18 @@ const ClientOrders = () => {
             });
         });
 
-        // Deduplicate and sort newest first (by timestamp, then rawId descending)
+        // Deduplicate and sort newest first (strictly by order placement / creation date, then ID descending)
         const getTimeScore = (tx) => {
-            const dateStr = tx.requestDate || tx.dueDate;
-            if (dateStr) {
-                const t = new Date(dateStr).getTime();
-                if (!isNaN(t)) return t;
+            const raw = tx.createdAt || tx.created_at || tx.originalRecord?.createdAt || tx.originalRecord?.created_at || tx.requestDate;
+            if (raw) {
+                const t = new Date(raw).getTime();
+                if (!isNaN(t) && t > 0) return t;
+
+                if (typeof raw === 'string' && /^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(raw.trim())) {
+                    const [d, m, y] = raw.trim().split(/[-/]/).map(n => parseInt(n, 10));
+                    const parsed = new Date(y, m - 1, d).getTime();
+                    if (!isNaN(parsed)) return parsed;
+                }
             }
             return 0;
         };
@@ -433,8 +445,27 @@ const ClientOrders = () => {
             seen.add(key);
             return true;
         }).sort((a, b) => {
-            const timeDiff = getTimeScore(b) - getTimeScore(a);
-            if (timeDiff !== 0) return timeDiff;
+            // 1. If both items are orders from the database (orders or chauffeur bookings),
+            // sort by database autoincrement ID descending so the most recently placed order is ALWAYS at the top!
+            const isOrderA = a.source === 'orders' || a.source === 'chauffeur' || a.category === 'Chauffeur Booking' || a.category === 'Marketplace Order' || a.category === 'Custom Order';
+            const isOrderB = b.source === 'orders' || b.source === 'chauffeur' || b.category === 'Chauffeur Booking' || b.category === 'Marketplace Order' || b.category === 'Custom Order';
+
+            if (isOrderA && isOrderB) {
+                const idA = getIdScore(a);
+                const idB = getIdScore(b);
+                if (idA > 0 && idB > 0 && idA !== idB) {
+                    return idB - idA;
+                }
+            }
+
+            // 2. Otherwise compare by creation timestamp (newest first)
+            const timeA = getTimeScore(a);
+            const timeB = getTimeScore(b);
+            if (timeA > 0 && timeB > 0 && timeB !== timeA) {
+                return timeB - timeA;
+            }
+
+            // 3. Fallback to ID score descending
             return getIdScore(b) - getIdScore(a);
         });
     }, [orders, chauffeurRequests, events, guestRequests, luxuryItems, myClientId, myName, myEmail, portalRole]);

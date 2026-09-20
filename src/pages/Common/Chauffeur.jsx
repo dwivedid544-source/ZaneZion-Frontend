@@ -261,6 +261,7 @@ const Chauffeur = () => {
         isAdmin && (!isClientAdmin || req?.userId !== currentUser?.id) && req && !req.driverName && !req.adminApproved && ['pending', 'pending_review'].includes(chauffeurStatusKey(req.status));
 
     const filteredRequests = useMemo(() => {
+        console.log("RAW BACKEND DATA (chauffeurRequests):", chauffeurRequests);
         if (!isCustomer && !isClientAdmin) return chauffeurRequests;
         const myUserId = String(currentUser?.id || '').trim();
         const myClientId = String(currentUser?.clientId || currentUser?.company_id || '').trim();
@@ -268,15 +269,17 @@ const Chauffeur = () => {
         const myName = String(currentUser?.name || '').toLowerCase().trim();
 
         return (chauffeurRequests || []).filter(req => {
-            const reqUserId = String(req.userId || req.user_id || req.customer_id || req.created_by || req.createdById || req.metadata?.userId || req.metadata?.user_id || req.metadata?.customer_id || req.metadata?.created_by || '').trim();
+            const reqUserId = String(req.userId || req.user_id || req.customer_id || req.metadata?.userId || req.metadata?.user_id || req.metadata?.customer_id || req.created_by || req.createdById || req.metadata?.created_by || '').trim();
             const reqClientId = String(req.clientId || req.client_id || '').trim();
             const reqEmail = String(req.email || req.clientEmail || req.customerEmail || req.customer_email || req.metadata?.email || req.metadata?.user_email || req.metadata?.customer_email || '').toLowerCase().trim();
             const reqClientName = String(req.clientName || req.client || req.guestName || req.passengerName || req.customer_name || '').toLowerCase().trim();
 
+            console.log("Checking Order ID:", req.id, "reqUserId:", reqUserId, "myUserId:", myUserId, "Status:", req.status);
+
             if (myUserId && reqUserId && reqUserId === myUserId) return true;
             if (myClientId && reqClientId && reqClientId === myClientId) return true;
             if (myEmail && reqEmail && reqEmail === myEmail) return true;
-            if (myName && reqClientName && reqClientName === myName) return true;
+            if (myName && reqClientName && reqClientName.includes(myName)) return true;
 
             return false;
         });
@@ -286,6 +289,9 @@ const Chauffeur = () => {
     const DONE_STATUSES = ['completed', 'delivered', 'cancelled', 'done'];
     const activeBookings = filteredRequests.filter(r => !DONE_STATUSES.includes(chauffeurStatusKey(r.status)));
     const historyBookings = filteredRequests.filter(r => DONE_STATUSES.includes(chauffeurStatusKey(r.status)));
+    
+    console.log("FINAL ACTIVE BOOKINGS:", activeBookings);
+
     const tabData = bookingTab === 'active' ? activeBookings : historyBookings;
 
     const toggleAmenity = (item) => {
@@ -328,6 +334,11 @@ const Chauffeur = () => {
         const guestNameResolved = (rawPassengerName && String(rawPassengerName).trim()) ? String(rawPassengerName).trim() : clientDisplayName;
 
         const request = {
+            userId: currentUser?.id,
+            user_id: currentUser?.id,
+            customer_id: currentUser?.id,
+            email: currentUser?.email,
+            customer_email: currentUser?.email,
             clientId: isStaffAdmin ? (selectedClientId || currentUser?.company_id || 'CLT-GUEST') : (currentUser?.clientId || currentUser?.company_id || 'CLT-GUEST'),
             clientName: clientDisplayName,
             passengerName: guestNameResolved,

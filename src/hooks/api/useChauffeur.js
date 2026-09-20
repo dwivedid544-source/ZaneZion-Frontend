@@ -55,11 +55,14 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
       const totalPages = raw?.data?.totalPages ?? raw?.meta?.totalPages ?? raw?.totalPages ?? 1;
       const currentPage = raw?.data?.page ?? raw?.meta?.currentPage ?? raw?.page ?? 1;
 
+      const deletedIds = getDeletedChauffeurIds();
       const updatedMap = getUpdatedChauffeurMap();
 
       const mappedData = (ordersArray || [])
         .filter(order => {
           if (!order || typeof order !== 'object') return false;
+          const strId = String(order?.id || '');
+          if (deletedIds.includes(strId)) return false;
           const status = String(order.status || '').toLowerCase();
           return status !== 'deleted';
         })
@@ -99,6 +102,10 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
             restCustomItem?.location ||
             '';
 
+          const overlay = updatedMap?.[realId] || {};
+          const isCancelled = ['cancelled', 'rejected', 'canceled'].includes(String(order?.status || '').toLowerCase());
+          const resolvedStatus = overlay.status || (isCancelled ? 'cancelled' : (order?.status || 'pending'));
+
           const combined = {
             ...order,
             ...restCustomItem,
@@ -110,8 +117,9 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
             dropLocation: resolvedDrop,
             drop_location: resolvedDrop,
             location: resolvedDrop,
-            ...(updatedMap?.[realId] || {}),
-            status: order?.status || 'pending'
+            status: resolvedStatus,
+            chauffeur_status: overlay.chauffeur_status || resolvedStatus,
+            ...overlay
           };
 
           const sType = combined.serviceType || restCustomItem.serviceType || 'One Way';
@@ -317,8 +325,12 @@ export const useUpdateChauffeurMission = () => {
       try {
         const response = await api.put(`/orders/${patchId}`, payload);
         if (data.status) {
+          const normStatus = String(data.status).toLowerCase();
           try {
-            await api.patch(`/orders/${patchId}/status`, { status: data.status });
+            await api.put(`/orders/${patchId}/status`, { status: normStatus });
+          } catch (_) {}
+          try {
+            await api.patch(`/orders/${patchId}/status`, { status: normStatus });
           } catch (_) {}
         }
         return response.data;

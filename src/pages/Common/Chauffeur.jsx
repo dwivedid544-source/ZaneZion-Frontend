@@ -16,6 +16,7 @@ import { useChauffeurMissions, useCreateChauffeurMission, useUpdateChauffeurMiss
 import { formatClientDisplayName } from '../../utils/apiHelpers';
 import { normalizeRole } from '../../utils/authUtils';
 import api from '../../services/api/setupAxios';
+import { setUpdatedChauffeurItem, addDeletedChauffeurId } from '../../utils/stateSyncHelper';
 
 const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
     const [eta, setEta] = useState(null);
@@ -285,8 +286,8 @@ const Chauffeur = () => {
         });
     }, [chauffeurRequests, isCustomer, isClientAdmin, currentUser]);
 
-    /** Active: any status that is NOT completed/cancelled – stays visible until service is done. */
-    const DONE_STATUSES = ['completed', 'delivered', 'cancelled', 'done'];
+    /** Active: any status that is NOT completed/cancelled/rejected – stays visible until service is done. */
+    const DONE_STATUSES = ['completed', 'delivered', 'cancelled', 'canceled', 'rejected', 'done'];
     const activeBookings = filteredRequests.filter(r => !DONE_STATUSES.includes(chauffeurStatusKey(r.status)));
     const historyBookings = filteredRequests.filter(r => DONE_STATUSES.includes(chauffeurStatusKey(r.status)));
     
@@ -505,9 +506,78 @@ const Chauffeur = () => {
     };
 
     const handleCancel = async (id) => {
-        if ((await swalConfirm('Cancel Booking', 'Are you sure?')).isConfirmed) {
-            const request = chauffeurRequests.find(r => r.id === id);
-            updateMutation.mutate({ id, data: { ...request, status: 'Cancelled' } });
+        if ((await swalConfirm('Cancel Booking', 'Are you sure you want to cancel this booking?')).isConfirmed) {
+            swalLoading("Cancelling Booking", "Processing cancellation, please wait...");
+            const strId = String(id);
+            setUpdatedChauffeurItem(strId, { status: 'cancelled', chauffeur_status: 'cancelled' });
+            queryClient.setQueriesData({ queryKey: ['chauffeurMissions'] }, (old) => {
+                if (!old || !old.data) return old;
+                return {
+                    ...old,
+                    data: old.data.map(r => (String(r.id) === strId || String(r.db_id) === strId) ? { ...r, status: 'cancelled', chauffeur_status: 'cancelled' } : r)
+                };
+            });
+            try {
+                await api.put(`/orders/${id}/status`, { status: 'cancelled' });
+            } catch (_) {
+                try { await api.patch(`/orders/${id}/status`, { status: 'cancelled' }); } catch (_) {}
+            }
+            const request = chauffeurRequests.find(r => String(r.id) === strId || String(r.db_id) === strId);
+            if (request) {
+                try { updateMutation.mutate({ id, data: { ...request, status: 'cancelled' } }); } catch (_) {}
+            }
+            if (syncGlobalState) await syncGlobalState();
+            swalClose();
+            swalSuccess("Booking Cancelled", "Chauffeur booking cancelled successfully.");
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'chauffeur-cancel', orderId: id } }));
+            queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+            queryClient.invalidateQueries({ queryKey: ['orders'] });
+        }
+    };
+
+    const handleRejectBooking = async (row) => {
+        const rawTargetId = row.db_id || row.id;
+        const targetId = !isNaN(Number(rawTargetId)) && Number(rawTargetId) > 0 ? Number(rawTargetId) : rawTargetId;
+        const strId = String(targetId);
+
+        if ((await swalConfirm('Reject Chauffeur Booking', `Are you sure you want to reject chauffeur booking #${targetId}? This will cancel the booking.`)).isConfirmed) {
+            swalLoading("Rejecting Booking", "Cancelling chauffeur booking, please wait...");
+            try {
+                // 1. Local cache update
+                setUpdatedChauffeurItem(strId, { status: 'cancelled', chauffeur_status: 'cancelled' });
+                queryClient.setQueriesData({ queryKey: ['chauffeurMissions'] }, (old) => {
+                    if (!old || !old.data) return old;
+                    return {
+                        ...old,
+                        data: old.data.map(r => (String(r.id) === strId || String(r.db_id) === strId) ? { ...r, status: 'cancelled', chauffeur_status: 'cancelled' } : r)
+                    };
+                });
+
+                // 2. Persist to backend status endpoint
+                try {
+                    await api.put(`/orders/${targetId}/status`, { status: 'cancelled' });
+                } catch (_) {
+                    try { await api.patch(`/orders/${targetId}/status`, { status: 'cancelled' }); } catch (_) {}
+                }
+
+                // 3. Update global context
+                if (updateChauffeurRequestCtx) {
+                    try { await updateChauffeurRequestCtx({ ...row, status: 'cancelled', chauffeur_status: 'cancelled' }); } catch (_) {}
+                }
+                if (syncGlobalState) await syncGlobalState();
+
+                swalClose();
+                swalSuccess("Booking Rejected", `Chauffeur booking #${targetId} has been rejected and cancelled.`);
+                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'chauffeur-reject', orderId: targetId } }));
+                queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+                queryClient.invalidateQueries({ queryKey: ['orders'] });
+                queryClient.invalidateQueries({ queryKey: ['deliveries'] });
+                queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
+            } catch (err) {
+                swalClose();
+                const msg = err.response?.data?.message || err.message || 'Failed to reject chauffeur booking.';
+                swalError("Error", msg);
+            }
         }
     };
 
@@ -548,6 +618,7 @@ const Chauffeur = () => {
             render: (row) => {
                 const normSt = String(row.status || '').toLowerCase();
                 const isCompleted = ['completed', 'delivered', 'done'].includes(normSt);
+                const isCancelled = ['cancelled', 'canceled', 'rejected'].includes(normSt);
                 if (isCompleted) {
                     return (
                         <span className="text-[10px] font-black text-success uppercase tracking-widest px-2.5 py-1 bg-success/10 border border-success/30 rounded-lg">
@@ -555,14 +626,31 @@ const Chauffeur = () => {
                         </span>
                     );
                 }
+                if (isCancelled) {
+                    return (
+                        <span className="text-[10px] font-black text-rose-400 uppercase tracking-widest px-2.5 py-1 bg-rose-500/10 border border-rose-500/30 rounded-lg">
+                            Cancelled
+                        </span>
+                    );
+                }
                 return (
-                    <button
-                        type="button"
-                        onClick={() => handleMarkCompleted(row)}
-                        className="text-[10px] font-black text-accent uppercase tracking-wider bg-accent/10 border border-accent/30 hover:bg-accent hover:text-black px-2.5 py-1 rounded-lg transition-all"
-                    >
-                        Mark Complete
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            type="button"
+                            onClick={() => handleMarkCompleted(row)}
+                            className="text-[10px] font-black text-accent uppercase tracking-wider bg-accent/10 border border-accent/30 hover:bg-accent hover:text-black px-2.5 py-1 rounded-lg transition-all"
+                        >
+                            Mark Complete
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => handleRejectBooking(row)}
+                            className="text-[10px] font-black text-rose-400 uppercase tracking-wider bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500 hover:text-white px-2.5 py-1 rounded-lg transition-all"
+                            title="Reject / Cancel Chauffeur Booking"
+                        >
+                            Reject
+                        </button>
+                    </div>
                 );
             }
         }

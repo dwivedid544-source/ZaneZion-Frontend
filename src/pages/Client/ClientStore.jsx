@@ -60,13 +60,15 @@ const ClientStore = () => {
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
 
     const handleAddItemToOrder = (item, group) => {
+        const itemId = item?.id ?? item?.itemId ?? item?._id;
         const itemPayload = {
             ...item,
-            vendor_group_key: group.key,
-            vendorName: item.vendorName || item.vendor_name || group.label,
-            vendor_id: item.vendor_id ?? item.vendorId ?? group.vendorId ?? null,
+            id: itemId,
+            vendor_group_key: group?.key || '',
+            vendorName: item?.vendorName || item?.vendor_name || group?.label || 'General',
+            vendor_id: item?.vendor_id ?? item?.vendorId ?? group?.vendorId ?? null,
         };
-        const isInCart = cart.some(i => i.id === item.id);
+        const isInCart = cart.some(i => String(i.id) === String(itemId));
         addToCart(itemPayload);
         
         if (isInCart) {
@@ -81,11 +83,11 @@ const ClientStore = () => {
             });
         }
 
-        setAddedItems(prev => ({ ...prev, [item.id]: true }));
+        setAddedItems(prev => ({ ...prev, [itemId]: true }));
         setTimeout(() => {
             setAddedItems(prev => {
                 const next = { ...prev };
-                delete next[item.id];
+                delete next[itemId];
                 return next;
             });
         }, 2000);
@@ -1329,21 +1331,25 @@ const ClientStore = () => {
             {/* Cart Drawer */}
             <AnimatePresence>
                 {isCartOpen && (
-                    <>
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => setIsCartOpen(false)}
-                            className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100]"
-                        />
-                        <motion.div
-                            initial={{ x: '100%' }}
-                            animate={{ x: 0 }}
-                            exit={{ x: '100%' }}
-                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                            className="fixed inset-y-0 right-0 w-full sm:max-w-[450px] bg-sidebar border-l border-white/5 z-[101] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] h-[100dvh] max-h-[100dvh] overflow-hidden"
-                        >
+                    <motion.div
+                        key="cart-backdrop"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.2 }}
+                        onClick={() => setIsCartOpen(false)}
+                        className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100]"
+                    />
+                )}
+                {isCartOpen && (
+                    <motion.div
+                        key="cart-drawer-panel"
+                        initial={{ x: '100%' }}
+                        animate={{ x: 0 }}
+                        exit={{ x: '100%' }}
+                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                        className="fixed inset-y-0 right-0 w-full sm:max-w-[450px] bg-sidebar border-l border-white/5 z-[101] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] h-[100dvh] max-h-[100dvh] overflow-hidden"
+                    >
                             <div className="p-6 sm:p-8 border-b border-white/5 flex items-center justify-between shrink-0 bg-gradient-to-br from-white/[0.02] to-transparent">
                                 <div className="space-y-1">
                                     <h3 className="text-xl font-extrabold flex items-center gap-3 text-white">
@@ -1419,9 +1425,10 @@ const ClientStore = () => {
                                                     </div>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-2 bg-background/80 p-1 rounded-xl border border-white/10 shadow-inner shrink-0">
+                                            <div className="flex items-center gap-1.5 bg-background/80 p-1 rounded-xl border border-white/10 shadow-inner shrink-0">
                                                 <button
                                                     type="button"
+                                                    title="Decrease quantity"
                                                     onClick={() => removeFromCart(item.id)}
                                                     className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/40"
                                                 >
@@ -1430,10 +1437,19 @@ const ClientStore = () => {
                                                 <span className="text-[11px] font-black w-6 text-center text-white">{item.qty}</span>
                                                 <button
                                                     type="button"
+                                                    title="Increase quantity"
                                                     onClick={() => addToCart(item)}
                                                     className="w-8 h-8 flex items-center justify-center hover:bg-success/20 hover:text-success rounded-lg transition-all text-muted/40"
                                                 >
                                                     <Plus size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    title="Remove item"
+                                                    onClick={() => removeFromCart(item.id, true)}
+                                                    className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/30 ml-0.5"
+                                                >
+                                                    <Trash2 size={13} />
                                                 </button>
                                             </div>
                                         </motion.div>
@@ -1446,6 +1462,13 @@ const ClientStore = () => {
                                                 <p className="text-[10px] font-black uppercase tracking-[0.4em] text-muted italic">{isRetailPersonal ? 'Cart is empty' : 'Manifest is Empty'}</p>
                                                 <p className="text-[10px] text-muted/40 uppercase tracking-widest max-w-[180px]">{isRetailPersonal ? 'Add items from the catalogue to create an order.' : 'Requisition required to proceed with logistics portal.'}</p>
                                             </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => setIsCartOpen(false)}
+                                                className="px-6 py-2.5 rounded-xl bg-accent text-black text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all shadow-lg shadow-accent/20 cursor-pointer"
+                                            >
+                                                Browse Catalogue
+                                            </button>
                                         </div>
                                     )}
                                 </div>
@@ -1651,8 +1674,7 @@ const ClientStore = () => {
                                 </button>
                             </div>
                         </motion.div>
-                    </>
-                )}
+                    )}
             </AnimatePresence>
 
             {/* Loading Modal Popup Overlay while order is being processed */}

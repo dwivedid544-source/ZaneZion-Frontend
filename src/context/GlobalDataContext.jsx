@@ -1253,29 +1253,35 @@ export const GlobalDataProvider = ({ children }) => {
   };
 
   const addToCart = (item) => {
+    if (!item) return;
+    const itemId = item.id ?? item.itemId ?? item._id;
     setCart((prev) => {
-      const existing = prev.find((i) => i.id === item.id);
+      const existing = prev.find((i) => String(i.id) === String(itemId));
       if (existing) {
         return prev.map((i) =>
-          i.id === item.id ? { ...i, qty: i.qty + 1 } : i,
+          String(i.id) === String(itemId)
+            ? { ...i, qty: Number(i.qty || 1) + 1 }
+            : i,
         );
       }
-      return [...prev, { ...item, qty: 1 }];
+      return [...prev, { ...item, id: itemId, qty: 1 }];
     });
     addLog({
       action: "Cart Update",
-      detail: `Added ${item.name} to the procurement queue.`,
+      detail: `Added ${item.name || "Item"} to the procurement queue.`,
       type: "system",
     });
   };
 
-  const removeFromCart = (id) => {
+  const removeFromCart = (id, forceRemove = false) => {
     setCart((prev) => {
-      const item = prev.find((i) => i.id === id);
-      if (item && item.qty > 1) {
-        return prev.map((i) => (i.id === id ? { ...i, qty: i.qty - 1 } : i));
+      const item = prev.find((i) => String(i.id) === String(id));
+      if (!forceRemove && item && Number(item.qty) > 1) {
+        return prev.map((i) =>
+          String(i.id) === String(id) ? { ...i, qty: Number(i.qty) - 1 } : i,
+        );
       }
-      return prev.filter((i) => i.id !== id);
+      return prev.filter((i) => String(i.id) !== String(id));
     });
   };
   const clearCart = () => setCart([]);
@@ -3958,10 +3964,14 @@ export const GlobalDataProvider = ({ children }) => {
 
   const addOrder = async (order, options = {}) => {
     const { silentUi = false, customerCheckout = false } = options;
+    const roleKey = normalizeRole(currentUser?.role);
+    const userRole = roleKey;
+    const isCustomer = userRole === "customer";
+
     // Marketplace / store checkout — customers may place orders. Manual "Create Order" is staff-only.
     if (
       !customerCheckout &&
-      !roleCanCreateInstitutionalOrder(normalizeRole(currentUser?.role))
+      !roleCanCreateInstitutionalOrder(roleKey)
     ) {
       const msg =
         "Only authorised staff can create orders here. Customers should use Marketplace checkout, or ask staff to raise an order on their behalf.";
@@ -3990,14 +4000,11 @@ export const GlobalDataProvider = ({ children }) => {
     );
 
     try {
-      const roleKey = normalizeRole(currentUser?.role);
-      const userRole = roleKey;
       const tenantTypeKey = String(
         currentUser?.tenant_type || currentUser?.tenantType || "",
       )
         .trim()
         .toLowerCase();
-      const isCustomer = userRole === "customer";
       const isBusinessTenant =
         tenantTypeKey === "saas" ||
         tenantTypeKey === "business" ||
@@ -5917,11 +5924,14 @@ export const GlobalDataProvider = ({ children }) => {
         orders = raw;
       }
 
+      const deletedIds = getDeletedChauffeurIds();
       const updatedMap = getUpdatedChauffeurMap();
 
       const mapped = (orders || [])
         .filter((order) => {
           if (!order || typeof order !== 'object') return false;
+          const strId = String(order.id);
+          if (deletedIds.includes(strId)) return false;
           const status = String(order.status || '').toLowerCase();
           return status !== 'deleted';
         })
@@ -5937,7 +5947,9 @@ export const GlobalDataProvider = ({ children }) => {
             String(d.db_id) === String(order.id)
           );
 
-          const liveStatus = matchingDelivery?.status || order.status;
+          const isOrderCancelled = ['cancelled', 'rejected', 'canceled'].includes(String(order.status || '').toLowerCase());
+          const isDeliveryCancelled = ['cancelled', 'rejected', 'canceled'].includes(String(matchingDelivery?.status || '').toLowerCase());
+          const liveStatus = (isOrderCancelled || isDeliveryCancelled) ? 'cancelled' : (matchingDelivery?.status || order.status || 'pending');
           const liveDriver = matchingDelivery?.driver || order.driverName || detail?.driverName || null;
           const liveVehicle = matchingDelivery?.vehicleId || order.plateNumber || detail?.plateNumber || null;
 
@@ -5989,7 +6001,9 @@ export const GlobalDataProvider = ({ children }) => {
           const overlay = updatedMap[String(order.id)] || {};
           return {
             ...baseMapped,
-            ...overlay
+            ...overlay,
+            status: overlay.status || baseMapped.status,
+            chauffeur_status: overlay.chauffeur_status || overlay.status || baseMapped.status,
           };
         });
       setChauffeurRequests(filterDataForCurrentUser(mapped));

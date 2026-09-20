@@ -13,6 +13,8 @@ import OrderTimeline from '../../components/OrderTimeline';
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
 import { formatClientDisplayName } from '../../utils/apiHelpers';
 import { isOrderVisibleToConcierge } from '../../utils/conciergeVisibility';
+import api from '../../services/api/setupAxios';
+import { setUpdatedChauffeurItem } from '../../utils/stateSyncHelper';
 
 /** Bespoke / concierge-path orders (store custom request or any row with a custom_request_category). */
 function isCustomRequestFlowOrder(order) {
@@ -35,7 +37,7 @@ const Orders = () => {
     currentUser, launchMissionFromOrder, convertOrderToProject,
     fetchOrders, fetchDeliveries, fetchMissions, fetchProjects,
     fetchVendors, fetchClients, clients, users = [], customerUsers = [], fetchCustomerUsers,
-    hasMenuPermission
+    hasMenuPermission, syncGlobalState
   } = useData();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -205,7 +207,15 @@ const Orders = () => {
 
     if (confirm?.isConfirmed) {
       try {
+        const cleanId = String(order.id).replace(/^#|^ORD-/i, '');
+        setUpdatedChauffeurItem(String(cleanId), { status: 'cancelled', chauffeur_status: 'cancelled' });
         await updateOrderStatusMutation.mutateAsync({ id: order.id, status: 'cancelled' });
+        try {
+          await api.put(`/orders/${cleanId}/status`, { status: 'cancelled' });
+        } catch (_) {
+          try { await api.patch(`/orders/${cleanId}/status`, { status: 'cancelled' }); } catch (_) {}
+        }
+        if (syncGlobalState) await syncGlobalState();
         swalSuccess(
           'Order Rejected',
           `Order #${order.id} has been rejected and cancelled.`
@@ -227,12 +237,12 @@ const Orders = () => {
     let list = workflowTab === 'history'
       ? nonProjectOrders.filter(o => {
         const status = resolveLiveOrderStatus(o);
-        return status === 'completed' || status === 'delivered';
+        return ['completed', 'delivered', 'cancelled', 'rejected'].includes(status);
       })
       : workflowTab === 'active'
         ? nonProjectOrders.filter(o => {
           const status = resolveLiveOrderStatus(o);
-          return status !== 'completed' && status !== 'delivered';
+          return !['completed', 'delivered', 'cancelled', 'rejected'].includes(status);
         })
         : nonProjectOrders;
 

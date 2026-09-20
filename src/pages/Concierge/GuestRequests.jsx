@@ -6,10 +6,25 @@ import { useData } from '../../context/GlobalDataContext';
 import { normalizeRole } from '../../utils/authUtils';
 
 const GuestRequests = () => {
-    const { guestRequests = [], addGuestRequest, updateGuestRequest, deleteGuestRequest, hasMenuPermission, currentUser, clients, fetchClients } = useData();
+    const { guestRequests = [], addGuestRequest, updateGuestRequest, deleteGuestRequest, hasMenuPermission, currentUser, clients, fetchClients, fetchTickets } = useData();
     React.useEffect(() => {
         if (fetchClients) fetchClients();
-    }, [fetchClients]);
+        if (fetchTickets) fetchTickets();
+
+        const handleStateChanged = () => {
+            if (fetchTickets) fetchTickets();
+        };
+        window.addEventListener('app:state-changed', handleStateChanged);
+
+        const interval = setInterval(() => {
+            if (fetchTickets) fetchTickets();
+        }, 3000);
+
+        return () => {
+            window.removeEventListener('app:state-changed', handleStateChanged);
+            clearInterval(interval);
+        };
+    }, [fetchClients, fetchTickets]);
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [modalType, setModalType] = useState('view');
     const [selectedRequest, setSelectedRequest] = useState(null);

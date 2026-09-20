@@ -24,6 +24,24 @@ const ConciergeDashboard = () => {
     fetchDeliveries();
     fetchClients();
     fetchChauffeurRequests();
+
+    const handleStateChanged = () => {
+      fetchTickets();
+      fetchLuxuryItems();
+      fetchDeliveries();
+      fetchChauffeurRequests();
+    };
+    window.addEventListener('app:state-changed', handleStateChanged);
+
+    const interval = setInterval(() => {
+      fetchTickets();
+      fetchChauffeurRequests();
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('app:state-changed', handleStateChanged);
+      clearInterval(interval);
+    };
   }, [fetchTickets, fetchLuxuryItems, fetchDeliveries, fetchClients, fetchChauffeurRequests]);
 
   const [isRequestModalOpen, setIsRequestModalOpen] = useState(false);

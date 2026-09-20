@@ -5,7 +5,25 @@ import { useData } from '../../context/GlobalDataContext';
 import { Calendar, Plus, Clock, Star, MapPin, Search, Trash2, Edit, Users } from 'lucide-react';
 
 const ClientEvents = () => {
-    const { events = [], addEvent, updateEvent, deleteEvent, currentUser, clients } = useData();
+    const { events = [], addEvent, updateEvent, deleteEvent, currentUser, clients, fetchTickets } = useData();
+
+    React.useEffect(() => {
+        if (fetchTickets) fetchTickets();
+
+        const handleStateChanged = () => {
+            if (fetchTickets) fetchTickets();
+        };
+        window.addEventListener('app:state-changed', handleStateChanged);
+
+        const interval = setInterval(() => {
+            if (fetchTickets) fetchTickets();
+        }, 3000);
+
+        return () => {
+            window.removeEventListener('app:state-changed', handleStateChanged);
+            clearInterval(interval);
+        };
+    }, [fetchTickets]);
 
     const clientName = currentUser?.name || 'Current Client';
     // Find the company record for this user so we can match events by company name

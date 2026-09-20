@@ -924,31 +924,76 @@ export const GlobalDataProvider = ({ children }) => {
     });
 
     socket.on('support_update', (updatedTicket) => {
-      if (!updatedTicket || !updatedTicket.id) return;
+      if (!updatedTicket || (!updatedTicket.id && !updatedTicket.ticketId)) return;
+      const matchId = (t) =>
+        String(t.id) === String(updatedTicket.id) ||
+        String(t.ticketId) === String(updatedTicket.id) ||
+        String(t.db_id) === String(updatedTicket.id) ||
+        (updatedTicket.ticketId && String(t.id) === String(updatedTicket.ticketId)) ||
+        (updatedTicket.ticketId && String(t.ticketId) === String(updatedTicket.ticketId));
+
+      const formatStatus = (s) => {
+        if (!s) return "Open";
+        return String(s)
+          .split(/[_\s]+/)
+          .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+          .join(" ");
+      };
+      const formattedStatus = updatedTicket.status ? formatStatus(updatedTicket.status) : undefined;
+      const patchedTicket = { ...updatedTicket, ...(formattedStatus ? { status: formattedStatus } : {}) };
+
       if (updatedTicket.deleted) {
-        setSupportTickets(prev => prev.filter(t => t.id !== parseInt(updatedTicket.id)));
+        setSupportTickets(prev => prev.filter(t => !matchId(t)));
+        setRawSupportTickets(prev => prev.filter(t => !matchId(t)));
       } else {
-        setSupportTickets(prev => prev.map(t => t.id === updatedTicket.id ? { ...t, ...updatedTicket } : t));
+        setSupportTickets(prev => prev.map(t => matchId(t) ? { ...t, ...patchedTicket } : t));
+        setRawSupportTickets(prev => prev.map(t => matchId(t) ? { ...t, ...patchedTicket } : t));
       }
+      fetchTickets();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
     });
 
     socket.on('event_update', (updatedEvent) => {
-      if (!updatedEvent || !updatedEvent.id) return;
+      if (!updatedEvent || (!updatedEvent.id && !updatedEvent.eventId)) return;
+      const matchId = (e) =>
+        String(e.id) === String(updatedEvent.id) ||
+        String(e.eventId) === String(updatedEvent.id) ||
+        String(e.db_id) === String(updatedEvent.id) ||
+        (updatedEvent.eventId && String(e.id) === String(updatedEvent.eventId)) ||
+        (updatedEvent.eventId && String(e.eventId) === String(updatedEvent.eventId));
+
       if (updatedEvent.deleted) {
-        setEvents(prev => prev.filter(e => e.id !== parseInt(updatedEvent.id)));
+        setEvents(prev => prev.filter(e => !matchId(e)));
+        setRawEvents(prev => prev.filter(e => !matchId(e)));
       } else {
-        setEvents(prev => prev.map(e => e.id === updatedEvent.id ? { ...e, ...updatedEvent } : e));
+        setEvents(prev => prev.map(e => matchId(e) ? { ...e, ...updatedEvent, status: updatedEvent.status || e.status } : e));
+        setRawEvents(prev => prev.map(e => matchId(e) ? { ...e, ...updatedEvent, status: updatedEvent.status || e.status } : e));
       }
       fetchTickets();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
     });
 
     socket.on('guest_request_update', (updatedReq) => {
-      if (!updatedReq || !updatedReq.id) return;
+      if (!updatedReq || (!updatedReq.id && !updatedReq.requestId)) return;
+      const matchId = (r) =>
+        String(r.id) === String(updatedReq.id) ||
+        String(r.requestId) === String(updatedReq.id) ||
+        String(r.db_id) === String(updatedReq.id) ||
+        (updatedReq.requestId && String(r.id) === String(updatedReq.requestId)) ||
+        (updatedReq.requestId && String(r.requestId) === String(updatedReq.requestId));
+
+      const normalizedStatus = updatedReq.status ? String(updatedReq.status).toLowerCase() : undefined;
+      const patchedReq = { ...updatedReq, ...(normalizedStatus ? { status: normalizedStatus } : {}) };
+
       if (updatedReq.deleted) {
-        setGuestRequests(prev => prev.filter(r => r.id !== parseInt(updatedReq.id)));
+        setGuestRequests(prev => prev.filter(r => !matchId(r)));
+        setRawGuestRequests(prev => prev.filter(r => !matchId(r)));
       } else {
-        setGuestRequests(prev => prev.map(r => r.id === updatedReq.id ? { ...r, ...updatedReq } : r));
+        setGuestRequests(prev => prev.map(r => matchId(r) ? { ...r, ...patchedReq } : r));
+        setRawGuestRequests(prev => prev.map(r => matchId(r) ? { ...r, ...patchedReq } : r));
       }
+      fetchTickets();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
     });
 
     return () => {
@@ -2377,6 +2422,9 @@ export const GlobalDataProvider = ({ children }) => {
           const rawClient = clientCandidate || "Personal Client";
           return {
             ...e,
+            id: e.eventId || e.id,
+            eventId: e.eventId || e.id,
+            db_id: e.db_id || e.id,
             title: e.name || e.title,
             client_name: rawClient,
             client: rawClient,
@@ -2388,6 +2436,7 @@ export const GlobalDataProvider = ({ children }) => {
             moodBoardUrl: e.mood_board_url || e.moodBoardUrl,
             client_id: e.client_id || e.clientId,
             manager_id: e.manager_id || e.managerId,
+            status: e.status || "planned",
           };
         });
         // Store raw events so the filter-effect can re-apply when user loads
@@ -2424,12 +2473,16 @@ export const GlobalDataProvider = ({ children }) => {
           }
           return {
             ...r,
+            id: r.requestId || r.id,
+            requestId: r.requestId || r.id,
+            db_id: r.db_id || r.id,
             request: r.request_details || r.request || r.requestType || r.request_type || "Concierge Service Request",
             requestedBy: r.requested_by || r.requestedBy || r.guestName || r.guest || "Client",
             time: parsedTime || r.delivery_time || r.time || "",
             date: parsedDate || (r.created_at ? r.created_at.split("T")[0] : r.date || ""),
             guest: r.guest || r.guestName || r.client_name || r.room || "VIP Suite",
             priority: capitalizePriority(r.priority),
+            status: (r.status || "pending").toLowerCase(),
           };
         });
 
@@ -3922,8 +3975,10 @@ export const GlobalDataProvider = ({ children }) => {
 
     // 0. Resolve Client ID if missing but name is present
     let targetClientId = order.clientId;
-    if (!targetClientId && order.client) {
-      const foundClient = clients.find((c) => c.name === order.client);
+    if (isCustomer && currentUser?.clientId) {
+      targetClientId = currentUser.clientId;
+    } else if (!targetClientId && order.client) {
+      const foundClient = clients.find((c) => (currentUser?.email && c.email?.toLowerCase() === currentUser.email?.toLowerCase()) || c.name === order.client);
       if (foundClient) targetClientId = foundClient.id;
     }
     if (!targetClientId) targetClientId = 1;
@@ -3972,17 +4027,11 @@ export const GlobalDataProvider = ({ children }) => {
       ).toLowerCase();
       const isCustomRequestOrder =
         orderKindNorm === "custom_request" || customCategory !== "";
-      /** Marketplace orders bypass admin_review stage and route directly to operations queue so Field Staff can accept immediately. Custom requests route to concierge triage after admin approve. */
-      const routedDepartment = (() => {
-        if (isCustomRequestOrder) return "concierge";
-        return "operations";
-      })();
+      /** All client and customer orders must enter pending review ('created') so Admin can accept before moving to operations */
+      const routedDepartment = isCustomRequestOrder ? "concierge" : "operations";
 
       const requestedStatus =
-        normalizeOrderStatusForApi(order.status) ||
-        (isCustomRequestOrder
-          ? "admin_review"
-          : "operation");
+        normalizeOrderStatusForApi(order.status) || "created";
       const totalAmountVal = (() => {
         const direct = parseFloat(
           order.estimated_total ?? order.total_amount ?? order.total ?? 0,
@@ -4013,7 +4062,8 @@ export const GlobalDataProvider = ({ children }) => {
           return vId && vId !== "" ? Number(vId) : null;
         })(),
         vendor_name: order.vendor || order.vendor_name || null,
-        type: order.type || order.orderType || "Marketplace Order",
+        type: order.type || order.orderType || "Delivery",
+        orderType: order.orderType || order.type || "Delivery",
         items: order.items,
         customItems: order.items,
         custom_items: order.items,
@@ -4066,58 +4116,7 @@ export const GlobalDataProvider = ({ children }) => {
         }
       }
 
-      /** Marketplace orders (including Personal Client customer checkout): enqueue delivery + field task immediately so Field Staff can accept mission directly from Operational / Open Delivery Queue without admin approval. */
-      if (!isCustomRequestOrder && newId != null) {
-        try {
-          await addDelivery({
-            orderId: newId,
-            company_id: isCustomer
-              ? customerOrderCompanyId
-              : currentUser?.company_id || currentUser?.companyId || null,
-            client_id: targetClientId || null,
-            customer_id: isCustomer ? currentUser?.id || null : null,
-            // DB `mission_type` is constrained; keep canonical short value.
-            missionType: "Delivery",
-            location: order.deliveryAddress || order.location || "",
-            driver: "",
-            vehicleId: "",
-            items: order.items || [],
-            pickupLocation: pickupLocationVal || "Fulfilment Hub",
-            dropLocation: order.deliveryAddress || order.location || "",
-            dueDate: dueVal || orderDateVal,
-            status: "Pending Pickup",
-            delivery_instructions:
-              order.delivery_instructions || order.deliveryInstructions || null,
-            delivery_fee: parseFloat(order.tier_delivery_fee || order.tierDeliveryFee || 0),
-          });
-        } catch (queueErr) {
-          console.warn(
-            "Could not enqueue normal order for delivery team:",
-            queueErr?.response?.data || queueErr?.message,
-          );
-        }
-        // Marketplace/normal orders should be visible directly to field staff queue.
-        try {
-          const firstItemName =
-            (order.items || [])[0]?.name || "Marketplace order";
-          await addStaffAssignment({
-            assigneeId: null,
-            task: `Dispatch Order #${newId} - ${firstItemName}`,
-            location:
-              order.deliveryAddress || order.location || "Client location",
-            status: "Pending",
-            priority: "Normal",
-            missionType: "Delivery",
-            pickupLocation: pickupLocationVal || "Fulfilment Hub",
-            deliveryLocation: order.deliveryAddress || order.location || "",
-          });
-        } catch (assignErr) {
-          console.warn(
-            "Could not create field staff assignment for normal order:",
-            assignErr?.response?.data || assignErr?.message,
-          );
-        }
-      }
+      // Delivery dispatch and staff assignment are handled when Admin accepts the order in Orders view
       /** Custom / bespoke: no immediate Ops/Procurement staff row — admin approves → `concierge` stage, then `assignOrderToStage` creates the concierge desk assignment. */
 
       await syncGlobalState();
@@ -6643,6 +6642,7 @@ export const GlobalDataProvider = ({ children }) => {
         title: event.title || "",
         name: event.name || event.title || "",
         event_date: event.date || "",
+        date: event.date || "",
         location: event.location || "",
         client_id: clientId,
         manager_id: currentUser?.id || "",
@@ -6655,22 +6655,28 @@ export const GlobalDataProvider = ({ children }) => {
 
       const res = await api.post("/support/events", payload);
       if (res.data?.success) {
+        const createdEvt = res.data.data;
         const newEvt = {
-          ...res.data.data,
-          title: res.data.data.name,
-          client: res.data.data.client_name,
-          date: res.data.data.event_date
-            ? res.data.data.event_date.split("T")[0]
-            : "",
-          imageUrl: res.data.data.image_url || res.data.data.imageUrl || "",
-          moodBoardUrl: res.data.data.moodBoardUrl || res.data.data.mood_board_url || moodBoard || event.moodBoardUrl || "",
-          plannerName: res.data.data.plannerName || res.data.data.planner_name || event.plannerName || "",
-          specialRequests: res.data.data.specialRequests || res.data.data.special_requests || event.specialRequests || "",
-          guestCount: res.data.data.guestCount || res.data.data.guest_count || event.guestCount || 0,
-          client_id: res.data.data.clientId || res.data.data.client_id,
-          manager_id: res.data.data.managerId || res.data.data.manager_id,
+          ...createdEvt,
+          id: createdEvt.eventId || createdEvt.id,
+          eventId: createdEvt.eventId || createdEvt.id,
+          db_id: createdEvt.id || createdEvt.db_id,
+          title: createdEvt.name || event.title,
+          client: createdEvt.client_name || event.client || "Personal Client",
+          client_name: createdEvt.client_name || event.client || "Personal Client",
+          date: createdEvt.date || (createdEvt.event_date ? createdEvt.event_date.split("T")[0] : event.date || ""),
+          imageUrl: createdEvt.image_url || createdEvt.imageUrl || "",
+          moodBoardUrl: createdEvt.moodBoardUrl || createdEvt.mood_board_url || moodBoard || event.moodBoardUrl || "",
+          plannerName: createdEvt.plannerName || createdEvt.planner_name || event.plannerName || "",
+          specialRequests: createdEvt.specialRequests || createdEvt.special_requests || event.specialRequests || "",
+          guestCount: createdEvt.guestCount || createdEvt.guest_count || event.guestCount || 0,
+          client_id: createdEvt.clientId || createdEvt.client_id || clientId,
+          manager_id: createdEvt.managerId || createdEvt.manager_id || currentUser?.id,
+          status: createdEvt.status || event.status || "planned",
+          tenantId: currentUser?.tenantId || 1,
         };
         setEvents((prev) => [newEvt, ...prev]);
+        setRawEvents((prev) => [newEvt, ...prev]);
         await fetchTickets();
         window.dispatchEvent(new CustomEvent('app:state-changed'));
         addLog({
@@ -6686,7 +6692,7 @@ export const GlobalDataProvider = ({ children }) => {
 
   const updateEvent = async (updated) => {
     try {
-      // Only include fields that are explicitly provided (undefined means "no change").
+      const targetId = updated.id || updated.eventId;
       let clientId;
       if (updated.client_id !== undefined) {
         clientId = String(updated.client_id).replace("CLT-", "");
@@ -6700,6 +6706,7 @@ export const GlobalDataProvider = ({ children }) => {
         title: updated.title || "",
         name: updated.name || updated.title || "",
         event_date: updated.date || "",
+        date: updated.date || "",
         location: updated.location || "",
         client_id: clientId,
         manager_id: updated.manager_id || updated.managerId || currentUser?.id || "",
@@ -6710,44 +6717,39 @@ export const GlobalDataProvider = ({ children }) => {
         mood_board_url: updated.moodBoardUrl || ""
       };
 
-      const res = await api.put(`/support/events/${updated.id}`, payload);
-
-      try {
-        console.debug(
-          `PUT /support/events/${updated.id} payload:`,
-          payload,
-          "response:",
-          res?.data || res,
-        );
-      } catch (e) { }
-
       // Optimistically update local state so UI reflects changes immediately.
-      const uiUpdate = {};
-      if (updated.title !== undefined) uiUpdate.title = updated.title;
-      if (updated.date !== undefined) uiUpdate.date = updated.date;
-      if (updated.location !== undefined) uiUpdate.location = updated.location;
-      if (updated.plannerName !== undefined)
-        uiUpdate.plannerName = updated.plannerName;
-      if (updated.specialRequests !== undefined)
-        uiUpdate.specialRequests = updated.specialRequests;
-      if (updated.guestCount !== undefined)
-        uiUpdate.guestCount = updated.guestCount;
-      if (updated.moodBoardUrl !== undefined)
-        uiUpdate.moodBoardUrl = updated.moodBoardUrl;
+      const uiUpdate = {
+        ...updated,
+        title: updated.title,
+        date: updated.date,
+        location: updated.location,
+        plannerName: updated.plannerName,
+        specialRequests: updated.specialRequests,
+        guestCount: updated.guestCount,
+        moodBoardUrl: updated.moodBoardUrl,
+        status: updated.status,
+      };
+      Object.keys(uiUpdate).forEach(k => uiUpdate[k] === undefined && delete uiUpdate[k]);
 
-      if (Object.keys(uiUpdate).length > 0) {
-        setEvents((prev) =>
-          prev.map((e) =>
-            String(e.id) === String(updated.id) ? { ...e, ...uiUpdate } : e,
-          ),
-        );
-      }
+      const matchEvt = (e) =>
+        String(e.id) === String(targetId) ||
+        String(e.eventId) === String(targetId) ||
+        String(e.db_id) === String(targetId);
+
+      setEvents((prev) =>
+        prev.map((e) => (matchEvt(e) ? { ...e, ...uiUpdate } : e))
+      );
+      setRawEvents((prev) =>
+        prev.map((e) => (matchEvt(e) ? { ...e, ...uiUpdate } : e))
+      );
+
+      await api.put(`/support/events/${targetId}`, payload);
 
       await fetchTickets();
       window.dispatchEvent(new CustomEvent('app:state-changed'));
       addLog({
         action: "Event Update",
-        detail: `Synchronized details for ${updated.title || updated.id}.`,
+        detail: `Synchronized details for ${updated.title || targetId}.`,
         type: "system",
       });
     } catch (error) {
@@ -6757,8 +6759,16 @@ export const GlobalDataProvider = ({ children }) => {
 
   const deleteEvent = async (id) => {
     try {
+      const matchEvt = (e) =>
+        String(e.id) === String(id) ||
+        String(e.eventId) === String(id) ||
+        String(e.db_id) === String(id);
+
+      setEvents((prev) => prev.filter((e) => !matchEvt(e)));
+      setRawEvents((prev) => prev.filter((e) => !matchEvt(e)));
+
       await api.delete(`/support/events/${id}`);
-      setEvents((prev) => prev.filter((e) => e.id !== id));
+      await fetchTickets();
       window.dispatchEvent(new CustomEvent('app:state-changed'));
       addLog({
         action: "Event Cancellation",
@@ -6915,7 +6925,24 @@ export const GlobalDataProvider = ({ children }) => {
       };
       const res = await api.post("/support/tickets", payload);
       if (res.data?.success) {
+        const createdTkt = res.data.data;
+        const newTicket = {
+          ...createdTkt,
+          id: createdTkt.ticketId || createdTkt.id,
+          ticketId: createdTkt.ticketId || createdTkt.id,
+          db_id: createdTkt.id || createdTkt.db_id,
+          clientName: ticket.clientName || currentUser?.name || "System User",
+          subject: ticket.subject,
+          category: ticket.category || "General",
+          priority: (ticket.priority || "Medium").charAt(0).toUpperCase() + (ticket.priority || "Medium").slice(1),
+          status: "Open",
+          date: new Date().toISOString().split("T")[0],
+          messages: ticket.messages || [],
+        };
+        setSupportTickets((prev) => [newTicket, ...prev]);
+        setRawSupportTickets((prev) => [newTicket, ...prev]);
         await fetchTickets();
+        window.dispatchEvent(new CustomEvent('app:state-changed'));
         addLog({
           action: "Ticket Creation",
           detail: `Ticket opened: ${ticket.subject}`,
@@ -6931,9 +6958,7 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       let id, payload;
       if (typeof ticketOrId === "object") {
-        id = ticketOrId.db_id || ticketOrId.id;
-        if (typeof id === "string" && !id.startsWith("TKT-")) id = `TKT-${id}`;
-
+        id = ticketOrId.ticketId || ticketOrId.id || ticketOrId.db_id;
         payload = {
           status: (ticketOrId.status || "open").toLowerCase().replace(/\s+/g, "_"),
           messages: ticketOrId.messages || ticketOrId.responses || [],
@@ -6942,11 +6967,42 @@ export const GlobalDataProvider = ({ children }) => {
         };
       } else {
         id = ticketOrId;
-        if (typeof id === "string" && !id.startsWith("TKT-")) id = `TKT-${id}`;
-        payload = { status: status.toLowerCase().replace(/\s+/g, "_") };
+        payload = { status: (status || "open").toLowerCase().replace(/\s+/g, "_") };
       }
+
+      const formatStatus = (s) => {
+        if (!s) return "Open";
+        return String(s)
+          .split(/[_\s]+/)
+          .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+          .join(" ");
+      };
+      const formattedStatus = formatStatus(payload.status);
+
+      // Optimistically update local state immediately
+      const matchTicket = (t) =>
+        String(t.id) === String(id) ||
+        String(t.ticketId) === String(id) ||
+        String(t.db_id) === String(id);
+
+      setSupportTickets((prev) =>
+        prev.map((t) =>
+          matchTicket(t)
+            ? { ...t, ...payload, status: formattedStatus }
+            : t
+        )
+      );
+      setRawSupportTickets((prev) =>
+        prev.map((t) =>
+          matchTicket(t)
+            ? { ...t, ...payload, status: formattedStatus }
+            : t
+        )
+      );
+
       const res = await api.put(`/support/tickets/${id}`, payload);
       await fetchTickets();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
       addLog({
         action: "Ticket Update",
         detail: `Synchronized support ticket ${id}.`,
@@ -6987,7 +7043,27 @@ export const GlobalDataProvider = ({ children }) => {
       console.log('[GuestRequest] Creating:', payload);
       const res = await api.post("/support/guest-requests", payload);
       if (res.data?.success) {
-        await fetchTickets(); // Re-fetch all tickets to include new one with mapped fields
+        const createdReq = res.data.data;
+        const newReq = {
+          ...createdReq,
+          id: createdReq.requestId || createdReq.id,
+          requestId: createdReq.requestId || createdReq.id,
+          db_id: createdReq.id || createdReq.db_id,
+          request: createdReq.request_details || createdReq.request || payload.request_details,
+          requestedBy: createdReq.requested_by || payload.requested_by,
+          time: request.time || "",
+          date: request.date || (createdReq.created_at ? createdReq.created_at.split("T")[0] : new Date().toISOString().split("T")[0]),
+          guest: createdReq.guestName || createdReq.guest || payload.guest,
+          priority: (payload.priority || "Medium").charAt(0).toUpperCase() + (payload.priority || "Medium").slice(1),
+          status: payload.status || "pending",
+          client_id: payload.client_id,
+          created_by: currentUser?.id,
+          tenantId: currentUser?.tenantId || 1,
+        };
+        setGuestRequests((prev) => [newReq, ...prev]);
+        setRawGuestRequests((prev) => [newReq, ...prev]);
+        await fetchTickets();
+        window.dispatchEvent(new CustomEvent('app:state-changed'));
         addLog({
           action: "Concierge Request",
           detail: `New guest requirement logged for ${request.guest}.`,
@@ -7002,8 +7078,32 @@ export const GlobalDataProvider = ({ children }) => {
   const updateGuestRequest = async (data) => {
     try {
       const { id, requestId, ...updateData } = data;
-      // Use requestId (GRQ-XXXX) if available, fall back to id
       const reqId = requestId || id;
+      const normalizedStatus = (updateData.status || "pending").toLowerCase();
+      const updatedItemFields = {
+        ...updateData,
+        status: normalizedStatus,
+        priority: updateData.priority ? (updateData.priority.charAt(0).toUpperCase() + updateData.priority.slice(1)) : undefined,
+        guest: updateData.guest || updateData.guestName,
+        request: updateData.request || updateData.request_details,
+        time: updateData.time,
+        date: updateData.date,
+      };
+      Object.keys(updatedItemFields).forEach(k => updatedItemFields[k] === undefined && delete updatedItemFields[k]);
+
+      const matchReq = (r) =>
+        String(r.id) === String(reqId) ||
+        String(r.requestId) === String(reqId) ||
+        String(r.db_id) === String(reqId);
+
+      // Optimistically update local state immediately
+      setGuestRequests((prev) =>
+        prev.map((r) => (matchReq(r) ? { ...r, ...updatedItemFields } : r))
+      );
+      setRawGuestRequests((prev) =>
+        prev.map((r) => (matchReq(r) ? { ...r, ...updatedItemFields } : r))
+      );
+
       const formattedTime = formatDateTime(updateData.date, updateData.time);
       const reqData = {
         guest: updateData.guest || updateData.guestName || "Guest",
@@ -7012,11 +7112,12 @@ export const GlobalDataProvider = ({ children }) => {
           updateData.request || updateData.request_details || "",
         delivery_time: formattedTime,
         priority: (updateData.priority || "medium").toLowerCase(),
-        status: (updateData.status || "pending").toLowerCase(),
+        status: normalizedStatus,
       };
       console.log('[GuestRequest] Updating:', reqId, reqData);
       await api.put(`/support/guest-requests/${reqId}`, reqData);
-      await fetchTickets(); // Sync state
+      await fetchTickets();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
       addLog({
         action: "Concierge Update",
         detail: `Request ${reqId} parameters updated.`,
@@ -7029,8 +7130,17 @@ export const GlobalDataProvider = ({ children }) => {
 
   const deleteGuestRequest = async (id) => {
     try {
+      const matchReq = (r) =>
+        String(r.id) === String(id) ||
+        String(r.requestId) === String(id) ||
+        String(r.db_id) === String(id);
+
+      setGuestRequests((prev) => prev.filter((r) => !matchReq(r)));
+      setRawGuestRequests((prev) => prev.filter((r) => !matchReq(r)));
+
       await api.delete(`/support/guest-requests/${id}`);
-      setGuestRequests((prev) => prev.filter((r) => r.id !== id));
+      await fetchTickets();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
       addLog({
         action: "Concierge Request Cancelled",
         detail: `Removed guest requirement reference ${id}.`,

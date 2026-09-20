@@ -13,6 +13,20 @@ const SupportDashboard = () => {
 
     React.useEffect(() => {
         if (fetchTickets) fetchTickets();
+
+        const handleStateChanged = () => {
+            if (fetchTickets) fetchTickets();
+        };
+        window.addEventListener('app:state-changed', handleStateChanged);
+
+        const interval = setInterval(() => {
+            if (fetchTickets) fetchTickets();
+        }, 3000);
+
+        return () => {
+            window.removeEventListener('app:state-changed', handleStateChanged);
+            clearInterval(interval);
+        };
     }, [fetchTickets]);
 
     const [searchTerm, setSearchTerm] = useState('');
@@ -22,6 +36,20 @@ const SupportDashboard = () => {
     const [replyText, setReplyText] = useState('');
     const [refundAmount, setRefundAmount] = useState(0);
     const [isSending, setIsSending] = useState(false);
+
+    React.useEffect(() => {
+        if (selectedTicket) {
+            const found = (supportTickets || []).find(
+                (t) =>
+                    String(t.id) === String(selectedTicket.id) ||
+                    String(t.ticketId) === String(selectedTicket.ticketId) ||
+                    String(t.db_id) === String(selectedTicket.db_id)
+            );
+            if (found && (found.status !== selectedTicket.status || found.messages?.length !== selectedTicket.messages?.length)) {
+                setSelectedTicket(found);
+            }
+        }
+    }, [supportTickets, selectedTicket]);
 
     const normalizeStatusKey = (s) => {
         const k = String(s || '').toLowerCase().replace(/[\s_]+/g, '');

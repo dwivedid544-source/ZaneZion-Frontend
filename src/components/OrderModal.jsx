@@ -197,7 +197,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 vendor: initialData?.vendor || '',
                 vendorId: initialData?.vendorId || '',
                 isPreferredVendor: false,
-                type: initialData?.orderType || initialData?.type || 'Custom Order',
+                type: initialData?.orderType || initialData?.type || 'Delivery',
                 deliveryType: initialData?.deliveryType || initialData?.delivery_mode || initialData?.deliveryMode || initialData?.mode || 'Road',
                 pickupLocation: initialData?.pickupLocation || initialData?.pickup_location || '',
                 pickupTime: initialData?.pickupTime || initialData?.pickup_time || '',
@@ -384,8 +384,13 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 department: effectiveOrder.department || '',
                 vendor: effectiveOrder.vendor || '',
                 vendorId: effectiveOrder.vendorId || effectiveOrder.vendor_id || '',
-                isPreferredVendor: !!(effectiveOrder.vendorId || effectiveOrder.vendor_id),
-                type: isChauffeur ? 'Chauffeur Service' : ((effectiveOrder.orderType === 'PRODUCT' || meta?.order_kind === 'marketplace') ? 'Procurement' : (effectiveOrder.orderType || effectiveOrder.type || 'Custom Order')),
+                type: isChauffeur ? 'Chauffeur Service' : (
+                    effectiveOrder.orderType === 'Delivery' || 
+                    meta?.order_kind === 'marketplace' || 
+                    typeStr.includes('marketplace') || 
+                    typeStr.includes('delivery') || 
+                    effectiveOrder.orderType === 'PRODUCT'
+                ) ? 'Delivery' : (effectiveOrder.orderType || effectiveOrder.type || 'Delivery'),
                 deliveryType: effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road',
                 pickupLocation: pickLoc,
                 pickupTime: isChauffeur ? parsedPickupTime : '',
@@ -554,7 +559,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             dueDate,
             totalAmount: parseFloat(calculateTotal()),
             clientId: parsedClientId || Number(formData.clientId) || undefined,
-            orderType: formData.type || (isChauffeurOrder ? 'Chauffeur Service' : 'Custom Order')
+            orderType: formData.type || (isChauffeurOrder ? 'Chauffeur Service' : 'Delivery')
         };
         if (!canEditOrderStatus) {
             delete payload.status;

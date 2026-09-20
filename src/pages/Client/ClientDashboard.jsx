@@ -96,6 +96,23 @@ const ClientDashboard = () => {
     if (fetchWarehouses) fetchWarehouses();
     if (fetchFleet) fetchFleet();
     if (fetchLuxuryItems) fetchLuxuryItems();
+
+    const handleStateChanged = () => {
+      if (fetchTickets) fetchTickets();
+      if (fetchOrders) fetchOrders();
+      if (fetchChauffeurRequests) fetchChauffeurRequests();
+    };
+    window.addEventListener('app:state-changed', handleStateChanged);
+
+    const interval = setInterval(() => {
+      if (fetchTickets) fetchTickets();
+      if (fetchOrders) fetchOrders();
+    }, 3000);
+
+    return () => {
+      window.removeEventListener('app:state-changed', handleStateChanged);
+      clearInterval(interval);
+    };
   }, []);
 
   const [isModalOpen, setIsModalOpen] = useState(false);

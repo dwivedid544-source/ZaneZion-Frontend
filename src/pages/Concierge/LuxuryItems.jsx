@@ -27,6 +27,15 @@ const LuxuryItems = () => {
         if (fetchCustomerUsers) fetchCustomerUsers({ include_all: 1 });
     }, [fetchLuxuryItems, fetchClients, fetchCustomerUsers]);
 
+    // Refetch data when user switches back to this tab
+    useEffect(() => {
+        const onFocus = () => {
+            if (fetchLuxuryItems) fetchLuxuryItems();
+        };
+        window.addEventListener('focus', onFocus);
+        return () => window.removeEventListener('focus', onFocus);
+    }, [fetchLuxuryItems]);
+
     const role = normalizeRole(currentUser?.role);
     const isAdmin = ['superadmin', 'admin', 'concierge', 'operations'].includes(role);
     const isClient = !isAdmin;

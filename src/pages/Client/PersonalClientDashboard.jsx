@@ -106,12 +106,14 @@ const PersonalClientDashboard = () => {
 
     const handleStateChanged = () => {
       if (syncGlobalState) syncGlobalState();
+      if (fetchLuxuryItems) fetchLuxuryItems();
     };
     window.addEventListener('app:state-changed', handleStateChanged);
 
     const interval = setInterval(() => {
       if (syncGlobalState) syncGlobalState();
-    }, 3000);
+      if (fetchLuxuryItems) fetchLuxuryItems();
+    }, 5000);
     return () => {
       window.removeEventListener('app:state-changed', handleStateChanged);
       clearInterval(interval);
@@ -233,8 +235,8 @@ const PersonalClientDashboard = () => {
   };
 
   const clientOrders = (orders || []).filter(isMyOrder).sort((a, b) => {
-    const timeA = new Date(a.createdAt || a.created_at || a.updatedAt || a.updated_at || a.order_date || a.date || 0).getTime();
-    const timeB = new Date(b.createdAt || b.created_at || b.updatedAt || b.updated_at || b.order_date || b.date || 0).getTime();
+    const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
+    const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
     if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
     const numA = parseInt(String(a.rawId || a.id || 0).replace(/\D/g, ''), 10) || 0;
     const numB = parseInt(String(b.rawId || b.id || 0).replace(/\D/g, ''), 10) || 0;
@@ -372,9 +374,19 @@ const PersonalClientDashboard = () => {
                     })),
                     ...clientOrders.map(o => {
                       const liveStatus = resolveLiveOrderStatus(o);
+                      let meta = o.metadata;
+                      if (typeof meta === 'string') {
+                        try { meta = JSON.parse(meta); } catch { meta = {}; }
+                      }
+                      meta = meta || {};
+                      const metaItems = meta.customItems || meta.custom_items || meta.manifestItems || o.customItems || o.items || [];
+                      const firstItemName = (Array.isArray(metaItems) && metaItems[0]?.name) || o.items?.[0]?.name || o.product || null;
+                      const orderTypeLabel = firstItemName ? `${firstItemName} (Order)` : (o.orderType || o.type || 'Marketplace Requisition');
+
                       return {
                         txId: `ORD-${o.id}`,
-                        type: o.orderType || o.type || 'Marketplace Requisition',
+                        type: orderTypeLabel,
+                        itemName: firstItemName,
                         date: o.date || o.createdAt?.split('T')[0] || 'N/A',
                         rawDate: o.createdAt || o.created_at || o.order_date || o.date,
                         rawId: o.id,
@@ -403,26 +415,20 @@ const PersonalClientDashboard = () => {
 
                   const seenTxKeys = new Set();
                   const combinedHistory = rawCombined.filter(tx => {
-                    const numId = String(tx.rawId || '').replace(/\D/g, '');
-                    if (numId) {
-                      if (seenTxKeys.has(`num-${numId}`)) return false;
-                      seenTxKeys.add(`num-${numId}`);
-                    }
                     const key = `${tx.category}-${tx.rawId}`;
                     if (seenTxKeys.has(key)) return false;
                     seenTxKeys.add(key);
                     return true;
                   }).sort((a, b) => {
-                    const isOrderA = a.category === 'order' || a.category === 'chauffeur';
-                    const isOrderB = b.category === 'order' || b.category === 'chauffeur';
-                    if (isOrderA && isOrderB) {
+                    const timeA = new Date(a.rawDate || a.date || 0).getTime();
+                    const timeB = new Date(b.rawDate || b.date || 0).getTime();
+                    if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
+                    const isSameCat = a.category === b.category;
+                    if (isSameCat) {
                       const numA = parseInt(String(a.rawId || a.txId || 0).replace(/\D/g, ''), 10) || 0;
                       const numB = parseInt(String(b.rawId || b.txId || 0).replace(/\D/g, ''), 10) || 0;
                       if (numA > 0 && numB > 0 && numA !== numB) return numB - numA;
                     }
-                    const timeA = new Date(a.rawDate || a.date || 0).getTime();
-                    const timeB = new Date(b.rawDate || b.date || 0).getTime();
-                    if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
                     const numA = parseInt(String(a.rawId || a.txId || 0).replace(/\D/g, ''), 10) || 0;
                     const numB = parseInt(String(b.rawId || b.txId || 0).replace(/\D/g, ''), 10) || 0;
                     return numB - numA;

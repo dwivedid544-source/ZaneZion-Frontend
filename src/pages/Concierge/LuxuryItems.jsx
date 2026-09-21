@@ -25,6 +25,12 @@ const LuxuryItems = () => {
         if (fetchLuxuryItems) fetchLuxuryItems();
         if (fetchClients) fetchClients();
         if (fetchCustomerUsers) fetchCustomerUsers({ include_all: 1 });
+
+        const handleStateChange = () => {
+            if (fetchLuxuryItems) fetchLuxuryItems();
+        };
+        window.addEventListener('app:state-changed', handleStateChange);
+        return () => window.removeEventListener('app:state-changed', handleStateChange);
     }, [fetchLuxuryItems, fetchClients, fetchCustomerUsers]);
 
     // Refetch data when user switches back to this tab
@@ -207,7 +213,7 @@ const LuxuryItems = () => {
         setIsModalOpen(true);
     };
 
-    const handleSave = () => {
+    const handleSave = async () => {
         if (isAdmin && modalType !== 'view') {
             if (!formData.clientId) {
                 swalWarning('Client Required', 'Please select a client from the dropdown to assign this luxury item to.');
@@ -233,17 +239,20 @@ const LuxuryItems = () => {
             owner_name: resolvedOwner,
         };
 
-        if (modalType === 'add') {
-            addLuxuryItem(payload);
-        } else if (modalType === 'edit') {
-            updateLuxuryItem({ ...selectedItem, ...payload });
-        }
         setIsModalOpen(false);
+
+        if (modalType === 'add') {
+            await addLuxuryItem(payload);
+        } else if (modalType === 'edit') {
+            await updateLuxuryItem({ ...selectedItem, ...payload });
+        }
     };
 
-    const handleDelete = () => {
-        deleteLuxuryItem(selectedItem.id);
+    const handleDelete = async () => {
         setIsModalOpen(false);
+        if (selectedItem?.itemId || selectedItem?.id) {
+            await deleteLuxuryItem(selectedItem.itemId || selectedItem.id);
+        }
     };
 
     const columns = useMemo(() => {

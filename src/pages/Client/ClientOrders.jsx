@@ -178,17 +178,20 @@ const ClientOrders = () => {
             });
 
             // Robustly parse items from all possible locations
+            let meta = o.metadata;
+            if (typeof meta === 'string') {
+                try { meta = JSON.parse(meta); } catch { meta = {}; }
+            }
+            meta = meta || {};
+            const metaItems = meta.customItems || meta.custom_items || meta.manifestItems || meta.items || meta.cart || meta.package_details || o.customItems || [];
+            const metaItemsList = Array.isArray(metaItems) ? metaItems : [];
+
             let rawItems = o.items;
             if (typeof rawItems === 'string') {
                 try { rawItems = JSON.parse(rawItems); } catch { rawItems = []; }
             }
             if (!Array.isArray(rawItems) || rawItems.length === 0) {
-                let meta = o.metadata;
-                if (typeof meta === 'string') {
-                    try { meta = JSON.parse(meta); } catch { meta = {}; }
-                }
-                meta = meta || {};
-                rawItems = meta.customItems || meta.custom_items || meta.manifestItems || meta.items || meta.cart || meta.package_details || o.customItems || [];
+                rawItems = metaItemsList;
             }
 
             // Check linked delivery remarks if rawItems is still empty
@@ -225,18 +228,21 @@ const ClientOrders = () => {
                 }
             }
 
-            // Normalize each item: extract name, qty, and unit price
+            // Normalize each item: extract name, qty, and unit price with priority for purchased manifest name
             let normalizedItems = (Array.isArray(rawItems) ? rawItems : []).map((itm, idx) => {
-                const name = itm.name || itm.item?.name || itm.itemName || itm.title || itm.productName || itm.description || `Item ${idx + 1}`;
-                const qty = parseInt(itm.qty || itm.quantity || 1, 10) || 1;
+                const metaMatch = metaItemsList[idx] || metaItemsList.find(m => (m.itemId && itm.itemId && m.itemId === itm.itemId) || (m.id && itm.itemId && m.id === itm.itemId) || (m.name && itm.name && m.name === itm.name));
+                const name = metaMatch?.name || itm.name || itm.item?.name || itm.itemName || itm.title || itm.productName || itm.description || `Item ${idx + 1}`;
+                const qty = parseInt(itm.qty || itm.quantity || metaMatch?.qty || metaMatch?.quantity || 1, 10) || 1;
                 const unitPrice = parseFloat(
                     itm.unitPrice !== undefined ? itm.unitPrice :
                         itm.price !== undefined ? itm.price :
-                            itm.unit_price !== undefined ? itm.unit_price :
-                                itm.item?.price !== undefined ? itm.item.price :
-                                    itm.chauffeurFee !== undefined ? itm.chauffeurFee :
-                                        itm.chauffeur_fee !== undefined ? itm.chauffeur_fee :
-                                            (itm.totalPrice ? itm.totalPrice / qty : (itm.total ? itm.total / qty : 0))
+                            metaMatch?.unitPrice !== undefined ? metaMatch.unitPrice :
+                                metaMatch?.price !== undefined ? metaMatch.price :
+                                    itm.unit_price !== undefined ? itm.unit_price :
+                                        itm.item?.price !== undefined ? itm.item.price :
+                                            itm.chauffeurFee !== undefined ? itm.chauffeurFee :
+                                                itm.chauffeur_fee !== undefined ? itm.chauffeur_fee :
+                                                    (itm.totalPrice ? itm.totalPrice / qty : (itm.total ? itm.total / qty : 0))
                 ) || 0;
                 return { name, qty, price: unitPrice };
             });
@@ -417,7 +423,7 @@ const ClientOrders = () => {
 
         // Deduplicate and sort newest first (strictly by order placement / creation date, then ID descending)
         const getTimeScore = (tx) => {
-            const raw = tx.createdAt || tx.created_at || tx.originalRecord?.createdAt || tx.originalRecord?.created_at || tx.requestDate;
+            const raw = tx.createdAt || tx.created_at || tx.originalRecord?.createdAt || tx.originalRecord?.created_at || tx.requestDate || tx.date;
             if (raw) {
                 const t = new Date(raw).getTime();
                 if (!isNaN(t) && t > 0) return t;
@@ -445,24 +451,20 @@ const ClientOrders = () => {
             seen.add(key);
             return true;
         }).sort((a, b) => {
-            // 1. If both items are orders from the database (orders or chauffeur bookings),
-            // sort by database autoincrement ID descending so the most recently placed order is ALWAYS at the top!
-            const isOrderA = a.source === 'orders' || a.source === 'chauffeur' || a.category === 'Chauffeur Booking' || a.category === 'Marketplace Order' || a.category === 'Custom Order';
-            const isOrderB = b.source === 'orders' || b.source === 'chauffeur' || b.category === 'Chauffeur Booking' || b.category === 'Marketplace Order' || b.category === 'Custom Order';
+            // 1. Primary sort: actual order placement / creation timestamp descending (newest order ALWAYS at the top)
+            const timeA = getTimeScore(a);
+            const timeB = getTimeScore(b);
+            if (timeA > 0 && timeB > 0 && timeB !== timeA) {
+                return timeB - timeA;
+            }
 
-            if (isOrderA && isOrderB) {
+            // 2. If timestamps are equal or from the same source, compare database autoincrement ID descending
+            if (a.source === b.source) {
                 const idA = getIdScore(a);
                 const idB = getIdScore(b);
                 if (idA > 0 && idB > 0 && idA !== idB) {
                     return idB - idA;
                 }
-            }
-
-            // 2. Otherwise compare by creation timestamp (newest first)
-            const timeA = getTimeScore(a);
-            const timeB = getTimeScore(b);
-            if (timeA > 0 && timeB > 0 && timeB !== timeA) {
-                return timeB - timeA;
             }
 
             // 3. Fallback to ID score descending

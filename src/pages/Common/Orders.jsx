@@ -252,8 +252,8 @@ const Orders = () => {
     }
 
     return [...list].sort((a, b) => {
-      const timeA = new Date(a.createdAt || a.created_at || a.updatedAt || a.updated_at || a.order_date || a.date || 0).getTime();
-      const timeB = new Date(b.createdAt || b.created_at || b.updatedAt || b.updated_at || b.order_date || b.date || 0).getTime();
+      const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
+      const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
       if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
       const numA = parseInt(String(a.rawId || a.id || 0).replace(/\D/g, ''), 10) || 0;
       const numB = parseInt(String(b.rawId || b.id || 0).replace(/\D/g, ''), 10) || 0;
@@ -347,6 +347,18 @@ const Orders = () => {
         if (typeUpper.includes('CHAUFFEUR')) return "VIP Chauffeur Service";
         if (typeUpper.includes('CONCIERGE')) return "Bespoke Concierge Request";
 
+        const meta = typeof row.metadata === 'string'
+          ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })()
+          : (row.metadata || {});
+
+        const metaItems = meta.customItems || meta.manifestItems || meta.items || row.customItems || [];
+        if (Array.isArray(metaItems) && metaItems.length > 0) {
+          const mName = metaItems[0]?.name || metaItems[0]?.title || metaItems[0]?.itemName;
+          if (mName && String(mName).trim() && mName !== 'Unknown Item') {
+            return metaItems.length > 1 ? `${mName} (+${metaItems.length - 1} more)` : mName;
+          }
+        }
+
         let itms = row.items && row.items.length > 0 ? row.items : (row.customItems || []);
         if (typeof itms === 'string') {
           try { itms = JSON.parse(itms); } catch { itms = []; }
@@ -354,21 +366,9 @@ const Orders = () => {
 
         if (Array.isArray(itms) && itms.length > 0) {
           const first = itms[0];
-          const name = first?.item?.name || first?.name || first?.itemName || first?.title || first?.description;
+          const name = first?.name || first?.item?.name || first?.itemName || first?.title || first?.description;
           if (name && String(name).trim() && name !== 'Unknown Item') {
             return itms.length > 1 ? `${name} (+${itms.length - 1} more)` : name;
-          }
-        }
-
-        const meta = typeof row.metadata === 'string'
-          ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })()
-          : (row.metadata || {});
-
-        const metaItems = meta.customItems || meta.manifestItems || [];
-        if (Array.isArray(metaItems) && metaItems.length > 0) {
-          const mName = metaItems[0]?.name || metaItems[0]?.title || metaItems[0]?.itemName;
-          if (mName && String(mName).trim() && mName !== 'Unknown Item') {
-            return metaItems.length > 1 ? `${mName} (+${metaItems.length - 1} more)` : mName;
           }
         }
 

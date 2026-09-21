@@ -90,11 +90,12 @@ const ClientStore = () => {
     const [personalDropAddress, setPersonalDropAddress] = useState('');
 
     const handleAddItemToOrder = (item, group, openDrawer = false) => {
-        const itemId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
+        const itemId = item?.itemId ?? item?.item_id ?? item?.id ?? item?._id;
         if (itemId == null) return;
         const itemPayload = {
             ...item,
             id: itemId,
+            itemId: itemId,
             vendor_group_key: group?.key || '',
             vendorName: item?.vendorName || item?.vendor_name || group?.label || 'General',
             vendor_id: item?.vendor_id ?? item?.vendorId ?? group?.vendorId ?? null,
@@ -478,16 +479,19 @@ const ClientStore = () => {
         if (isPlacingOrder) return;
 
         let items = activeTab === 'catalog'
-            ? cart.map(i => ({
-                id: i.id,
-                itemId: i.id,
-                name: i.name || 'Unknown Item',
-                qty: i.qty || 1,
-                quantity: i.qty || 1,
-                price: parseFloat(i.price || 0),
-                unitPrice: parseFloat(i.price || 0),
-                vendorName: i.vendorName || i.vendor_name || null
-            }))
+            ? cart.map(i => {
+                const resolvedItemId = i.itemId || i.id;
+                return {
+                    id: resolvedItemId,
+                    itemId: resolvedItemId,
+                    name: i.name || 'Unknown Item',
+                    qty: i.qty || 1,
+                    quantity: i.qty || 1,
+                    price: parseFloat(i.price || 0),
+                    unitPrice: parseFloat(i.price || 0),
+                    vendorName: i.vendorName || i.vendor_name || null
+                };
+            })
             : customItems.filter(i => i?.name?.trim() !== '').map(i => ({
                 name: i.name,
                 qty: parseInt(i.qty) || 1,

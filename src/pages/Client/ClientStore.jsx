@@ -58,43 +58,9 @@ const ClientStore = () => {
     const [activeTab, setActiveTab] = useState('catalog');
     const [addedItems, setAddedItems] = useState({});
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
-
-    const handleAddItemToOrder = (item, group) => {
-        const itemId = item?.id ?? item?.itemId ?? item?._id;
-        const itemPayload = {
-            ...item,
-            id: itemId,
-            vendor_group_key: group?.key || '',
-            vendorName: item?.vendorName || item?.vendor_name || group?.label || 'General',
-            vendor_id: item?.vendor_id ?? item?.vendorId ?? group?.vendorId ?? null,
-        };
-        const isInCart = cart.some(i => String(i.id) === String(itemId));
-        addToCart(itemPayload);
-        
-        if (isInCart) {
-            Toast.fire({
-                icon: 'success',
-                title: 'Cart Updated',
-            });
-        } else {
-            Toast.fire({
-                icon: 'success',
-                title: '✓ Added to Order',
-            });
-        }
-
-        setAddedItems(prev => ({ ...prev, [itemId]: true }));
-        setTimeout(() => {
-            setAddedItems(prev => {
-                const next = { ...prev };
-                delete next[itemId];
-                return next;
-            });
-        }, 2000);
-    };
+    const [isCartOpen, setIsCartOpen] = useState(false);
     const [customItems, setCustomItems] = useState([{ name: '', qty: 1, price: 0 }]);
     const [searchTerm, setSearchTerm] = useState('');
-    const [isCartOpen, setIsCartOpen] = useState(false);
     const [destination, setDestination] = useState(currentUser?.location || 'Port Hercule');
     const [deliveryMode, setDeliveryMode] = useState('Road');
     const [catalogDeliveryAddress, setCatalogDeliveryAddress] = useState(currentUser?.location || '');
@@ -122,6 +88,47 @@ const ClientStore = () => {
     const [customDistanceKm, setCustomDistanceKm] = useState('');
     const [personalPickupAddress, setPersonalPickupAddress] = useState('');
     const [personalDropAddress, setPersonalDropAddress] = useState('');
+
+    const handleAddItemToOrder = (item, group, openDrawer = false) => {
+        const itemId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
+        if (itemId == null) return;
+        const itemPayload = {
+            ...item,
+            id: itemId,
+            vendor_group_key: group?.key || '',
+            vendorName: item?.vendorName || item?.vendor_name || group?.label || 'General',
+            vendor_id: item?.vendor_id ?? item?.vendorId ?? group?.vendorId ?? null,
+        };
+        const isInCart = cart.some(i => 
+            String(i.id ?? i.itemId ?? i._id ?? i.item_id) === String(itemId)
+        );
+        addToCart(itemPayload);
+        
+        if (isInCart) {
+            Toast.fire({
+                icon: 'success',
+                title: 'Cart Updated',
+            });
+        } else {
+            Toast.fire({
+                icon: 'success',
+                title: '✓ Added to Order',
+            });
+        }
+
+        setAddedItems(prev => ({ ...prev, [itemId]: true }));
+        setTimeout(() => {
+            setAddedItems(prev => {
+                const next = { ...prev };
+                delete next[itemId];
+                return next;
+            });
+        }, 1500);
+
+        if (openDrawer) {
+            setIsCartOpen(true);
+        }
+    };
 
     // useEffect for Catalog/Marketplace Checkout OSRM Route distance
     React.useEffect(() => {
@@ -830,10 +837,15 @@ const ClientStore = () => {
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
-                                    {group.items.map((item) => (
+                                    {group.items.map((item) => {
+                                        const itmId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
+                                        const cartItem = cart.find(i => 
+                                            String(i.id ?? i.itemId ?? i._id ?? i.item_id) === String(itmId)
+                                        );
+                                        return (
                                         <div
-                                            key={item.id}
-                                            className="bg-white/[0.02] border border-white/5 rounded-[2.5rem] overflow-hidden group hover:border-accent/30 transition-all duration-500 shadow-2xl flex flex-col"
+                                            key={itmId}
+                                            className={`bg-white/[0.02] border ${cartItem ? 'border-accent/40 bg-accent/[0.02]' : 'border-white/5'} rounded-[2.5rem] overflow-hidden group hover:border-accent/30 transition-all duration-500 shadow-2xl flex flex-col`}
                                         >
                                             <div className="aspect-square bg-white/5 border-b border-white/5 flex items-center justify-center relative overflow-hidden">
                                                 <ProductImage src={item.image || item.image_url || item.imageUrl} alt={item.name} iconSize={64} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-700" />
@@ -852,7 +864,7 @@ const ClientStore = () => {
                                                     <div>
                                                         <h3 className="font-black text-white text-lg group-hover:text-accent transition-colors italic leading-tight">{item.name}</h3>
                                                         {item.description && (
-                                                            <p className="text-[11px] text-secondary mt-2 line-clamp-2 leading-relaxed font-medium">
+                                                             <p className="text-[11px] text-secondary mt-2 line-clamp-2 leading-relaxed font-medium">
                                                                 {item.description}
                                                             </p>
                                                         )}
@@ -891,24 +903,69 @@ const ClientStore = () => {
                                                     )}
                                                 </div>
 
-                                                <button
-                                                    type="button"
-                                                    onClick={() => handleAddItemToOrder(item, group)}
-                                                    className={`w-full mt-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] transition-all flex items-center justify-center gap-3 active:scale-[0.98] shadow-lg shadow-black/20 ${
-                                                        addedItems[item.id]
-                                                            ? 'bg-success text-white border-success scale-[1.03] duration-300'
-                                                            : 'bg-white/[0.03] border border-white/10 text-white hover:bg-accent hover:text-black hover:border-accent duration-200'
-                                                    }`}
-                                                >
-                                                    {addedItems[item.id] ? (
-                                                        <>✓ Added</>
-                                                    ) : (
-                                                        <><Plus size={14} /> {isRetailPersonal ? 'Add to order' : 'Add to Manifest'}</>
-                                                    )}
-                                                </button>
+                                                {cartItem ? (
+                                                    <div className="w-full mt-6 flex items-center justify-between bg-accent/15 border border-accent/40 rounded-2xl p-1 shadow-lg shadow-black/20">
+                                                        <button
+                                                            type="button"
+                                                            title={cartItem.qty <= 1 ? "Deselect item / remove from order" : "Decrease quantity"}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                removeFromCart(itmId);
+                                                                setAddedItems(prev => {
+                                                                    const next = { ...prev };
+                                                                    delete next[itmId];
+                                                                    return next;
+                                                                });
+                                                                Toast.fire({
+                                                                    icon: 'info',
+                                                                    title: cartItem.qty <= 1 ? 'Removed from Order' : 'Quantity Decreased',
+                                                                });
+                                                            }}
+                                                            className="w-9 h-9 flex items-center justify-center hover:bg-danger/20 hover:text-danger text-accent rounded-xl transition-all cursor-pointer"
+                                                        >
+                                                            {cartItem.qty <= 1 ? <Trash2 size={14} /> : <Minus size={14} />}
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => setIsCartOpen(true)}
+                                                            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1 text-center hover:opacity-80 transition-opacity cursor-pointer"
+                                                            title="Click to view cart"
+                                                        >
+                                                            <span className="text-[10px] font-black text-accent uppercase tracking-widest">{cartItem.qty} in order</span>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            title="Increase quantity"
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleAddItemToOrder(item, group, false);
+                                                            }}
+                                                            className="w-9 h-9 flex items-center justify-center hover:bg-success/20 hover:text-success text-accent rounded-xl transition-all cursor-pointer"
+                                                        >
+                                                            <Plus size={14} />
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => handleAddItemToOrder(item, group, false)}
+                                                        className={`w-full mt-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] transition-all flex items-center justify-center gap-3 active:scale-[0.98] shadow-lg shadow-black/20 ${
+                                                            addedItems[itmId]
+                                                                ? 'bg-success text-white border-success scale-[1.03] duration-300'
+                                                                : 'bg-white/[0.03] border border-white/10 text-white hover:bg-accent hover:text-black hover:border-accent duration-200'
+                                                        }`}
+                                                    >
+                                                        {addedItems[itmId] ? (
+                                                            <>✓ Added</>
+                                                        ) : (
+                                                            <><Plus size={14} /> {isRetailPersonal ? 'Add to order' : 'Add to Manifest'}</>
+                                                        )}
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
-                                    ))}
+                                    );
+                                    })}
                                 </div>
                             </div>
                         ))
@@ -1331,25 +1388,24 @@ const ClientStore = () => {
             {/* Cart Drawer */}
             <AnimatePresence>
                 {isCartOpen && (
-                    <motion.div
-                        key="cart-backdrop"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.2 }}
-                        onClick={() => setIsCartOpen(false)}
-                        className="fixed inset-0 bg-black/80 backdrop-blur-md z-[100]"
-                    />
-                )}
-                {isCartOpen && (
-                    <motion.div
-                        key="cart-drawer-panel"
-                        initial={{ x: '100%' }}
-                        animate={{ x: 0 }}
-                        exit={{ x: '100%' }}
-                        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                        className="fixed inset-y-0 right-0 w-full sm:max-w-[450px] bg-sidebar border-l border-white/5 z-[101] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] h-[100dvh] max-h-[100dvh] overflow-hidden"
-                    >
+                    <div key="cart-drawer-container" className="fixed inset-0 z-[100] pointer-events-auto">
+                        <motion.div
+                            key="cart-backdrop"
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            transition={{ duration: 0.2 }}
+                            onClick={() => setIsCartOpen(false)}
+                            className="fixed inset-0 bg-black/80 backdrop-blur-md"
+                        />
+                        <motion.div
+                            key="cart-drawer-panel"
+                            initial={{ x: '100%' }}
+                            animate={{ x: 0 }}
+                            exit={{ x: '100%' }}
+                            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                            className="fixed inset-y-0 right-0 w-full sm:max-w-[450px] bg-sidebar border-l border-white/5 z-[101] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] h-[100dvh] max-h-[100dvh] overflow-hidden"
+                        >
                             <div className="p-6 sm:p-8 border-b border-white/5 flex items-center justify-between shrink-0 bg-gradient-to-br from-white/[0.02] to-transparent">
                                 <div className="space-y-1">
                                     <h3 className="text-xl font-extrabold flex items-center gap-3 text-white">
@@ -1429,8 +1485,15 @@ const ClientStore = () => {
                                                 <button
                                                     type="button"
                                                     title="Decrease quantity"
-                                                    onClick={() => removeFromCart(item.id)}
-                                                    className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/40"
+                                                    onClick={() => {
+                                                        const lineId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
+                                                        removeFromCart(lineId);
+                                                        Toast.fire({
+                                                            icon: 'info',
+                                                            title: Number(item?.qty || 1) <= 1 ? 'Removed from Order' : 'Quantity Decreased',
+                                                        });
+                                                    }}
+                                                    className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/40 cursor-pointer"
                                                 >
                                                     <Minus size={14} />
                                                 </button>
@@ -1439,15 +1502,22 @@ const ClientStore = () => {
                                                     type="button"
                                                     title="Increase quantity"
                                                     onClick={() => addToCart(item)}
-                                                    className="w-8 h-8 flex items-center justify-center hover:bg-success/20 hover:text-success rounded-lg transition-all text-muted/40"
+                                                    className="w-8 h-8 flex items-center justify-center hover:bg-success/20 hover:text-success rounded-lg transition-all text-muted/40 cursor-pointer"
                                                 >
                                                     <Plus size={14} />
                                                 </button>
                                                 <button
                                                     type="button"
                                                     title="Remove item"
-                                                    onClick={() => removeFromCart(item.id, true)}
-                                                    className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/30 ml-0.5"
+                                                    onClick={() => {
+                                                        const lineId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
+                                                        removeFromCart(lineId, true);
+                                                        Toast.fire({
+                                                            icon: 'info',
+                                                            title: 'Removed from Order',
+                                                        });
+                                                    }}
+                                                    className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/30 ml-0.5 cursor-pointer"
                                                 >
                                                     <Trash2 size={13} />
                                                 </button>
@@ -1674,7 +1744,28 @@ const ClientStore = () => {
                                 </button>
                             </div>
                         </motion.div>
-                    )}
+                    </div>
+                )}
+            </AnimatePresence>
+
+            {/* Floating Quick-Access Cart Button */}
+            <AnimatePresence>
+                {cart.length > 0 && !isCartOpen && (
+                    <motion.button
+                        key="floating-cart-pill"
+                        initial={{ opacity: 0, scale: 0.85, y: 30 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.85, y: 30 }}
+                        transition={{ type: 'spring', damping: 20, stiffness: 300 }}
+                        type="button"
+                        onClick={() => setIsCartOpen(true)}
+                        className="fixed bottom-8 right-8 z-[90] px-6 py-4 bg-accent text-black rounded-full font-black text-xs uppercase tracking-widest flex items-center gap-3 shadow-[0_12px_40px_rgba(200,169,106,0.45)] hover:bg-white hover:scale-105 active:scale-95 transition-all cursor-pointer border border-accent/60 group"
+                    >
+                        <ShoppingCart size={18} className="group-hover:scale-110 transition-transform" />
+                        <span>View Order ({cart.reduce((sum, item) => sum + (Number(item.qty) || 1), 0)})</span>
+                        <span className="bg-black/20 text-black px-2.5 py-0.5 rounded-full font-mono text-[11px] font-black">${cartSubtotal.toFixed(2)}</span>
+                    </motion.button>
+                )}
             </AnimatePresence>
 
             {/* Loading Modal Popup Overlay while order is being processed */}

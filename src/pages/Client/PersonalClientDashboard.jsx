@@ -7,8 +7,7 @@ import OrderModal from '../../components/OrderModal';
 import Modal from '../../components/Modal';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../context/GlobalDataContext';
-import { normalizeRole } from '../../utils/authUtils';
-import { ShoppingCart, Truck, CreditCard, ChevronRight, History, Package, ArrowUpRight, Car, HelpCircle, FileText, Eye, ShoppingBag } from 'lucide-react';
+import { ShoppingCart, Truck, CreditCard, ChevronRight, History, Package, ArrowUpRight, Car, HelpCircle, FileText, Eye, ShoppingBag, Gift } from 'lucide-react';
 
 // Re‑used UI components (StatCard, SectionCard, EmptyState) are defined inline for clarity
 const StatCard = ({ label, value, icon: Icon, color = 'text-accent', bg = 'bg-accent/10', onClick }) => (
@@ -265,6 +264,39 @@ const PersonalClientDashboard = () => {
     req => !CHAUFFEUR_DONE.includes(String(req.status || '').toLowerCase().replace(/\s+/g, '_'))
   );
 
+  const clientLuxuryItems = useMemo(() => {
+    const ids = new Set();
+    if (currentUser?.id != null) ids.add(String(currentUser.id));
+    if (currentUser?.clientId != null) ids.add(String(currentUser.clientId));
+    if (currentUser?.client_id != null) ids.add(String(currentUser.client_id));
+    if (currentUser?.companyId != null) ids.add(String(currentUser.companyId));
+    if (currentUser?.company_id != null) ids.add(String(currentUser.company_id));
+    if (clientData?.id != null) ids.add(String(clientData.id));
+
+    const userEmail = String(currentUser?.email || clientData?.email || '').toLowerCase().trim();
+    if (userEmail && Array.isArray(clients)) {
+      clients.forEach(c => {
+        if (c && String(c.email || '').toLowerCase().trim() === userEmail) {
+          if (c.id != null) ids.add(String(c.id));
+        }
+      });
+    }
+
+    return (luxuryItems || []).filter(item => {
+      const itemCid = item.clientId ?? item.client_id;
+      if (itemCid != null && ids.has(String(itemCid))) {
+        return true;
+      }
+      if (clientData?.name) {
+        const itemCname = item.clientName || item.client_name || item.owner;
+        if (itemCname && itemCname.toLowerCase() === clientData.name.toLowerCase()) {
+          return true;
+        }
+      }
+      return false;
+    });
+  }, [luxuryItems, clientData, currentUser, clients]);
+
   const handleAction = (type, order) => {
     setSelectedOrder(order);
     setModalType(type);
@@ -300,10 +332,11 @@ const PersonalClientDashboard = () => {
         </div>
 
         {/* KPI Row – Core Operations */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard label="Active Orders" value={activeOrders.length} icon={ShoppingCart} color="text-accent" bg="bg-accent/10" onClick={() => navigate('/dashboard/client-orders')} />
           <StatCard label="In‑Transit Deliveries" value={activeDeliveries.length} icon={Truck} color="text-info" bg="bg-info/10" onClick={() => navigate('/dashboard/track-delivery')} />
           <StatCard label="Unpaid Invoices" value={unpaidInvoices.length} icon={CreditCard} color="text-danger" bg="bg-danger/10" onClick={() => navigate('/dashboard/invoices')} />
+          <StatCard label="Vault Assets" value={clientLuxuryItems.length} icon={Gift} color="text-success" bg="bg-success/10" onClick={() => navigate('/dashboard/luxury-items')} />
         </div>
 
         {/* Main content */}
@@ -542,6 +575,31 @@ const PersonalClientDashboard = () => {
                   </div>
                 ))}
                 {clientInvoices.filter(inv => invoiceTab === 'paid' ? inv.status === 'Paid' : inv.status !== 'Paid').length === 0 && (<EmptyState text="No invoices found" />)}
+              </div>
+            </SectionCard>
+
+            {/* Luxury Asset Vault */}
+            <SectionCard title="Luxury Asset Vault" icon={Gift} viewAllPath="/dashboard/luxury-items" navigate={navigate}>
+              <div className="space-y-3">
+                {clientLuxuryItems.slice(0, 3).map((item, idx) => (
+                  <div key={idx} className="p-4 bg-white/[0.02] border border-white/5 rounded-xl flex items-center justify-between hover:border-accent/20 transition-all">
+                    <div>
+                      <p className="text-sm font-black text-white italic">{item.item || item.name}</p>
+                      <p className="text-[10px] text-accent font-black uppercase tracking-widest mt-1">
+                        {item.vault || 'Vault Alpha'} • {item.status || 'Stored'}
+                      </p>
+                    </div>
+                    <span className="text-xs font-mono font-bold text-success">${Number(item.value || item.price || 0).toLocaleString()}</span>
+                  </div>
+                ))}
+                {clientLuxuryItems.length === 0 && (
+                  <div className="py-6 text-center border border-dashed border-white/5 rounded-2xl">
+                    <p className="text-[10px] font-black uppercase tracking-[0.3em] text-muted italic">No private luxury assets in vault.</p>
+                  </div>
+                )}
+                <button onClick={() => navigate('/dashboard/luxury-items')} className="w-full mt-4 py-3 bg-white/5 border border-white/10 text-white rounded-xl text-[9px] font-black uppercase tracking-[0.2em] hover:bg-accent hover:text-black hover:border-accent transition-all">
+                  Open Vault Registry
+                </button>
               </div>
             </SectionCard>
 

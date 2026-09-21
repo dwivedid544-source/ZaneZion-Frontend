@@ -263,6 +263,11 @@ const Chauffeur = () => {
 
     const filteredRequests = useMemo(() => {
         console.log("RAW BACKEND DATA (chauffeurRequests):", chauffeurRequests);
+        const myUserId = String(currentUser?.id || '').trim();
+        const myClientId = String(currentUser?.clientId || currentUser?.client_id || '').trim();
+        const myEmail = String(currentUser?.email || '').toLowerCase().trim();
+        const myName = String(currentUser?.name || currentUser?.full_name || '').toLowerCase().trim();
+
         const list = (!isCustomer && !isClientAdmin)
             ? [...(chauffeurRequests || [])]
             : (chauffeurRequests || []).filter(req => {

@@ -1254,12 +1254,17 @@ export const GlobalDataProvider = ({ children }) => {
 
   const addToCart = (item) => {
     if (!item) return;
-    const itemId = item.id ?? item.itemId ?? item._id;
+    const itemId = item.id ?? item.itemId ?? item._id ?? item.item_id;
+    if (itemId == null) return;
+    const idStr = String(itemId);
     setCart((prev) => {
-      const existing = prev.find((i) => String(i.id) === String(itemId));
+      const existing = prev.find(
+        (i) =>
+          String(i.id ?? i.itemId ?? i._id ?? i.item_id) === idStr,
+      );
       if (existing) {
         return prev.map((i) =>
-          String(i.id) === String(itemId)
+          String(i.id ?? i.itemId ?? i._id ?? i.item_id) === idStr
             ? { ...i, qty: Number(i.qty || 1) + 1 }
             : i,
         );
@@ -1274,14 +1279,26 @@ export const GlobalDataProvider = ({ children }) => {
   };
 
   const removeFromCart = (id, forceRemove = false) => {
+    if (id == null) return;
+    const targetId = typeof id === "object" ? (id.id ?? id.itemId ?? id._id ?? id.item_id) : id;
+    if (targetId == null) return;
+    const idStr = String(targetId);
     setCart((prev) => {
-      const item = prev.find((i) => String(i.id) === String(id));
+      const item = prev.find(
+        (i) =>
+          String(i.id ?? i.itemId ?? i._id ?? i.item_id) === idStr,
+      );
       if (!forceRemove && item && Number(item.qty) > 1) {
         return prev.map((i) =>
-          String(i.id) === String(id) ? { ...i, qty: Number(i.qty) - 1 } : i,
+          String(i.id ?? i.itemId ?? i._id ?? i.item_id) === idStr
+            ? { ...i, qty: Number(i.qty) - 1 }
+            : i,
         );
       }
-      return prev.filter((i) => String(i.id) !== String(id));
+      return prev.filter(
+        (i) =>
+          String(i.id ?? i.itemId ?? i._id ?? i.item_id) !== idStr,
+      );
     });
   };
   const clearCart = () => setCart([]);
@@ -2508,7 +2525,7 @@ export const GlobalDataProvider = ({ children }) => {
       
       let rawData = [];
       if (isInternal) {
-        // Admin gets all items (backend now allows bypass for ADMIN role)
+        // Admin gets all items (backend allows bypass for internal roles)
         const res = await api.get("/concierge/luxury-items");
         rawData = res.data?.success
           ? (Array.isArray(res.data.data) ? res.data.data : [])
@@ -2516,51 +2533,53 @@ export const GlobalDataProvider = ({ children }) => {
             ? res.data
             : [];
       } else {
-        const isSaaSTenant = currentUser?.tenantId && Number(currentUser.tenantId) !== 1;
-        if (isSaaSTenant) {
-          const res = await api.get("/concierge/luxury-items");
-          rawData = res.data?.success
-            ? (Array.isArray(res.data.data) ? res.data.data : [])
-            : Array.isArray(res.data)
-              ? res.data
-              : [];
-        } else {
-          // Client gets admin's items + client's own items
-          const [resAdmin, resClient] = await Promise.allSettled([
-            api.get("/concierge/luxury-items?tenantId=1"),
-            api.get("/concierge/luxury-items")
-          ]);
+        // For all clients: fetch both platform luxury items (tenantId=1) and client tenant items
+        const [resAdmin, resClient] = await Promise.allSettled([
+          api.get("/concierge/luxury-items?tenantId=1"),
+          api.get("/concierge/luxury-items")
+        ]);
+        
+        const adminItems = resAdmin.status === 'fulfilled' && resAdmin.value.data?.success
+          ? (Array.isArray(resAdmin.value.data.data) ? resAdmin.value.data.data : (Array.isArray(resAdmin.value.data) ? resAdmin.value.data : []))
+          : [];
           
-          const adminItems = resAdmin.status === 'fulfilled' && resAdmin.value.data?.success
-            ? (Array.isArray(resAdmin.value.data.data) ? resAdmin.value.data.data : [])
-            : [];
-            
-          const clientItems = resClient.status === 'fulfilled' && resClient.value.data?.success
-            ? (Array.isArray(resClient.value.data.data) ? resClient.value.data.data : [])
-            : [];
-            
-          const combined = [...adminItems, ...clientItems];
-          const seen = new Set();
-          rawData = combined.filter((itm) => {
-            const id = itm.id || itm.itemId;
-            if (seen.has(id)) return false;
-            seen.add(id);
-            return true;
-          });
-        }
+        const clientItems = resClient.status === 'fulfilled' && resClient.value.data?.success
+          ? (Array.isArray(resClient.value.data.data) ? resClient.value.data.data : (Array.isArray(resClient.value.data) ? resClient.value.data : []))
+          : [];
+          
+        const combined = [...adminItems, ...clientItems];
+        const seen = new Set();
+        rawData = combined.filter((itm) => {
+          const id = itm.id || itm.itemId;
+          if (seen.has(id)) return false;
+          seen.add(id);
+          return true;
+        });
       }
       
-      const mapped = (rawData || []).map((item) => ({
-        id: item.id || item.itemId,
-        item: item.item_name || item.name || 'Unknown Item',
-        owner: item.owner_name || item.owner || 'Unknown Beneficiary',
-        vault: item.vault_location || item.vault || 'Vault Alpha',
-        status: item.status || 'Stored',
-        value: item.estimated_value || item.value || item.price || 0,
-        notes: item.notes || '',
-        company_id: item.tenantId,
-        companyId: item.tenantId,
-      }));
+      const mapped = (rawData || []).map((item) => {
+        const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
+        const clientId = item.clientId ?? item.client_id ?? metadata.clientId ?? metadata.client_id ?? null;
+        const clientName = item.clientName ?? item.client_name ?? metadata.clientName ?? metadata.client_name ?? item.owner_name ?? item.owner ?? '';
+        return {
+          id: item.id || item.itemId,
+          itemId: item.itemId || item.id,
+          item: item.item_name || item.name || 'Unknown Item',
+          name: item.name || item.item_name || 'Unknown Item',
+          owner: item.owner_name || item.owner || clientName || 'Unknown Beneficiary',
+          vault: item.vault_location || item.vault || 'Vault Alpha',
+          status: item.status || 'Stored',
+          value: item.estimated_value || item.value || item.price || 0,
+          price: item.price || item.estimated_value || item.value || 0,
+          notes: item.notes || '',
+          clientId: clientId != null ? String(clientId) : null,
+          client_id: clientId != null ? String(clientId) : null,
+          clientName: clientName,
+          client_name: clientName,
+          company_id: item.tenantId,
+          companyId: item.tenantId,
+        };
+      });
       setLuxuryItems(mapped);
     } catch (e) {
       console.error("Fetch luxury items failed", e);
@@ -5843,13 +5862,25 @@ export const GlobalDataProvider = ({ children }) => {
 
   const addLuxuryItem = async (item) => {
     try {
+      const clientId = item.clientId || item.client_id || null;
+      const clientName = item.clientName || item.client_name || item.owner || null;
       const reqData = {
-        item_name: item.item,
-        owner_name: item.owner,
-        vault_location: item.vault,
-        estimated_value: item.value,
-        status: item.status,
-        notes: item.notes,
+        name: item.item || item.name,
+        item: item.item || item.name,
+        item_name: item.item || item.name,
+        owner: item.owner || clientName || '',
+        owner_name: item.owner || clientName || '',
+        vault: item.vault || 'Vault Alpha',
+        vault_location: item.vault || 'Vault Alpha',
+        estimated_value: item.value || item.price || 0,
+        price: item.value || item.price || 0,
+        status: item.status || 'Stored',
+        notes: item.notes || '',
+        clientId: clientId ? String(clientId) : null,
+        client_id: clientId ? String(clientId) : null,
+        clientName: clientName,
+        client_name: clientName,
+        tenantId: 1, // save in platform tenant 1 where global vault lives
       };
       const res = await api.post("/concierge/luxury-items", reqData);
       if (res.data?.success) {
@@ -5859,7 +5890,11 @@ export const GlobalDataProvider = ({ children }) => {
         setLuxuryItems((prev) => [
           { 
             ...item, 
-            id: res.data?.data?.id || Date.now(),
+            id: res.data?.data?.id || res.data?.data?.itemId || `LXY-${Date.now().toString().slice(-4)}`,
+            itemId: res.data?.data?.itemId || res.data?.data?.id || `LXY-${Date.now().toString().slice(-4)}`,
+            clientId: clientId ? String(clientId) : null,
+            client_id: clientId ? String(clientId) : null,
+            clientName: clientName,
             company_id: fallbackCompanyId,
             companyId: fallbackCompanyId,
           },
@@ -5868,7 +5903,7 @@ export const GlobalDataProvider = ({ children }) => {
       }
       addLog({
         action: "Luxury Item Registered",
-        detail: `New vault entry: ${item.item}`,
+        detail: `New vault entry: ${item.item || item.name} for ${clientName || 'Client'}`,
         type: "system",
       });
     } catch (error) {
@@ -5878,13 +5913,24 @@ export const GlobalDataProvider = ({ children }) => {
 
   const updateLuxuryItem = async (updated) => {
     try {
+      const clientId = updated.clientId || updated.client_id || null;
+      const clientName = updated.clientName || updated.client_name || updated.owner || null;
       const reqData = {
-        item_name: updated.item,
-        owner_name: updated.owner,
-        vault_location: updated.vault,
-        estimated_value: updated.value,
-        status: updated.status,
-        notes: updated.notes,
+        name: updated.item || updated.name,
+        item: updated.item || updated.name,
+        item_name: updated.item || updated.name,
+        owner: updated.owner || clientName || '',
+        owner_name: updated.owner || clientName || '',
+        vault: updated.vault || 'Vault Alpha',
+        vault_location: updated.vault || 'Vault Alpha',
+        estimated_value: updated.value || updated.price || 0,
+        price: updated.value || updated.price || 0,
+        status: updated.status || 'Stored',
+        notes: updated.notes || '',
+        clientId: clientId ? String(clientId) : null,
+        client_id: clientId ? String(clientId) : null,
+        clientName: clientName,
+        client_name: clientName,
       };
       const res = await api.put(`/concierge/luxury-items/${updated.id}`, reqData);
       if (res.data?.success) {
@@ -5894,6 +5940,9 @@ export const GlobalDataProvider = ({ children }) => {
         setLuxuryItems((prev) =>
           prev.map((i) => (i.id === updated.id ? {
             ...updated,
+            clientId: clientId ? String(clientId) : null,
+            client_id: clientId ? String(clientId) : null,
+            clientName: clientName,
             company_id: fallbackCompanyId,
             companyId: fallbackCompanyId,
           } : i)),
@@ -5901,7 +5950,7 @@ export const GlobalDataProvider = ({ children }) => {
       }
       addLog({
         action: "Luxury Item Updated",
-        detail: `Recalibrated details for vault entry: ${updated.item}`,
+        detail: `Recalibrated details for vault entry: ${updated.item || updated.name}`,
         type: "system",
       });
     } catch (error) {

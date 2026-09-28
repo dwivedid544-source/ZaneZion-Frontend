@@ -35,7 +35,8 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
           // Admins, operations, staff etc. see all bookings in their tenant.
           ...(isCustomerRole && currentUserId && { user_id: currentUserId }),
           ...(isCustomerRole && currentUserEmail && { customer_email: currentUserEmail }),
-          ...(isCustomerRole && currentClientId && { clientId: currentClientId })
+          ...(isCustomerRole && currentClientId && { clientId: currentClientId }),
+          ...(isCustomerRole && (currentUser?.name || currentUser?.full_name) && { customer_name: currentUser?.name || currentUser?.full_name })
         }
       });
       // Ensure data matches what the UI expects
@@ -75,6 +76,13 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
 
           const customItem = meta?.customItems?.[0] || meta?.custom_items?.[0] || order?.items?.[0] || {};
           const { id: _customId, ...restCustomItem } = customItem;
+          // Filter out null, undefined, and empty string properties from restCustomItem so they don't overwrite valid order/meta data
+          const sanitizedCustomItem = {};
+          Object.entries(restCustomItem).forEach(([k, v]) => {
+            if (v !== null && v !== undefined && v !== '') {
+              sanitizedCustomItem[k] = v;
+            }
+          });
           const realId = order?.id?.toString() || '';
 
           const resolvedPickup =
@@ -82,8 +90,8 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
             order?.pickupLocation ||
             meta?.pickup_location ||
             meta?.pickupLocation ||
-            restCustomItem?.pickupLocation ||
-            restCustomItem?.pickup_location ||
+            sanitizedCustomItem?.pickupLocation ||
+            sanitizedCustomItem?.pickup_location ||
             '';
 
           const resolvedDrop =
@@ -97,21 +105,108 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
             meta?.deliveryAddress ||
             meta?.dropLocation ||
             meta?.drop_location ||
-            restCustomItem?.dropLocation ||
-            restCustomItem?.drop_location ||
-            restCustomItem?.location ||
+            sanitizedCustomItem?.dropLocation ||
+            sanitizedCustomItem?.drop_location ||
+            sanitizedCustomItem?.location ||
             '';
 
           const overlay = updatedMap?.[realId] || {};
           const isCancelled = ['cancelled', 'rejected', 'canceled'].includes(String(order?.status || '').toLowerCase());
           const resolvedStatus = overlay.status || (isCancelled ? 'cancelled' : (order?.status || 'pending'));
 
+          const resolvedClientId =
+            order?.clientId ||
+            order?.client_id ||
+            meta?.clientId ||
+            meta?.client_id ||
+            meta?.client?.id ||
+            sanitizedCustomItem?.clientId ||
+            null;
+
+          const resolvedUserId =
+            order?.createdById ||
+            order?.created_by ||
+            meta?.created_by ||
+            meta?.userId ||
+            meta?.user_id ||
+            meta?.customer_id ||
+            sanitizedCustomItem?.userId ||
+            sanitizedCustomItem?.user_id ||
+            null;
+
+          const resolvedEmail =
+            order?.client?.email ||
+            meta?.email ||
+            meta?.customer_email ||
+            meta?.clientEmail ||
+            meta?.client_email ||
+            meta?.client?.email ||
+            sanitizedCustomItem?.customer_email ||
+            sanitizedCustomItem?.email ||
+            null;
+
+          const resolvedClientName =
+            order?.client?.companyName ||
+            order?.client?.name ||
+            meta?.clientName ||
+            meta?.client_name ||
+            meta?.guestName ||
+            meta?.passengerName ||
+            sanitizedCustomItem?.clientName ||
+            'Guest Client';
+
+          const linkedDel = Array.isArray(order?.deliveries) ? order.deliveries.find(d => d.vehicleRef || d.assignedTo) : null;
+
+          const resolvedDriverName =
+            overlay.driverName ||
+            order?.driverName ||
+            meta?.driverName ||
+            sanitizedCustomItem?.driverName ||
+            (linkedDel?.assignee ? `${linkedDel.assignee.firstName || ''} ${linkedDel.assignee.lastName || ''}`.trim() : null) ||
+            null;
+
+          const resolvedDriverUserId =
+            overlay.driver_user_id ||
+            overlay.driverId ||
+            order?.driver_user_id ||
+            order?.driverId ||
+            meta?.driver_user_id ||
+            meta?.driverId ||
+            sanitizedCustomItem?.driver_user_id ||
+            sanitizedCustomItem?.driverId ||
+            linkedDel?.assignedTo ||
+            null;
+
+          const resolvedPlateNumber =
+            overlay.plateNumber ||
+            overlay.vehicleId ||
+            overlay.vehicle ||
+            order?.plateNumber ||
+            order?.vehicleId ||
+            order?.vehicle ||
+            order?.vehicleRef ||
+            meta?.plateNumber ||
+            meta?.vehicleId ||
+            meta?.vehicle ||
+            meta?.vehicleRef ||
+            sanitizedCustomItem?.plateNumber ||
+            sanitizedCustomItem?.vehicleId ||
+            linkedDel?.vehicleRef ||
+            null;
+
           const combined = {
             ...order,
-            ...restCustomItem,
+            ...sanitizedCustomItem,
             id: realId,
             db_id: order?.id,
-            clientName: order?.client?.companyName || order?.client?.name || restCustomItem?.clientName || 'Guest Client',
+            clientId: resolvedClientId,
+            userId: resolvedUserId,
+            user_id: resolvedUserId,
+            customer_id: resolvedUserId,
+            email: resolvedEmail,
+            customer_email: resolvedEmail,
+            clientEmail: resolvedEmail,
+            clientName: resolvedClientName,
             pickupLocation: resolvedPickup,
             pickup_location: resolvedPickup,
             dropLocation: resolvedDrop,
@@ -119,6 +214,13 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
             location: resolvedDrop,
             status: resolvedStatus,
             chauffeur_status: overlay.chauffeur_status || resolvedStatus,
+            driverName: resolvedDriverName,
+            driver_user_id: resolvedDriverUserId,
+            driverId: resolvedDriverUserId,
+            plateNumber: resolvedPlateNumber,
+            vehicleId: resolvedPlateNumber,
+            vehicle: resolvedPlateNumber,
+            vehicleRef: resolvedPlateNumber,
             ...overlay
           };
 
@@ -250,21 +352,47 @@ export const useUpdateChauffeurMission = () => {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, data }) => {
-      const fee = Number(data.chauffeurFee || data.chauffeur_fee || data.totalAmount || data.total || 120);
-      const pickupLoc = data.pickupLocation || data.pickup_location || '';
-      const dropLoc = data.dropLocation || data.drop_location || data.location || data.deliveryAddress || data.delivery_address || '';
+      const {
+        id: _stripId,
+        db_id: _stripDbId,
+        tenantId: _stripTenantId,
+        createdById: _stripCreatedById,
+        createdAt: _stripCreatedAt,
+        updatedAt: _stripUpdatedAt,
+        client: _stripClient,
+        creator: _stripCreator,
+        tenant: _stripTenant,
+        deliveries: _stripDeliveries,
+        missions: _stripMissions,
+        invoices: _stripInvoices,
+        ...cleanData
+      } = data;
+
+      const fee = Number(cleanData.chauffeurFee || cleanData.chauffeur_fee || cleanData.totalAmount || cleanData.total || 120);
+      const pickupLoc = cleanData.pickupLocation || cleanData.pickup_location || '';
+      const dropLoc = cleanData.dropLocation || cleanData.drop_location || cleanData.location || cleanData.deliveryAddress || cleanData.delivery_address || '';
+
+      const resolvedPlate = cleanData.plateNumber !== undefined ? (cleanData.plateNumber || null) : (cleanData.vehicleId !== undefined ? (cleanData.vehicleId || null) : (cleanData.vehicle || null));
+      const resolvedDriver = cleanData.driverName || null;
+      const resolvedDriverId = cleanData.driver_user_id || cleanData.driverId || null;
 
       const fullItem = {
-        ...data,
+        ...cleanData,
         pickupLocation: pickupLoc,
         dropLocation: dropLoc,
-        location: dropLoc
+        location: dropLoc,
+        driverName: resolvedDriver,
+        driver_user_id: resolvedDriverId,
+        driverId: resolvedDriverId,
+        plateNumber: resolvedPlate,
+        vehicleId: resolvedPlate,
+        vehicle: resolvedPlate
       };
 
       const payload = {
-        ...data,
-        clientId: data.clientId,
-        status: data.status,
+        ...cleanData,
+        clientId: cleanData.clientId,
+        status: cleanData.status,
         totalAmount: fee,
         total_amount: fee,
         total: fee,
@@ -274,50 +402,64 @@ export const useUpdateChauffeurMission = () => {
         drop_location: dropLoc,
         location: dropLoc,
         delivery_address: dropLoc,
-        passengerName: data.passengerName || data.guestName,
-        guestName: data.guestName || data.passengerName,
-        numberOfPassengers: Number(data.numberOfPassengers || data.passengers || data.passengerCount || 1),
-        passengers: Number(data.passengers || data.numberOfPassengers || 1),
-        passengerCount: Number(data.passengerCount || data.numberOfPassengers || 1),
-        luggage: data.luggage || (Number(data.bags || 0) > 0 ? `Yes — ${data.bags} bag(s)` : 'No'),
-        bags: Number(data.bags || 0),
-        stops: data.stops || 'No',
-        stopLocations: data.stopLocations || null,
-        amenities: data.amenities || [],
-        wifi: data.wifi || (Array.isArray(data.amenities) && data.amenities.includes('WiFi') ? 'Yes' : 'No'),
-        refreshments: data.refreshments || (Array.isArray(data.amenities) && data.amenities.includes('Refreshments') ? 'Yes' : 'No'),
-        carSeat: data.carSeat || (Array.isArray(data.amenities) && (data.amenities.includes('Baby Car Seat') || data.amenities.includes('Car Seat')) ? 'Yes' : 'No'),
-        serviceType: data.serviceType || 'One Way',
-        returnDate: data.returnDate || null,
-        returnTime: data.returnTime || null,
-        pickupTime: data.pickupTime || null,
-        dueDate: data.dueDate || null,
+        passengerName: cleanData.passengerName || cleanData.guestName,
+        guestName: cleanData.guestName || cleanData.passengerName,
+        numberOfPassengers: Number(cleanData.numberOfPassengers || cleanData.passengers || cleanData.passengerCount || 1),
+        passengers: Number(cleanData.passengers || cleanData.numberOfPassengers || 1),
+        passengerCount: Number(cleanData.passengerCount || cleanData.numberOfPassengers || 1),
+        driverName: resolvedDriver,
+        driver_user_id: resolvedDriverId,
+        driverId: resolvedDriverId,
+        plateNumber: resolvedPlate,
+        vehicleId: resolvedPlate,
+        vehicle: resolvedPlate,
+        adminApproved: cleanData.adminApproved !== undefined ? cleanData.adminApproved : (resolvedDriver ? true : undefined),
+        luggage: cleanData.luggage || (Number(cleanData.bags || 0) > 0 ? `Yes — ${cleanData.bags} bag(s)` : 'No'),
+        bags: Number(cleanData.bags || 0),
+        stops: cleanData.stops || 'No',
+        stopLocations: cleanData.stopLocations || null,
+        amenities: cleanData.amenities || [],
+        wifi: cleanData.wifi || (Array.isArray(cleanData.amenities) && cleanData.amenities.includes('WiFi') ? 'Yes' : 'No'),
+        refreshments: cleanData.refreshments || (Array.isArray(cleanData.amenities) && cleanData.amenities.includes('Refreshments') ? 'Yes' : 'No'),
+        carSeat: cleanData.carSeat || (Array.isArray(cleanData.amenities) && (cleanData.amenities.includes('Baby Car Seat') || cleanData.amenities.includes('Car Seat')) ? 'Yes' : 'No'),
+        serviceType: cleanData.serviceType || 'One Way',
+        returnDate: cleanData.returnDate || null,
+        returnTime: cleanData.returnTime || null,
+        pickupTime: cleanData.pickupTime || null,
+        dueDate: cleanData.dueDate || null,
         items: [fullItem],
         customItems: [fullItem],
         custom_items: [fullItem],
         metadata: {
-          ...data,
+          ...cleanData,
           pickupLocation: pickupLoc,
           dropLocation: dropLoc,
           location: dropLoc,
-          passengerName: data.passengerName || data.guestName,
-          guestName: data.guestName || data.passengerName,
-          numberOfPassengers: Number(data.numberOfPassengers || data.passengers || data.passengerCount || 1),
-          passengers: Number(data.passengers || data.numberOfPassengers || 1),
-          passengerCount: Number(data.passengerCount || data.numberOfPassengers || 1),
-          luggage: data.luggage || (Number(data.bags || 0) > 0 ? `Yes — ${data.bags} bag(s)` : 'No'),
-          bags: Number(data.bags || 0),
-          stops: data.stops || 'No',
-          stopLocations: data.stopLocations || null,
-          amenities: data.amenities || [],
-          wifi: data.wifi || (Array.isArray(data.amenities) && data.amenities.includes('WiFi') ? 'Yes' : 'No'),
-          refreshments: data.refreshments || (Array.isArray(data.amenities) && data.amenities.includes('Refreshments') ? 'Yes' : 'No'),
-          carSeat: data.carSeat || (Array.isArray(data.amenities) && (data.amenities.includes('Baby Car Seat') || data.amenities.includes('Car Seat')) ? 'Yes' : 'No'),
-          serviceType: data.serviceType || 'One Way',
-          returnDate: data.returnDate || null,
-          returnTime: data.returnTime || null,
-          pickupTime: data.pickupTime || null,
-          dueDate: data.dueDate || null,
+          driverName: resolvedDriver,
+          driver_user_id: resolvedDriverId,
+          driverId: resolvedDriverId,
+          plateNumber: resolvedPlate,
+          vehicleId: resolvedPlate,
+          vehicle: resolvedPlate,
+          adminApproved: cleanData.adminApproved !== undefined ? cleanData.adminApproved : (resolvedDriver ? true : undefined),
+          passengerName: cleanData.passengerName || cleanData.guestName,
+          guestName: cleanData.guestName || cleanData.passengerName,
+          numberOfPassengers: Number(cleanData.numberOfPassengers || cleanData.passengers || cleanData.passengerCount || 1),
+          passengers: Number(cleanData.passengers || cleanData.numberOfPassengers || 1),
+          passengerCount: Number(cleanData.passengerCount || cleanData.numberOfPassengers || 1),
+          luggage: cleanData.luggage || (Number(cleanData.bags || 0) > 0 ? `Yes — ${cleanData.bags} bag(s)` : 'No'),
+          bags: Number(cleanData.bags || 0),
+          stops: cleanData.stops || 'No',
+          stopLocations: cleanData.stopLocations || null,
+          amenities: cleanData.amenities || [],
+          wifi: cleanData.wifi || (Array.isArray(cleanData.amenities) && cleanData.amenities.includes('WiFi') ? 'Yes' : 'No'),
+          refreshments: cleanData.refreshments || (Array.isArray(cleanData.amenities) && cleanData.amenities.includes('Refreshments') ? 'Yes' : 'No'),
+          carSeat: cleanData.carSeat || (Array.isArray(cleanData.amenities) && (cleanData.amenities.includes('Baby Car Seat') || cleanData.amenities.includes('Car Seat')) ? 'Yes' : 'No'),
+          serviceType: cleanData.serviceType || 'One Way',
+          returnDate: cleanData.returnDate || null,
+          returnTime: cleanData.returnTime || null,
+          pickupTime: cleanData.pickupTime || null,
+          dueDate: cleanData.dueDate || null,
           customItems: [fullItem]
         }
       };

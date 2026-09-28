@@ -10,6 +10,7 @@ const StatusBadge = ({ status, className }) => {
       case 'stable':
       case 'approved':
       case 'accepted':
+      case 'completed':
       case 'assigned':
       case 'paid':
         return 'bg-success/10 text-success border-success/20';

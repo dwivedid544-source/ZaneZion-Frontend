@@ -842,9 +842,9 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                         {formData.carSeat === 'Yes' ? '✓ Premium Child Safety Seat Included' : 'Not Requested'}
                                                     </span>
                                                 </div>
-                                                <div>
+                                                <div className="min-w-0">
                                                     <span className="text-[9px] font-black uppercase tracking-widest text-muted block mb-0.5">Extra En-Route Stops</span>
-                                                    <span className={`font-bold ${formData.stops === 'Yes' ? 'text-white' : 'text-muted'}`}>
+                                                    <span className={`font-bold break-words break-all [overflow-wrap:anywhere] block ${formData.stops === 'Yes' ? 'text-white' : 'text-muted'}`}>
                                                         {formData.stops === 'Yes' ? `✓ Stops: ${formData.stopLocations || 'Requested'}` : 'Direct Journey (Non-stop)'}
                                                     </span>
                                                 </div>

@@ -322,9 +322,17 @@ const Fleet = () => {
                     </div>
                     <div className="p-3 bg-white/5 rounded-xl border border-border text-center">
                       <Gauge size={16} className="mx-auto mb-2 text-accent" />
-                      <p className="text-[10px] text-muted font-bold uppercase">Usage</p>
                       <p className="text-sm font-bold">
-                        {deliveries.some(d => d.vehicle === selectedVehicle.id && (d.status === 'In Transit' || d.status === 'Pending Pickup')) ? 'Active' : 'Standby'}
+                        {deliveries.some(d => {
+                          const vStr = String(d.vehicle || d.vehicleRef || d.plateNumber || d.vehicleId || '');
+                          const selId = String(selectedVehicle.id || '');
+                          const selVId = String(selectedVehicle.vehicleId || '');
+                          const matches = (selId && (vStr === selId || vStr.includes(selId))) ||
+                                          (selVId && (vStr === selVId || vStr.includes(selVId)));
+                          const normStatus = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
+                          const isActiveStatus = ['in_transit', 'en_route', 'dispatched', 'assigned', 'pending_pickup'].includes(normStatus);
+                          return matches && isActiveStatus;
+                        }) ? 'Active' : 'Standby'}
                       </p>
                     </div>
                     <div className="p-3 bg-white/5 rounded-xl border border-border text-center">

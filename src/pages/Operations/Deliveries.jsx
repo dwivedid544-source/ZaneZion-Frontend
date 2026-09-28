@@ -660,8 +660,8 @@ const Deliveries = () => {
       driver: parsedRemarks.driver || (del.assignee ? `${del.assignee.firstName} ${del.assignee.lastName}` : (del.driver || '')),
       mode: del.transportMode || del.mode || 'Road',
       missionType: del.missionType || (isChauffeurMission ? 'Chauffeur' : 'Delivery'),
-      vehicle: del.vehicleRef || del.vehicle || '',
-      vesselOrFlight: del.vehicleRef || del.vesselOrFlight || '',
+      vehicle: del.vehicleRef || del.vehicle || del.plateNumber || del.vehicleId || '',
+      vesselOrFlight: del.vehicleRef || del.vehicle || del.plateNumber || del.vehicleId || del.vesselOrFlight || '',
       eta: del.etaSchedule ? new Date(del.etaSchedule).toISOString().split('T')[0] : (del.eta || new Date().toISOString().split('T')[0]),
       requestDate: del.requestDate ? new Date(del.requestDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       dueDate: del.dueDate ? new Date(del.dueDate).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
@@ -852,7 +852,9 @@ const Deliveries = () => {
       const updatePayload = {
         missionType: finalData.missionType,
         transportMode: finalData.mode,
-        vehicleRef: finalData.vehicle || finalData.vesselOrFlight,
+        vehicleRef: finalData.vehicle || finalData.vesselOrFlight || null,
+        assignedTo: finalData.assigned_driver ? Number(finalData.assigned_driver) : (finalData.assignedTo ? Number(finalData.assignedTo) : undefined),
+        driver: finalData.driver || undefined,
         etaSchedule: finalData.eta,
         requestDate: finalData.requestDate,
         dueDate: finalData.dueDate,
@@ -977,13 +979,14 @@ const Deliveries = () => {
         setIsModalOpen(false);
 
         // Standard update of form fields
-        updateDeliveryMutation.mutateAsync({ id: finalData.id, data: updatePayload })
+        const targetDelId = finalData.db_id || finalData.id;
+        updateDeliveryMutation.mutateAsync({ id: targetDelId, data: updatePayload })
           .then(async () => {
             // If driver is assigned, create mission
             if (finalData.assigned_driver) {
               try {
                 await createMissionMutation.mutateAsync({
-                  deliveryId: finalData.id,
+                  deliveryId: targetDelId,
                   assignedEmployeeId: finalData.assigned_driver,
                   vehicleId: 1
                 });

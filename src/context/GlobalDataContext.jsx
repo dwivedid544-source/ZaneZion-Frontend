@@ -925,12 +925,16 @@ export const GlobalDataProvider = ({ children }) => {
 
     socket.on('support_update', (updatedTicket) => {
       if (!updatedTicket || (!updatedTicket.id && !updatedTicket.ticketId)) return;
-      const matchId = (t) =>
-        String(t.id) === String(updatedTicket.id) ||
-        String(t.ticketId) === String(updatedTicket.id) ||
-        String(t.db_id) === String(updatedTicket.id) ||
-        (updatedTicket.ticketId && String(t.id) === String(updatedTicket.ticketId)) ||
-        (updatedTicket.ticketId && String(t.ticketId) === String(updatedTicket.ticketId));
+      const targetId = updatedTicket.ticketId || updatedTicket.id;
+      const targetDbId = updatedTicket.db_id || (typeof updatedTicket.id === 'number' ? updatedTicket.id : null);
+
+      const matchId = (t) => {
+        if (!t) return false;
+        const tId = t.ticketId || t.id;
+        if (targetId && tId && String(tId) === String(targetId)) return true;
+        if (targetDbId && t.db_id && String(t.db_id) === String(targetDbId)) return true;
+        return false;
+      };
 
       const formatStatus = (s) => {
         if (!s) return "Open";
@@ -1797,7 +1801,7 @@ export const GlobalDataProvider = ({ children }) => {
           const rawClientId = d.clientId ?? d.client_id ?? d.customer_id ?? null;
           const rawMissionType = d.missionType ?? d.mission_type ?? null;
           const rawDriverName = d.driverName ?? d.driver_name ?? (d.assignee ? `${d.assignee.firstName || ''} ${d.assignee.lastName || ''}`.trim() : null) ?? d.driver ?? null;
-          const rawPlate = d.plateNumber ?? d.plate_number ?? null;
+          const rawPlate = d.plateNumber ?? d.plate_number ?? d.vehicleRef ?? d.vehicle_ref ?? null;
           const rawPickup = d.pickupLocation ?? d.pickup_location ?? null;
           const rawDrop = d.dropLocation ?? d.drop_location ?? null;
           const rawRoute = d.route ?? null;
@@ -1835,6 +1839,9 @@ export const GlobalDataProvider = ({ children }) => {
             driver: rawDriverName,
             driverName: rawDriverName,
             vehicleId: rawPlate,
+            vehicle: rawPlate,
+            vehicleRef: rawPlate,
+            plateNumber: rawPlate,
             pickupLocation: rawPickup,
             drop_location: rawDrop,
             dropLocation: rawDrop,
@@ -2406,14 +2413,18 @@ export const GlobalDataProvider = ({ children }) => {
             ];
           }
 
+          const uniqueTicketId = t.ticketId || (String(t.id).startsWith("TKT-") ? t.id : `TKT-${String(t.id).padStart(3, "0")}`);
+          const dbId = t.db_id || (typeof t.id === "number" ? t.id : null);
+
           return {
-            id: String(t.id).startsWith("TKT-") ? t.id : `TKT-${String(t.id).padStart(3, "0")}`,
-            db_id: t.id,
+            id: uniqueTicketId,
+            ticketId: uniqueTicketId,
+            db_id: dbId,
             // preserve original backend identification fields to satisfy global filters
             submitted_by: t.submitted_by ?? t.createdById ?? null,
             created_by: t.submitted_by ?? t.created_by ?? t.createdById ?? null,
             user_id: t.submitted_by ?? t.user_id ?? t.createdById ?? null,
-            clientName: t.submitted_by_name || t.createdByName || "System User",
+            clientName: t.submitted_by_name || t.createdByName || t.clientName || "System User",
             clientId: t.client_id ?? t.company_id ?? t.clientId ?? null,
             createdById: t.created_by ?? t.user_id ?? t.createdById ?? null,
             createdByEmail: t.created_by_email || t.email || t.createdByEmail || null,
@@ -2424,7 +2435,9 @@ export const GlobalDataProvider = ({ children }) => {
               ? t.priority.charAt(0).toUpperCase() + t.priority.slice(1)
               : "Medium",
             status: formatStatus(t.status),
-            date: t.created_at ? t.created_at.split("T")[0] : "",
+            date: t.created_at ? t.created_at.split("T")[0] : (t.createdAt ? t.createdAt.split("T")[0] : new Date().toISOString().split("T")[0]),
+            dispute_status: t.dispute_status || "none",
+            refund_amount: t.refund_amount || 0,
             messages: msgs,
           };
         });
@@ -6098,7 +6111,21 @@ export const GlobalDataProvider = ({ children }) => {
 
           const isOrderCancelled = ['cancelled', 'rejected', 'canceled'].includes(String(order.status || '').toLowerCase());
           const isDeliveryCancelled = ['cancelled', 'rejected', 'canceled'].includes(String(matchingDelivery?.status || '').toLowerCase());
-          const liveStatus = (isOrderCancelled || isDeliveryCancelled) ? 'cancelled' : (matchingDelivery?.status || order.status || 'pending');
+          const orderSt = String(order.status || '').toLowerCase();
+          const deliverySt = String(matchingDelivery?.status || '').toLowerCase();
+
+          let liveStatus = 'pending';
+          if (isOrderCancelled || isDeliveryCancelled) {
+            liveStatus = 'cancelled';
+          } else if (['completed', 'delivered', 'done'].includes(orderSt) || ['completed', 'delivered', 'done'].includes(deliverySt)) {
+            liveStatus = 'completed';
+          } else if (['in transit', 'in_transit', 'en route', 'en_route', 'picked up', 'picked_up'].includes(deliverySt) || ['in transit', 'in_transit', 'en route', 'en_route'].includes(orderSt)) {
+            liveStatus = deliverySt || orderSt;
+          } else if (['accepted', 'approved'].includes(orderSt) || ['accepted', 'approved'].includes(deliverySt)) {
+            liveStatus = 'accepted';
+          } else {
+            liveStatus = matchingDelivery?.status || order.status || 'pending';
+          }
           const liveDriver = matchingDelivery?.driver || order.driverName || detail?.driverName || null;
           const liveVehicle = matchingDelivery?.vehicleId || order.plateNumber || detail?.plateNumber || null;
 
@@ -7082,9 +7109,95 @@ export const GlobalDataProvider = ({ children }) => {
     }
   };
 
+  const fetchTicketById = React.useCallback(async (ticketId) => {
+    if (!ticketId) return null;
+    const cleanId = String(ticketId).trim();
+    try {
+      const res = await api.get(`/support/tickets/${cleanId}?_t=${Date.now()}`);
+      if (res.data?.success && res.data.data) {
+        const t = res.data.data;
+        const formatStatus = (s) => {
+          if (!s) return "Open";
+          return String(s)
+            .split(/[_\s]+/)
+            .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+            .join(" ");
+        };
+        let msgs = [];
+        if (t.messages) {
+          try {
+            msgs = typeof t.messages === "string" ? JSON.parse(t.messages) : t.messages;
+          } catch (e) {
+            msgs = [];
+          }
+        }
+        if (!Array.isArray(msgs) || msgs.length === 0) {
+          msgs = [
+            {
+              sender: "client",
+              text: t.description || "No description provided.",
+              time: new Date(t.created_at || t.createdAt || Date.now()).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            },
+          ];
+        }
+        const uniqueTicketId = t.ticketId || (String(t.id).startsWith("TKT-") ? t.id : `TKT-${String(t.id).padStart(3, "0")}`);
+        const dbId = t.db_id || (typeof t.id === "number" ? t.id : null);
+        const mappedTicket = {
+          ...t,
+          id: uniqueTicketId,
+          ticketId: uniqueTicketId,
+          db_id: dbId,
+          submitted_by: t.submitted_by ?? t.createdById ?? null,
+          created_by: t.submitted_by ?? t.created_by ?? t.createdById ?? null,
+          user_id: t.submitted_by ?? t.user_id ?? t.createdById ?? null,
+          clientName: t.submitted_by_name || t.createdByName || t.clientName || "System User",
+          clientId: t.client_id ?? t.company_id ?? t.clientId ?? null,
+          createdById: t.created_by ?? t.user_id ?? t.createdById ?? null,
+          createdByEmail: t.created_by_email || t.email || t.createdByEmail || null,
+          createdByName: t.submitted_by_name || t.created_by_name || t.createdByName || null,
+          subject: t.subject || t.title,
+          category: t.category || "General",
+          priority: t.priority
+            ? t.priority.charAt(0).toUpperCase() + t.priority.slice(1)
+            : "Medium",
+          status: formatStatus(t.status),
+          date: t.created_at ? t.created_at.split("T")[0] : (t.createdAt ? t.createdAt.split("T")[0] : new Date().toISOString().split("T")[0]),
+          dispute_status: t.dispute_status || "none",
+          refund_amount: t.refund_amount || 0,
+          messages: msgs,
+        };
+
+        setSupportTickets((prev) =>
+          prev.map((item) => {
+            const itemId = item.ticketId || item.id;
+            if (itemId && String(itemId) === String(uniqueTicketId)) {
+              return { ...item, ...mappedTicket };
+            }
+            return item;
+          })
+        );
+        return mappedTicket;
+      }
+    } catch (e) {
+      // Backend /support/tickets/:id route fallback
+    }
+
+    const found = (rawSupportTickets || supportTickets || []).find((item) => {
+      const iId = item.ticketId || item.id;
+      return iId && String(iId).toLowerCase() === cleanId.toLowerCase();
+    });
+    return found || null;
+  }, [supportTickets, rawSupportTickets]);
+
   const addSupportTicket = async (ticket) => {
     try {
+      const generatedId = ticket.ticketId || ticket.id || `TKT-${Math.floor(1000 + Math.random() * 8999)}`;
       const payload = {
+        id: generatedId,
+        ticketId: generatedId,
         subject: ticket.subject,
         category: ticket.category || "General",
         description: ticket.messages?.[0]?.text || "",
@@ -7102,11 +7215,14 @@ export const GlobalDataProvider = ({ children }) => {
       const res = await api.post("/support/tickets", payload);
       if (res.data?.success) {
         const createdTkt = res.data.data;
+        const finalTicketId = createdTkt.ticketId || createdTkt.id || generatedId;
+        const finalDbId = createdTkt.db_id || (typeof createdTkt.id === "number" ? createdTkt.id : null);
+
         const newTicket = {
           ...createdTkt,
-          id: createdTkt.ticketId || createdTkt.id,
-          ticketId: createdTkt.ticketId || createdTkt.id,
-          db_id: createdTkt.id || createdTkt.db_id,
+          id: finalTicketId,
+          ticketId: finalTicketId,
+          db_id: finalDbId,
           clientName: ticket.clientName || currentUser?.name || "System User",
           subject: ticket.subject,
           category: ticket.category || "General",
@@ -7115,8 +7231,8 @@ export const GlobalDataProvider = ({ children }) => {
           date: new Date().toISOString().split("T")[0],
           messages: ticket.messages || [],
         };
-        setSupportTickets((prev) => [newTicket, ...prev]);
-        setRawSupportTickets((prev) => [newTicket, ...prev]);
+        setSupportTickets((prev) => [newTicket, ...prev.filter((t) => (t.ticketId || t.id) !== finalTicketId)]);
+        setRawSupportTickets((prev) => [newTicket, ...prev.filter((t) => (t.ticketId || t.id) !== finalTicketId)]);
         await fetchTickets();
         window.dispatchEvent(new CustomEvent('app:state-changed'));
         addLog({
@@ -7124,17 +7240,21 @@ export const GlobalDataProvider = ({ children }) => {
           detail: `Ticket opened: ${ticket.subject}`,
           type: "system",
         });
+        return newTicket;
       }
     } catch (error) {
       console.error("Failed to add support ticket:", error);
+      throw error;
     }
   };
 
   const updateSupportTicket = async (ticketOrId, status = null) => {
     try {
-      let id, payload;
+      let id, payload, targetTicketId, targetDbId;
       if (typeof ticketOrId === "object") {
-        id = ticketOrId.ticketId || ticketOrId.id || ticketOrId.db_id;
+        targetTicketId = ticketOrId.ticketId || (String(ticketOrId.id).startsWith("TKT-") ? ticketOrId.id : null);
+        targetDbId = ticketOrId.db_id || (typeof ticketOrId.id === "number" ? ticketOrId.id : null);
+        id = targetTicketId || ticketOrId.id || targetDbId;
         payload = {
           status: (ticketOrId.status || "open").toLowerCase().replace(/\s+/g, "_"),
           messages: ticketOrId.messages || ticketOrId.responses || [],
@@ -7143,6 +7263,8 @@ export const GlobalDataProvider = ({ children }) => {
         };
       } else {
         id = ticketOrId;
+        targetTicketId = String(ticketOrId).startsWith("TKT-") ? ticketOrId : null;
+        targetDbId = !isNaN(Number(ticketOrId)) ? Number(ticketOrId) : null;
         payload = { status: (status || "open").toLowerCase().replace(/\s+/g, "_") };
       }
 
@@ -7155,11 +7277,16 @@ export const GlobalDataProvider = ({ children }) => {
       };
       const formattedStatus = formatStatus(payload.status);
 
-      // Optimistically update local state immediately
-      const matchTicket = (t) =>
-        String(t.id) === String(id) ||
-        String(t.ticketId) === String(id) ||
-        String(t.db_id) === String(id);
+      // Safe matching: never match undefined === undefined
+      const matchTicket = (t) => {
+        if (!t) return false;
+        const tTicketId = t.ticketId || (String(t.id).startsWith("TKT-") ? t.id : null);
+        const tDbId = t.db_id || (typeof t.id === "number" ? t.id : null);
+        if (targetTicketId && tTicketId && String(targetTicketId) === String(tTicketId)) return true;
+        if (targetDbId && tDbId && String(targetDbId) === String(tDbId)) return true;
+        if (id && (t.id || t.ticketId) && String(id) === String(t.ticketId || t.id)) return true;
+        return false;
+      };
 
       setSupportTickets((prev) =>
         prev.map((t) =>
@@ -7187,6 +7314,39 @@ export const GlobalDataProvider = ({ children }) => {
       return res.data;
     } catch (error) {
       console.error("Failed to update ticket:", error);
+      throw error;
+    }
+  };
+
+  const deleteSupportTicket = async (ticketOrId) => {
+    try {
+      const ticketId = typeof ticketOrId === "object" ? (ticketOrId.ticketId || ticketOrId.id) : ticketOrId;
+      const numId = typeof ticketOrId === "object" ? (ticketOrId.db_id || ticketOrId.id) : ticketOrId;
+
+      const matchTicket = (t) => {
+        if (!t) return false;
+        const tId = t.ticketId || t.id;
+        const tDb = t.db_id || t.id;
+        return (ticketId && tId && String(ticketId) === String(tId)) ||
+               (numId && tDb && String(numId) === String(tDb));
+      };
+
+      // Optimistic state update
+      setSupportTickets((prev) => prev.filter((t) => !matchTicket(t)));
+      setRawSupportTickets((prev) => prev.filter((t) => !matchTicket(t)));
+
+      const res = await api.delete(`/support/tickets/${ticketId}`);
+      await fetchTickets();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
+      addLog({
+        action: "Ticket Deletion",
+        detail: `Deleted support ticket ${ticketId}.`,
+        type: "system",
+      });
+      return res.data;
+    } catch (error) {
+      console.error("Failed to delete support ticket:", error);
+      await fetchTickets();
       throw error;
     }
   };
@@ -7811,6 +7971,8 @@ export const GlobalDataProvider = ({ children }) => {
         supportTickets,
         addSupportTicket,
         updateSupportTicket,
+        deleteSupportTicket,
+        fetchTicketById,
 
         // Finance
         invoices,

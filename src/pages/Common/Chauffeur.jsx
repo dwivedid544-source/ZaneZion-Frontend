@@ -16,7 +16,7 @@ import { useChauffeurMissions, useCreateChauffeurMission, useUpdateChauffeurMiss
 import { formatClientDisplayName } from '../../utils/apiHelpers';
 import { normalizeRole } from '../../utils/authUtils';
 import api from '../../services/api/setupAxios';
-import { setUpdatedChauffeurItem, addDeletedChauffeurId } from '../../utils/stateSyncHelper';
+import { setUpdatedChauffeurItem, addDeletedChauffeurId, notifyStateChanged } from '../../utils/stateSyncHelper';
 
 const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
     const [eta, setEta] = useState(null);
@@ -245,9 +245,11 @@ const Chauffeur = () => {
         stopLocations: req.stopLocations || null,
         bags: req.bags || 0,
         clientName: req.clientName || null,
-        driverName: patch.driverName !== undefined ? patch.driverName : (req.driverName || null),
-        plateNumber: patch.plateNumber !== undefined ? patch.plateNumber : (req.plateNumber || null),
-        driver_user_id: patch.driver_user_id !== undefined ? patch.driver_user_id : (req.driver_user_id || req.driverId || null),
+        driverName: patch.driverName !== undefined ? patch.driverName : (req.driverName || req.metadata?.driverName || null),
+        plateNumber: patch.plateNumber !== undefined ? patch.plateNumber : (req.plateNumber || req.vehicleId || req.vehicle || req.vehicleRef || req.metadata?.plateNumber || req.metadata?.vehicleId || req.metadata?.vehicle || null),
+        vehicleId: patch.plateNumber !== undefined ? patch.plateNumber : (req.plateNumber || req.vehicleId || req.vehicle || req.vehicleRef || req.metadata?.plateNumber || req.metadata?.vehicleId || req.metadata?.vehicle || null),
+        vehicle: patch.plateNumber !== undefined ? patch.plateNumber : (req.plateNumber || req.vehicleId || req.vehicle || req.vehicleRef || req.metadata?.plateNumber || req.metadata?.vehicleId || req.metadata?.vehicle || null),
+        driver_user_id: patch.driver_user_id !== undefined ? patch.driver_user_id : (req.driver_user_id || req.driverId || req.metadata?.driver_user_id || req.metadata?.driverId || null),
         driverPhotoUrl: patch.driverPhotoUrl !== undefined ? patch.driverPhotoUrl : (req.driverPhotoUrl || null),
         adminApproved: patch.adminApproved !== undefined ? patch.adminApproved : (req.adminApproved || false),
         chauffeur_status: patch.chauffeur_status || req.chauffeur_status || req.status || 'pending',
@@ -256,7 +258,7 @@ const Chauffeur = () => {
     const chauffeurStatusKey = (s) => String(s || '').toLowerCase().replace(/\s+/g, '_');
     const isAwaitingDriver = (req) => {
         const k = chauffeurStatusKey(req?.status);
-        return ['pending', 'pending_review', 'approved'].includes(k) && !req?.driverName;
+        return ['pending', 'pending_review', 'approved', 'accepted'].includes(k) && !req?.driverName;
     };
     const needsAdminApprove = (req) =>
         isAdmin && (!isClientAdmin || req?.userId !== currentUser?.id) && req && !req.driverName && !req.adminApproved && ['pending', 'pending_review'].includes(chauffeurStatusKey(req.status));
@@ -264,22 +266,34 @@ const Chauffeur = () => {
     const filteredRequests = useMemo(() => {
         console.log("RAW BACKEND DATA (chauffeurRequests):", chauffeurRequests);
         const myUserId = String(currentUser?.id || '').trim();
-        const myClientId = String(currentUser?.clientId || currentUser?.client_id || '').trim();
+        const myClientId = String(currentUser?.clientId || currentUser?.client_id || currentUser?.company_id || '').trim();
         const myEmail = String(currentUser?.email || '').toLowerCase().trim();
         const myName = String(currentUser?.name || currentUser?.full_name || '').toLowerCase().trim();
 
         const list = (!isCustomer && !isClientAdmin)
             ? [...(chauffeurRequests || [])]
             : (chauffeurRequests || []).filter(req => {
-                const reqUserId = String(req.userId || req.user_id || req.customer_id || req.metadata?.userId || req.metadata?.user_id || req.metadata?.customer_id || req.created_by || req.createdById || req.metadata?.created_by || '').trim();
-                const reqClientId = String(req.clientId || req.client_id || '').trim();
-                const reqEmail = String(req.email || req.clientEmail || req.customerEmail || req.customer_email || req.metadata?.email || req.metadata?.user_email || req.metadata?.customer_email || '').toLowerCase().trim();
-                const reqClientName = String(req.clientName || req.client || req.guestName || req.passengerName || req.customer_name || '').toLowerCase().trim();
+                const reqUserId = String(req.userId || req.user_id || req.customer_id || req.created_by || req.createdById || req.metadata?.userId || req.metadata?.user_id || req.metadata?.customer_id || req.metadata?.created_by || '').trim();
+                const reqClientId = String(req.clientId || req.client_id || req.client?.id || req.metadata?.clientId || req.metadata?.client_id || req.metadata?.client?.id || '').trim();
+                const reqEmail = String(req.email || req.clientEmail || req.customerEmail || req.customer_email || req.client?.email || req.metadata?.email || req.metadata?.user_email || req.metadata?.customer_email || req.metadata?.client_email || req.metadata?.client?.email || '').toLowerCase().trim();
+                const reqClientName = String(req.clientName || req.client_name || req.client?.companyName || req.client?.name || req.client || req.guestName || req.passengerName || req.customer_name || req.metadata?.clientName || req.metadata?.client_name || req.metadata?.passengerName || req.metadata?.guestName || '').toLowerCase().trim();
 
                 if (myUserId && reqUserId && reqUserId === myUserId) return true;
                 if (myClientId && reqClientId && reqClientId === myClientId) return true;
-                if (myEmail && reqEmail && reqEmail === myEmail) return true;
-                if (myName && reqClientName && reqClientName.includes(myName)) return true;
+                if (myEmail && reqEmail && (reqEmail === myEmail || reqEmail.includes(myEmail) || myEmail.includes(reqEmail))) return true;
+                if (myName && reqClientName && (reqClientName.includes(myName) || myName.includes(reqClientName))) return true;
+
+                // Also check nested custom items
+                const c0 = req.metadata?.customItems?.[0] || req.metadata?.custom_items?.[0] || {};
+                const cEmail = String(c0.customer_email || c0.email || '').toLowerCase().trim();
+                const cUserId = String(c0.user_id || c0.userId || c0.customer_id || '').trim();
+                const cClientId = String(c0.clientId || '').trim();
+                const cName = String(c0.clientName || c0.passengerName || c0.guestName || '').toLowerCase().trim();
+
+                if (myUserId && cUserId && cUserId === myUserId) return true;
+                if (myClientId && cClientId && cClientId === myClientId) return true;
+                if (myEmail && cEmail && (cEmail === myEmail || cEmail.includes(myEmail) || myEmail.includes(cEmail))) return true;
+                if (myName && cName && (cName.includes(myName) || myName.includes(cName))) return true;
 
                 return false;
             });
@@ -340,20 +354,40 @@ const Chauffeur = () => {
             : (currentUser?.name ? (currentUser.name.includes('(Personal Client)') ? currentUser.name : `${currentUser.name} (Personal Client)`) : 'Personal Client');
 
         const rawPassengerName = formData.get('passengerName') || editingRequest?.passengerName || editingRequest?.guestName;
-        const guestNameResolved = (rawPassengerName && String(rawPassengerName).trim()) ? String(rawPassengerName).trim() : clientDisplayName;
+
+        // Preserve original customer and client identity when updating an existing booking
+        const targetUserId = editingRequest
+            ? (editingRequest.userId || editingRequest.user_id || editingRequest.customer_id || editingRequest.created_by || editingRequest.createdById || editingRequest.metadata?.userId || editingRequest.metadata?.user_id || editingRequest.metadata?.created_by || currentUser?.id)
+            : currentUser?.id;
+
+        const targetEmail = editingRequest
+            ? (editingRequest.email || editingRequest.customer_email || editingRequest.clientEmail || editingRequest.client_email || editingRequest.metadata?.email || editingRequest.metadata?.customer_email || editingRequest.client?.email || currentUser?.email)
+            : currentUser?.email;
+
+        const targetClientId = editingRequest
+            ? (selectedClientId || editingRequest.clientId || editingRequest.client_id || editingRequest.client?.id || editingRequest.metadata?.clientId || editingRequest.metadata?.client?.id || currentUser?.company_id || 'CLT-GUEST')
+            : (isStaffAdmin ? (selectedClientId || currentUser?.company_id || 'CLT-GUEST') : (currentUser?.clientId || currentUser?.company_id || 'CLT-GUEST'));
+
+        const targetClientName = editingRequest
+            ? (editingRequest.clientName || editingRequest.client_name || editingRequest.client?.companyName || editingRequest.client?.name || editingRequest.guestName || editingRequest.passengerName || clientDisplayName)
+            : clientDisplayName;
+
+        const guestNameResolved = (rawPassengerName && String(rawPassengerName).trim()) 
+            ? String(rawPassengerName).trim() 
+            : (editingRequest?.passengerName || editingRequest?.guestName || targetClientName);
 
         const request = {
-            userId: currentUser?.id,
-            user_id: currentUser?.id,
-            customer_id: currentUser?.id,
-            email: currentUser?.email,
-            customer_email: currentUser?.email,
-            clientId: isStaffAdmin ? (selectedClientId || currentUser?.company_id || 'CLT-GUEST') : (currentUser?.clientId || currentUser?.company_id || 'CLT-GUEST'),
-            clientName: clientDisplayName,
+            userId: targetUserId,
+            user_id: targetUserId,
+            customer_id: targetUserId,
+            email: targetEmail,
+            customer_email: targetEmail,
+            clientId: targetClientId,
+            clientName: targetClientName,
             passengerName: guestNameResolved,
             guestName: guestNameResolved,
             serviceType,
-            requestDate: editingRequest ? editingRequest.requestDate : new Date().toISOString().split('T')[0],
+            requestDate: editingRequest ? (editingRequest.requestDate || editingRequest.date || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
             dueDate: formData.get('dueDate'),
             pickupTime: formData.get('pickupTime'),
             pickupLocation: formData.get('pickupLocation'),
@@ -381,47 +415,87 @@ const Chauffeur = () => {
             unitPrice: baseFee,
             price: baseFee,
             chauffeur_fee_mode: CHAUFFEUR_BILLING_MODE,
-            items: [{
-                name: `VIP Chauffeur Service (${serviceType}${serviceType === 'Daily Service' ? ` - ${daysCount} Days` : ''})`,
-                qty: qtyMultiplier,
-                quantity: qtyMultiplier,
-                unitPrice: baseFee,
-                price: baseFee,
-                totalPrice: normalizedFee,
-                total: normalizedFee
-            }],
-            customItems: [{
-                name: `VIP Chauffeur Service (${serviceType}${serviceType === 'Daily Service' ? ` - ${daysCount} Days` : ''})`,
-                qty: qtyMultiplier,
-                quantity: qtyMultiplier,
-                unitPrice: baseFee,
-                price: baseFee,
-                totalPrice: normalizedFee,
-                total: normalizedFee,
-                serviceType,
-                numberOfDays: daysCount,
-                dailyDays: daysCount
-            }],
-            driverName: isStaffAdmin ? (formData.get('driverNameSelect') ? (users || []).find(u => String(u.id) === formData.get('driverNameSelect'))?.fullName || (users || []).find(u => String(u.id) === formData.get('driverNameSelect'))?.name : formData.get('driverName')) : null,
-            plateNumber: isStaffAdmin ? (formData.get('plateNumber') || null) : null,
-            driver_user_id: isStaffAdmin ? (formData.get('driverNameSelect') ? Number(formData.get('driverNameSelect')) : (formData.get('driverUserId') ? Number(formData.get('driverUserId')) : (editingRequest?.driver_user_id || editingRequest?.driverId || null))) : (editingRequest?.driver_user_id || editingRequest?.driverId || null),
-            passenger_info: isStaffAdmin ? (() => {
-                const driverUserIdVal = formData.get('driverNameSelect') || formData.get('driverUserId');
-                const photo = (users || []).find(u => String(u.id) === String(driverUserIdVal))?.profile_pic_url || null;
-                return {
-                    ...(editingRequest?._passengerInfo || {}),
-                    driver_user_id: driverUserIdVal ? Number(driverUserIdVal) : null,
-                    driverPhotoUrl: photo,
-                    adminApproved: true
+            ...(() => {
+                const submittedPlate = formData.get('plateNumber');
+                const rawExistingPlate = editingRequest?.plateNumber || editingRequest?.vehicleId || editingRequest?.vehicle || editingRequest?.vehicleRef || editingRequest?.metadata?.plateNumber || editingRequest?.metadata?.vehicleId || null;
+                const resolvedPlateNumberVal = isStaffAdmin
+                    ? (submittedPlate !== null && submittedPlate !== undefined
+                        ? (String(submittedPlate).trim() || null)
+                        : rawExistingPlate)
+                    : rawExistingPlate;
+
+                const selDriver = formData.get('driverNameSelect');
+                let resolvedDriverNameVal = editingRequest?.driverName || editingRequest?.metadata?.driverName || null;
+                let resolvedDriverUserIdVal = editingRequest?.driver_user_id || editingRequest?.driverId || editingRequest?.metadata?.driver_user_id || editingRequest?.metadata?.driverId || null;
+                if (isStaffAdmin && selDriver) {
+                    const u = (users || []).find(user => String(user.id) === String(selDriver));
+                    resolvedDriverNameVal = u?.fullName || u?.name || editingRequest?.driverName || null;
+                    resolvedDriverUserIdVal = Number(selDriver);
+                }
+
+                const driverPhoto = (users || []).find(u => String(u.id) === String(resolvedDriverUserIdVal))?.profile_pic_url || editingRequest?.driverPhotoUrl || null;
+
+                const itemObj = {
+                    name: `VIP Chauffeur Service (${serviceType}${serviceType === 'Daily Service' ? ` - ${daysCount} Days` : ''})`,
+                    qty: qtyMultiplier,
+                    quantity: qtyMultiplier,
+                    unitPrice: baseFee,
+                    price: baseFee,
+                    totalPrice: normalizedFee,
+                    total: normalizedFee,
+                    userId: targetUserId,
+                    user_id: targetUserId,
+                    customer_id: targetUserId,
+                    email: targetEmail,
+                    customer_email: targetEmail,
+                    clientId: targetClientId,
+                    clientName: targetClientName,
+                    passengerName: guestNameResolved,
+                    guestName: guestNameResolved,
+                    driverName: resolvedDriverNameVal,
+                    driver_user_id: resolvedDriverUserIdVal,
+                    driverId: resolvedDriverUserIdVal,
+                    plateNumber: resolvedPlateNumberVal,
+                    vehicleId: resolvedPlateNumberVal,
+                    vehicle: resolvedPlateNumberVal
                 };
-            })() : (editingRequest?.passenger_info || editingRequest?._passengerInfo || null),
-            status: isStaffAdmin
-                ? (formData.get('overrideStatus') || (formData.get('driverNameSelect') || formData.get('driverName') || formData.get('driverUserId') || editingRequest?.driverName
-                    ? (['completed', 'delivered'].includes(String(editingRequest?.status).toLowerCase()) ? 'completed' : 'assigned')
-                    : (editingRequest?.status || 'pending')))
-                : (editingRequest?.status || 'pending'),
-            orderType: 'CHAUFFEUR',
-            missionType: 'CHAUFFEUR'
+
+                const customItemObj = {
+                    ...itemObj,
+                    serviceType,
+                    numberOfDays: daysCount,
+                    dailyDays: daysCount
+                };
+
+                const determinedStatus = isStaffAdmin
+                    ? (formData.get('overrideStatus') && formData.get('overrideStatus') !== 'pending'
+                        ? formData.get('overrideStatus')
+                        : ((resolvedDriverNameVal || resolvedPlateNumberVal)
+                            ? (['completed', 'delivered'].includes(String(editingRequest?.status).toLowerCase()) ? 'completed' : 'assigned')
+                            : (editingRequest?.status || 'pending')))
+                    : (editingRequest?.status || 'pending');
+
+                return {
+                    driverName: resolvedDriverNameVal,
+                    plateNumber: resolvedPlateNumberVal,
+                    vehicleId: resolvedPlateNumberVal,
+                    vehicle: resolvedPlateNumberVal,
+                    driver_user_id: resolvedDriverUserIdVal,
+                    driverId: resolvedDriverUserIdVal,
+                    passenger_info: isStaffAdmin ? {
+                        ...(editingRequest?._passengerInfo || editingRequest?.passenger_info || {}),
+                        driver_user_id: resolvedDriverUserIdVal,
+                        driverPhotoUrl: driverPhoto,
+                        adminApproved: true
+                    } : (editingRequest?.passenger_info || editingRequest?._passengerInfo || null),
+                    status: determinedStatus,
+                    adminApproved: isStaffAdmin ? (!!(resolvedDriverNameVal || resolvedPlateNumberVal) || !!editingRequest?.adminApproved) : !!editingRequest?.adminApproved,
+                    items: [itemObj],
+                    customItems: [customItemObj],
+                    orderType: 'CHAUFFEUR',
+                    missionType: 'CHAUFFEUR'
+                };
+            })()
         };
 
         swalLoading("Booking Chauffeur", "Booking your chauffeur, please wait...");
@@ -432,10 +506,14 @@ const Chauffeur = () => {
             updateMutation.mutate({ id: targetId, data: { ...editingRequest, ...request } }, {
                 onSuccess: async () => {
                     isSubmittingRef.current = false;
+                    const strId = String(targetId);
+                    setUpdatedChauffeurItem(strId, { status: request.status, chauffeur_status: request.status });
                     if (updateChauffeurRequestCtx) {
                         try { await updateChauffeurRequestCtx({ ...editingRequest, ...request, id: targetId, db_id: targetId }); } catch (_) {}
                     }
                     if (syncGlobalState) await syncGlobalState();
+                    notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+                    window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'chauffeur-update', orderId: targetId } }));
                     swalClose();
                     setIsSubmitting(false);
                     setShowModal(false);
@@ -487,7 +565,19 @@ const Chauffeur = () => {
     const openModal = (type, req = null) => {
         setModalType(type);
         if (req) {
-            setEditingRequest(req);
+            const resolvedVehicle = req.plateNumber || req.vehicleId || req.vehicle || req.vehicleRef || req.metadata?.plateNumber || req.metadata?.vehicleId || req.metadata?.vehicle || req.metadata?.vehicleRef || null;
+            const resolvedDriver = req.driverName || req.metadata?.driverName || null;
+            const resolvedDriverId = req.driver_user_id || req.driverId || req.metadata?.driver_user_id || req.metadata?.driverId || null;
+            const enriched = {
+                ...req,
+                plateNumber: resolvedVehicle || req.plateNumber || null,
+                vehicleId: resolvedVehicle || req.vehicleId || null,
+                vehicle: resolvedVehicle || req.vehicle || null,
+                driverName: resolvedDriver || req.driverName || null,
+                driver_user_id: resolvedDriverId || req.driver_user_id || null,
+                driverId: resolvedDriverId || req.driverId || null
+            };
+            setEditingRequest(enriched);
             setServiceType(req.serviceType || 'One Way');
             const feeVal = parseFloat(req.chauffeurFee ?? req.chauffeur_fee ?? req.total_amount ?? 0);
             setChauffeurQuote(Number.isFinite(feeVal) ? feeVal : 0);
@@ -576,14 +666,63 @@ const Chauffeur = () => {
 
                 swalClose();
                 swalSuccess("Booking Rejected", `Chauffeur booking #${targetId} has been rejected and cancelled.`);
+                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
                 window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'chauffeur-reject', orderId: targetId } }));
-                queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
-                queryClient.invalidateQueries({ queryKey: ['orders'] });
-                queryClient.invalidateQueries({ queryKey: ['deliveries'] });
-                queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
             } catch (err) {
                 swalClose();
                 const msg = err.response?.data?.message || err.message || 'Failed to reject chauffeur booking.';
+                swalError("Error", msg);
+            }
+        }
+    };
+
+    const handleAcceptBooking = async (row) => {
+        const rawTargetId = row.db_id || row.id;
+        const targetId = !isNaN(Number(rawTargetId)) && Number(rawTargetId) > 0 ? Number(rawTargetId) : rawTargetId;
+        const strId = String(targetId);
+
+        if ((await swalConfirm('Accept Chauffeur Booking', `Accept and approve chauffeur booking #${targetId}? The status will update to Accepted across Admin and Client portals.`)).isConfirmed) {
+            swalLoading("Accepting Booking", "Approving chauffeur booking, please wait...");
+            try {
+                // 1. Immediately update local storage sync map
+                setUpdatedChauffeurItem(strId, { status: 'accepted', chauffeur_status: 'accepted' });
+
+                // 2. Immediately update TanStack Query cache
+                queryClient.setQueriesData({ queryKey: ['chauffeurMissions'] }, (old) => {
+                    if (!old || !old.data) return old;
+                    return {
+                        ...old,
+                        data: old.data.map(r =>
+                            (String(r.id) === strId || String(r.db_id) === strId)
+                                ? { ...r, status: 'accepted', chauffeur_status: 'accepted' }
+                                : r
+                        )
+                    };
+                });
+
+                // 3. Persist to backend status endpoint
+                try {
+                    await api.put(`/orders/${targetId}/status`, { status: 'accepted' });
+                } catch (_) {
+                    try { await api.patch(`/orders/${targetId}/status`, { status: 'accepted' }); } catch (_) {}
+                }
+
+                // 4. Update global context
+                if (updateChauffeurRequestCtx) {
+                    try { await updateChauffeurRequestCtx({ ...row, status: 'accepted', chauffeur_status: 'accepted', id: targetId, db_id: targetId }); } catch (_) {}
+                }
+                if (syncGlobalState) await syncGlobalState();
+
+                swalClose();
+                swalSuccess("Booking Accepted", `Chauffeur booking #${targetId} is now Accepted!`);
+
+                // 5. Broadcast state change event to sync with Client Portal and other views
+                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'chauffeur-accept', orderId: targetId, status: 'accepted' } }));
+            } catch (err) {
+                queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+                swalClose();
+                const msg = err.response?.data?.message || err.message || 'Failed to accept chauffeur booking.';
                 swalError("Error", msg);
             }
         }
@@ -609,11 +748,26 @@ const Chauffeur = () => {
         { header: "Time", accessor: "pickupTime" },
         { header: "Pickup", accessor: "pickupLocation" },
         {
-            header: "Assigned Driver",
+            header: "Assigned Driver & Vehicle",
             accessor: "driverName",
-            render: (row) => row.driverName
-                ? <span className="text-xs font-bold text-white">{row.driverName}</span>
-                : <span className="text-[10px] font-black text-warning/70 uppercase tracking-widest">Unassigned</span>
+            render: (row) => {
+                const vehicleStr = row.plateNumber || row.vehicleId || row.vehicle || row.vehicleRef || row.metadata?.plateNumber || row.metadata?.vehicleId;
+                return (
+                    <div className="space-y-0.5">
+                        {row.driverName ? (
+                            <span className="text-xs font-bold text-white block">{row.driverName}</span>
+                        ) : (
+                            <span className="text-[10px] font-black text-warning/70 uppercase tracking-widest block">Unassigned Driver</span>
+                        )}
+                        {vehicleStr && (
+                            <span className="text-[10px] font-mono text-accent flex items-center gap-1 font-semibold">
+                                <Car size={11} className="shrink-0" />
+                                <span>{vehicleStr}</span>
+                            </span>
+                        )}
+                    </div>
+                );
+            }
         },
         {
             header: "Status",
@@ -627,6 +781,8 @@ const Chauffeur = () => {
                 const normSt = String(row.status || '').toLowerCase();
                 const isCompleted = ['completed', 'delivered', 'done'].includes(normSt);
                 const isCancelled = ['cancelled', 'canceled', 'rejected'].includes(normSt);
+                const isAccepted = ['accepted', 'approved', 'assigned', 'on way', 'in transit', 'en route'].includes(normSt);
+
                 if (isCompleted) {
                     return (
                         <span className="text-[10px] font-black text-success uppercase tracking-widest px-2.5 py-1 bg-success/10 border border-success/30 rounded-lg">
@@ -641,14 +797,32 @@ const Chauffeur = () => {
                         </span>
                     );
                 }
+                if (isAccepted) {
+                    return (
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black text-success uppercase tracking-widest px-2.5 py-1 bg-success/10 border border-success/30 rounded-lg">
+                                Accepted
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => handleMarkCompleted(row)}
+                                className="text-[10px] font-black text-accent uppercase tracking-wider bg-accent/10 border border-accent/30 hover:bg-accent hover:text-black px-2.5 py-1 rounded-lg transition-all"
+                                title="Conclude and mark ride as completed"
+                            >
+                                Mark Complete
+                            </button>
+                        </div>
+                    );
+                }
                 return (
                     <div className="flex items-center gap-1.5">
                         <button
                             type="button"
-                            onClick={() => handleMarkCompleted(row)}
-                            className="text-[10px] font-black text-accent uppercase tracking-wider bg-accent/10 border border-accent/30 hover:bg-accent hover:text-black px-2.5 py-1 rounded-lg transition-all"
+                            onClick={() => handleAcceptBooking(row)}
+                            className="text-[10px] font-black text-emerald-400 uppercase tracking-wider bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500 hover:text-black px-2.5 py-1 rounded-lg transition-all font-bold shadow-sm"
+                            title="Accept and approve this chauffeur booking"
                         >
-                            Mark Complete
+                            Accept
                         </button>
                         <button
                             type="button"
@@ -665,40 +839,46 @@ const Chauffeur = () => {
     ];
 
     const handleMarkCompleted = async (row) => {
-        if ((await swalConfirm('Complete Chauffeur Ride', `Mark Chauffeur booking ${row.id} as completed?`)).isConfirmed) {
+        const rawTargetId = row.db_id || row.id;
+        const targetId = !isNaN(Number(rawTargetId)) && Number(rawTargetId) > 0 ? Number(rawTargetId) : rawTargetId;
+        const strId = String(targetId);
+
+        if ((await swalConfirm('Complete Chauffeur Ride', `Mark Chauffeur booking #${targetId} as completed?`)).isConfirmed) {
             swalLoading("Updating Status", "Setting chauffeur ride to completed...");
-            const targetId = row.db_id || row.id;
             try {
                 // 1. Immediately update the local cache so UI flips status now
+                setUpdatedChauffeurItem(strId, { status: 'completed', chauffeur_status: 'completed' });
                 queryClient.setQueriesData({ queryKey: ['chauffeurMissions'] }, (old) => {
                     if (!old || !old.data) return old;
                     return {
                         ...old,
                         data: old.data.map(r =>
-                            (String(r.id) === String(targetId) || String(r.db_id) === String(targetId))
+                            (String(r.id) === strId || String(r.db_id) === strId)
                                 ? { ...r, status: 'completed', chauffeur_status: 'completed' }
                                 : r
                         )
                     };
                 });
 
-                // 2. Persist status in localStorage updatedMap so refetches keep the latest status
-                const { setUpdatedChauffeurItem } = await import('../../utils/stateSyncHelper');
-                setUpdatedChauffeurItem(String(targetId), { status: 'completed', chauffeur_status: 'completed' });
+                // 2. Persist to backend
+                try {
+                    await api.put(`/orders/${targetId}/status`, { status: 'completed' });
+                } catch (_) {
+                    try { await api.patch(`/orders/${targetId}/status`, { status: 'completed' }); } catch (_) {}
+                }
 
-                // 3. Persist to backend
-                await api.put(`/orders/${targetId}/status`, { status: 'completed' });
+                // 3. Update global context
+                if (updateChauffeurRequestCtx) {
+                    try { await updateChauffeurRequestCtx({ ...row, status: 'completed', chauffeur_status: 'completed', id: targetId, db_id: targetId }); } catch (_) {}
+                }
+                if (syncGlobalState) await syncGlobalState();
 
                 swalClose();
-                swalSuccess("Ride Completed", `Chauffeur booking ${row.id} is now marked as Completed!`);
+                swalSuccess("Ride Completed", `Chauffeur booking #${targetId} is now marked as Completed!`);
 
                 // 4. Broadcast state change to all open tabs/portals
+                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
                 window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'chauffeur-complete', orderId: targetId } }));
-
-                // 5. Invalidate all relevant queries so server state is reflected
-                queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
-                queryClient.invalidateQueries({ queryKey: ['orders'] });
-                queryClient.invalidateQueries({ queryKey: ['dashboardStats'] });
             } catch (err) {
                 // Revert optimistic update on failure
                 queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
@@ -927,26 +1107,45 @@ const Chauffeur = () => {
 
                                         <div className="p-3 rounded-xl bg-white/[0.03] border border-white/10 space-y-2">
                                             <p className="text-[8px] font-black text-muted uppercase tracking-widest">Driver & vehicle</p>
-                                            {req.driverName ? (
-                                                <div className="flex items-center gap-3">
-                                                    {req.driverPhotoUrl ? (
-                                                        <img src={req.driverPhotoUrl} alt="" className="w-11 h-11 rounded-lg object-cover border border-accent/30 shrink-0" />
-                                                    ) : (
-                                                        <div className="w-11 h-11 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
-                                                            <Car size={18} />
+                                            {(() => {
+                                                const vPlate = req.plateNumber || req.vehicleId || req.vehicle || req.vehicleRef || req.metadata?.plateNumber || req.metadata?.vehicleId;
+                                                if (req.driverName) {
+                                                    return (
+                                                        <div className="flex items-center gap-3">
+                                                            {req.driverPhotoUrl ? (
+                                                                <img src={req.driverPhotoUrl} alt="" className="w-11 h-11 rounded-lg object-cover border border-accent/30 shrink-0" />
+                                                            ) : (
+                                                                <div className="w-11 h-11 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+                                                                    <Car size={18} />
+                                                                </div>
+                                                            )}
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-xs font-bold text-white truncate">{req.driverName}</p>
+                                                                {vPlate && (
+                                                                    <p className="text-[10px] text-accent font-bold mt-0.5">Vehicle: {vPlate}</p>
+                                                                )}
+                                                                <DriverEtaDisplay pickupLocation={req.pickupLocation} status={req.status} driverName={req.driverName} />
+                                                            </div>
                                                         </div>
-                                                    )}
-                                                    <div className="min-w-0 flex-1">
-                                                        <p className="text-xs font-bold text-white truncate">{req.driverName}</p>
-                                                        {req.plateNumber ? (
-                                                            <p className="text-[10px] text-secondary font-bold">Plate {req.plateNumber}</p>
-                                                        ) : null}
-                                                        <DriverEtaDisplay pickupLocation={req.pickupLocation} status={req.status} driverName={req.driverName} />
-                                                    </div>
-                                                </div>
-                                            ) : (
-                                                <p className="text-[10px] text-warning font-bold leading-snug">Awaiting admin approval and driver assignment.</p>
-                                            )}
+                                                    );
+                                                }
+                                                if (vPlate) {
+                                                    return (
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="w-11 h-11 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+                                                                <Car size={18} />
+                                                            </div>
+                                                            <div className="min-w-0 flex-1">
+                                                                <p className="text-xs font-bold text-white truncate">{vPlate}</p>
+                                                                <p className="text-[10px] text-warning font-bold">Driver assignment in progress</p>
+                                                            </div>
+                                                        </div>
+                                                    );
+                                                }
+                                                return (
+                                                    <p className="text-[10px] text-warning font-bold leading-snug">Awaiting admin approval and driver assignment.</p>
+                                                );
+                                            })()}
                                         </div>
 
                                         <div className="flex items-center gap-2 mt-4 pt-4 border-t border-white/5">
@@ -999,9 +1198,8 @@ const Chauffeur = () => {
                                 </div>
 
                                 <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
-                                    <input type="hidden" name="driverUserId" value={(users || []).find(u => u.name === editingRequest?.driverName)?.id || ""} />
+                                    <input type="hidden" name="driverUserId" value={editingRequest?.driver_user_id || editingRequest?.driverId || (users || []).find(u => u.name === editingRequest?.driverName)?.id || ""} />
                                     <input type="hidden" name="driverName" value={editingRequest?.driverName || ""} />
-                                    <input type="hidden" name="plateNumber" value={editingRequest?.plateNumber || ""} />
                                     <div className="p-5 sm:p-8 space-y-6 flex-1 overflow-y-auto custom-scrollbar">
                                         {modalType === 'view' ? (
                                             <div className="space-y-6">
@@ -1018,32 +1216,120 @@ const Chauffeur = () => {
                                                     <StatusBadge status={editingRequest?.status} />
                                                 </div>
 
-                                                <div className="p-4 bg-white/[0.03] rounded-2xl border border-white/10 space-y-3">
+                                                <div className="p-4 bg-white/[0.03] rounded-2xl border border-white/10 space-y-4">
                                                     <p className="text-[10px] font-black text-muted uppercase tracking-widest">Driver & vehicle</p>
-                                                    {editingRequest?.driverName ? (
-                                                        <div className="flex items-center gap-4">
-                                                            {editingRequest.driverPhotoUrl ? (
-                                                                <img src={editingRequest.driverPhotoUrl} alt="" className="w-16 h-16 rounded-xl object-cover border border-accent/30 shrink-0" />
-                                                            ) : (
-                                                                <div className="w-16 h-16 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
-                                                                    <Car size={22} />
+                                                    {(() => {
+                                                        const rawAssignedVehicle = String(
+                                                            editingRequest?.plateNumber ||
+                                                            editingRequest?.vehicleId ||
+                                                            editingRequest?.vehicle ||
+                                                            editingRequest?.vehicleRef ||
+                                                            editingRequest?.metadata?.plateNumber ||
+                                                            editingRequest?.metadata?.vehicleId ||
+                                                            editingRequest?.metadata?.vehicle ||
+                                                            editingRequest?.metadata?.vehicleRef ||
+                                                            ''
+                                                        ).trim();
+
+                                                        const matchedVehicleInfo = (fleet || []).find(v => {
+                                                            if (!rawAssignedVehicle) return false;
+                                                            const vId = String(v.id || '').trim();
+                                                            const vDbId = String(v.db_id || '').trim();
+                                                            const vModel = String(v.model || '').trim();
+                                                            const vCombo1 = `${vModel} (${vId})`.toLowerCase();
+                                                            const vCombo2 = `${vModel} - ${vId}`.toLowerCase();
+                                                            const rawLower = rawAssignedVehicle.toLowerCase();
+                                                            return (
+                                                                rawLower === vCombo1 ||
+                                                                rawLower === vCombo2 ||
+                                                                rawLower === vId.toLowerCase() ||
+                                                                rawLower === vDbId.toLowerCase() ||
+                                                                rawLower === vModel.toLowerCase() ||
+                                                                rawLower.includes(vId.toLowerCase()) ||
+                                                                (vModel && rawLower.includes(vModel.toLowerCase()))
+                                                            );
+                                                        });
+
+                                                        const vehicleDisplayName = matchedVehicleInfo?.model
+                                                            ? matchedVehicleInfo.model.trim()
+                                                            : (rawAssignedVehicle || null);
+
+                                                        const vehiclePlateDisplay = matchedVehicleInfo?.id
+                                                            ? `#${matchedVehicleInfo.id}`
+                                                            : (rawAssignedVehicle || null);
+
+                                                        return (
+                                                            <div className="space-y-4">
+                                                                {/* Driver Section */}
+                                                                {editingRequest?.driverName ? (
+                                                                    <div className="flex items-center gap-4">
+                                                                        {editingRequest.driverPhotoUrl ? (
+                                                                            <img src={editingRequest.driverPhotoUrl} alt="" className="w-14 h-14 rounded-xl object-cover border border-accent/30 shrink-0" />
+                                                                        ) : (
+                                                                            <div className="w-14 h-14 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+                                                                                <Car size={22} />
+                                                                            </div>
+                                                                        )}
+                                                                        <div className="flex-1 min-w-0">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <p className="text-sm font-bold text-white">{editingRequest.driverName}</p>
+                                                                                <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">Chauffeur</span>
+                                                                            </div>
+                                                                            <DriverEtaDisplay pickupLocation={editingRequest.pickupLocation} status={editingRequest.status} driverName={editingRequest.driverName} />
+                                                                        </div>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="p-3 bg-white/5 rounded-xl border border-white/5">
+                                                                        <p className="text-xs text-warning font-bold leading-relaxed">
+                                                                            {editingRequest?.adminApproved
+                                                                                ? 'Approved — a chauffeur driver will be assigned shortly.'
+                                                                                : 'Awaiting admin approval and driver assignment.'}
+                                                                        </p>
+                                                                    </div>
+                                                                )}
+
+                                                                {/* Vehicle Section */}
+                                                                <div className="pt-3 border-t border-white/5">
+                                                                    <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-2.5">Assigned Vehicle Specification</p>
+                                                                    {vehicleDisplayName ? (
+                                                                        <div className="flex items-start gap-4 p-3.5 bg-accent/[0.04] border border-accent/20 rounded-xl">
+                                                                            <div className="w-12 h-12 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+                                                                                <Car size={20} />
+                                                                            </div>
+                                                                            <div className="flex-1 min-w-0 space-y-1">
+                                                                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                                                                    <p className="text-sm font-black text-white uppercase tracking-tight">{vehicleDisplayName}</p>
+                                                                                    <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-md border border-emerald-500/30">
+                                                                                        {matchedVehicleInfo?.status || 'Active Fleet'}
+                                                                                    </span>
+                                                                                </div>
+                                                                                <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                                                    {vehiclePlateDisplay && (
+                                                                                        <span className="font-mono text-accent font-bold text-xs">Plate / Unit: {vehiclePlateDisplay}</span>
+                                                                                    )}
+                                                                                    {matchedVehicleInfo?.type && (
+                                                                                        <span className="text-[10px] text-secondary font-medium px-2 py-0.5 bg-white/5 rounded border border-white/10 uppercase">
+                                                                                            {matchedVehicleInfo.type}
+                                                                                        </span>
+                                                                                    )}
+                                                                                    {matchedVehicleInfo?.capacity && (
+                                                                                        <span className="text-[10px] text-muted font-medium px-2 py-0.5 bg-white/5 rounded border border-white/10 uppercase">
+                                                                                            {matchedVehicleInfo.capacity} Seats
+                                                                                        </span>
+                                                                                    )}
+                                                                                </div>
+                                                                            </div>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-center gap-2 text-muted">
+                                                                            <Car size={14} className="text-muted/60" />
+                                                                            <p className="text-xs font-medium italic">No vehicle assigned to this chauffeur mission yet.</p>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
-                                                            )}
-                                                            <div>
-                                                                <p className="text-sm font-bold text-white">{editingRequest.driverName}</p>
-                                                                {editingRequest.plateNumber ? (
-                                                                    <p className="text-xs text-secondary font-bold mt-0.5">Plate {editingRequest.plateNumber}</p>
-                                                                ) : null}
-                                                                <DriverEtaDisplay pickupLocation={editingRequest.pickupLocation} status={editingRequest.status} driverName={editingRequest.driverName} />
                                                             </div>
-                                                        </div>
-                                                    ) : (
-                                                        <p className="text-xs text-warning font-bold leading-relaxed">
-                                                            {editingRequest?.adminApproved
-                                                                ? 'Approved — a driver will be assigned shortly.'
-                                                                : 'Awaiting admin approval and driver assignment.'}
-                                                        </p>
-                                                    )}
+                                                        );
+                                                    })()}
                                                 </div>
 
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1078,13 +1364,39 @@ const Chauffeur = () => {
                                                                 : (editingRequest?.luggage || 'No')}
                                                         </p>
                                                     </div>
-                                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
-                                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Extra stops</p>
-                                                        <p className="text-sm font-bold text-white">
-                                                            {editingRequest?.stops === 'Yes'
-                                                                ? (editingRequest?.stopLocations || 'Yes (no addresses listed)')
-                                                                : (editingRequest?.stops || 'No')}
-                                                        </p>
+                                                    <div className="p-4 bg-white/5 rounded-xl border border-border col-span-1 sm:col-span-2 overflow-hidden">
+                                                        <div className="flex items-center justify-between mb-1.5">
+                                                            <p className="text-[10px] text-muted uppercase font-black tracking-widest">Extra Stops / Intermediate Waypoints</p>
+                                                            {editingRequest?.stops === 'Yes' && (
+                                                                <span className="text-[9px] font-black uppercase tracking-wider bg-accent/10 text-accent px-2 py-0.5 rounded border border-accent/20">
+                                                                    {editingRequest?.stopLocations ? 'Stops Specified' : 'Requested'}
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                        {editingRequest?.stops === 'Yes' ? (
+                                                            editingRequest?.stopLocations ? (
+                                                                <div className="space-y-1.5 pt-1">
+                                                                    {String(editingRequest.stopLocations)
+                                                                        .split(/\r?\n/)
+                                                                        .map(s => s.trim())
+                                                                        .filter(Boolean)
+                                                                        .map((loc, idx, arr) => (
+                                                                            <div key={idx} className="flex items-start gap-2 text-sm font-bold text-white">
+                                                                                {arr.length > 1 && (
+                                                                                    <span className="text-[10px] font-mono text-accent shrink-0 mt-0.5">#{idx + 1}</span>
+                                                                                )}
+                                                                                <p className="break-words break-all [overflow-wrap:anywhere] leading-relaxed flex-1 min-w-0">
+                                                                                    {loc}
+                                                                                </p>
+                                                                            </div>
+                                                                        ))}
+                                                                </div>
+                                                            ) : (
+                                                                <p className="text-sm font-bold text-white italic">Yes (no specific waypoint addresses specified)</p>
+                                                            )
+                                                        ) : (
+                                                            <p className="text-sm font-bold text-white">No extra stops requested</p>
+                                                        )}
                                                     </div>
                                                     <div className="p-4 bg-warning/10 rounded-xl border border-warning/30 col-span-2">
                                                         <p className="text-[10px] text-warning uppercase font-black tracking-widest mb-1">
@@ -1379,13 +1691,40 @@ const Chauffeur = () => {
                                                             </select>
                                                         </div>
 
+                                                        {/* Active Assignment Info Banner */}
+                                                        {(editingRequest?.driverName || editingRequest?.plateNumber || editingRequest?.vehicleId) && (
+                                                            <div className="p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-2xl flex items-center justify-between">
+                                                                <div className="flex items-center gap-3">
+                                                                    <div className="w-9 h-9 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-400">
+                                                                        <Car size={18} />
+                                                                    </div>
+                                                                    <div>
+                                                                        <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Currently Assigned</p>
+                                                                        <p className="text-xs font-bold text-white">
+                                                                            {editingRequest.driverName || 'No Driver Assigned'}
+                                                                            {(editingRequest.plateNumber || editingRequest.vehicleId) ? ` • ${editingRequest.plateNumber || editingRequest.vehicleId}` : ''}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                                <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest bg-emerald-500/20 px-2.5 py-1 rounded-full border border-emerald-500/30">Assigned</span>
+                                                            </div>
+                                                        )}
+
                                                         <div className="grid grid-cols-1 gap-4">
                                                             {/* Assign Driver */}
                                                             <div className="space-y-2">
-                                                                <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Assign Chauffeur</label>
+                                                                <div className="flex items-center justify-between pl-1">
+                                                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest">
+                                                                        {editingRequest?.driverName ? 'Assigned Chauffeur (Reassign if needed)' : 'Assign Chauffeur'}
+                                                                    </label>
+                                                                    {editingRequest?.driverName && (
+                                                                        <span className="text-[9px] font-mono text-accent">Active: {editingRequest.driverName}</span>
+                                                                    )}
+                                                                </div>
                                                                 <select
                                                                     name="driverNameSelect"
-                                                                    defaultValue={editingRequest?.driver_user_id || editingRequest?.driverId || ""}
+                                                                    key={`driver-select-${editingRequest?.id || 'new'}-${editingRequest?.driver_user_id || editingRequest?.driverName || 'none'}`}
+                                                                    defaultValue={editingRequest?.driver_user_id || editingRequest?.driverId || (users || []).find(u => (u.name === editingRequest?.driverName || u.fullName === editingRequest?.driverName))?.id || ""}
                                                                     onChange={(e) => {
                                                                         const input = e.target.form?.querySelector('input[name="driverName"]');
                                                                         const hidden = e.target.form?.querySelector('input[name="driverUserId"]');
@@ -1395,7 +1734,11 @@ const Chauffeur = () => {
                                                                     }}
                                                                     className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
                                                                 >
-                                                                    <option value="">Select from staff...</option>
+                                                                    <option value="">{editingRequest?.driverName ? `${editingRequest.driverName} (Keep Assigned)` : 'Select from staff...'}</option>
+                                                                    {/* If current driver is set but not in list, render option */}
+                                                                    {editingRequest?.driver_user_id && !(users || []).some(u => String(u.id) === String(editingRequest.driver_user_id) && ['staff', 'logistics', 'concierge', 'operation', 'operations', 'driver', 'field_staff'].includes(String(u.role?.name || u.role || '').toLowerCase().replace(/\s+/g, '_'))) && (
+                                                                        <option value={editingRequest.driver_user_id}>{editingRequest.driverName || `Assigned Chauffeur (#${editingRequest.driver_user_id})`}</option>
+                                                                    )}
                                                                     {(users || []).filter((u) => {
                                                                         const r = String(u.role?.name || u.role || '').toLowerCase().replace(/\s+/g, '_');
                                                                         const isActive = String(u.status || u.account_status || '').toLowerCase() === 'active';
@@ -1405,26 +1748,84 @@ const Chauffeur = () => {
                                                                     ))}
                                                                 </select>
                                                             </div>
-
-                                                            {/* Manual driver name entry removed */}
                                                         </div>
 
                                                         {/* Vehicle */}
-                                                        <div className="space-y-2">
-                                                            <label className="text-[10px] font-black text-muted uppercase tracking-widest pl-1">Vehicle / Plate Number</label>
-                                                            <select
-                                                                name="plateNumber"
-                                                                defaultValue={editingRequest?.plateNumber || ''}
-                                                                className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
-                                                            >
-                                                                <option value="">Select vehicle...</option>
-                                                                {(fleet || []).map(v => (
-                                                                    <option key={v.id} value={`${v.model} (${v.id})`}>
-                                                                        {v.model} - {v.id}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                        </div>
+                                                        {(() => {
+                                                            const rawPlate = String(
+                                                                editingRequest?.plateNumber ||
+                                                                editingRequest?.vehicleId ||
+                                                                editingRequest?.vehicle ||
+                                                                editingRequest?.vehicleRef ||
+                                                                editingRequest?.metadata?.plateNumber ||
+                                                                editingRequest?.metadata?.vehicleId ||
+                                                                editingRequest?.metadata?.vehicle ||
+                                                                editingRequest?.metadata?.vehicleRef ||
+                                                                ''
+                                                            ).trim();
+
+                                                            const matchedVehicle = (fleet || []).find(v => {
+                                                                if (!rawPlate) return false;
+                                                                const vId = String(v.id || '').trim();
+                                                                const vDbId = String(v.db_id || '').trim();
+                                                                const vModel = String(v.model || '').trim();
+                                                                const vCombo1 = `${vModel} (${vId})`.toLowerCase();
+                                                                const vCombo2 = `${vModel} - ${vId}`.toLowerCase();
+                                                                const rawLower = rawPlate.toLowerCase();
+                                                                return (
+                                                                    rawLower === vCombo1 ||
+                                                                    rawLower === vCombo2 ||
+                                                                    rawLower === vId.toLowerCase() ||
+                                                                    rawLower === vDbId.toLowerCase() ||
+                                                                    rawLower === vModel.toLowerCase() ||
+                                                                    rawLower.includes(vId.toLowerCase()) ||
+                                                                    (vModel && rawLower.includes(vModel.toLowerCase()))
+                                                                );
+                                                            });
+
+                                                            const resolvedDefaultPlate = matchedVehicle
+                                                                ? `${matchedVehicle.model?.trim()} (${matchedVehicle.id})`
+                                                                : rawPlate;
+
+                                                            return (
+                                                                <div className="space-y-2">
+                                                                    <div className="flex items-center justify-between pl-1">
+                                                                        <label className="text-[10px] font-black text-muted uppercase tracking-widest">
+                                                                            {resolvedDefaultPlate ? 'Assigned Vehicle (Change if needed)' : 'Vehicle / Plate Number'}
+                                                                        </label>
+                                                                        {resolvedDefaultPlate && (
+                                                                            <span className="text-[9px] font-mono text-accent">Active: {resolvedDefaultPlate}</span>
+                                                                        )}
+                                                                    </div>
+                                                                    <select
+                                                                        name="plateNumber"
+                                                                        key={`vehicle-select-${editingRequest?.id || 'new'}-${resolvedDefaultPlate || 'none'}`}
+                                                                        defaultValue={resolvedDefaultPlate}
+                                                                        className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
+                                                                    >
+                                                                        {resolvedDefaultPlate ? (
+                                                                            <option value={resolvedDefaultPlate}>
+                                                                                {resolvedDefaultPlate} (Currently Assigned)
+                                                                            </option>
+                                                                        ) : (
+                                                                            <option value="">Select vehicle...</option>
+                                                                        )}
+                                                                        {resolvedDefaultPlate && (
+                                                                            <option value="">-- Remove / Unassign Vehicle --</option>
+                                                                        )}
+                                                                        {(fleet || []).map(v => {
+                                                                            const val = `${v.model?.trim()} (${v.id})`;
+                                                                            if (val === resolvedDefaultPlate) return null;
+                                                                            return (
+                                                                                <option key={v.id} value={val}>
+                                                                                    {v.model?.trim()} - {v.id} {v.type ? `(${v.type})` : ''}
+                                                                                </option>
+                                                                            );
+                                                                        })}
+                                                                    </select>
+                                                                </div>
+                                                            );
+                                                        })()}
 
                                                         {/* Booking Status Override */}
                                                         <div className="space-y-2">
@@ -1435,6 +1836,7 @@ const Chauffeur = () => {
                                                                 className="w-full bg-background border border-border rounded-2xl px-5 py-4 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer"
                                                             >
                                                                 <option value="pending">Pending</option>
+                                                                <option value="accepted">Accepted / Confirmed</option>
                                                                 <option value="assigned">Assigned</option>
                                                                 <option value="in_transit">En Route / In Transit</option>
                                                                 <option value="completed">Completed / Delivered</option>

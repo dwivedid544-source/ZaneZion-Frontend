@@ -1,9 +1,18 @@
 export const getApiBaseUrl = () => {
-  let envUrl = import.meta.env.VITE_API_URL;
+  let envUrl = (import.meta.env.VITE_API_URL || '').trim();
+
+  // If VITE_API_URL is not explicitly set, check VITE_API_ORIGIN
+  if (!envUrl && import.meta.env.VITE_API_ORIGIN) {
+    const origin = import.meta.env.VITE_API_ORIGIN.trim().replace(/\/+$/, '');
+    if (origin) {
+      envUrl = `${origin}/api/v1`;
+    }
+  }
+
   if (!envUrl) {
     const envMode = (import.meta.env.VITE_ENV_MODE || '').trim().toLowerCase();
     const localUrl = import.meta.env.VITE_API_URL_LOCAL || 'http://localhost:8000/api/v1';
-    const prodUrl = import.meta.env.VITE_API_URL_PROD || 'https://zanezoin-backend-production.up.railway.app/api/v1';
+    const prodUrl = import.meta.env.VITE_API_URL_PROD || 'https://zanezion-backend-production-6c8a.up.railway.app/api/v1';
 
     if (envMode === 'local' || envMode === 'dev' || envMode === 'development') {
       envUrl = localUrl;
@@ -30,7 +39,7 @@ export const API_URL = API_BASE_URL;
 
 export const getBackendOrigin = () => {
   if (import.meta.env.VITE_API_ORIGIN) {
-    return import.meta.env.VITE_API_ORIGIN.replace(/\/+$/, '');
+    return import.meta.env.VITE_API_ORIGIN.trim().replace(/\/+$/, '');
   }
   const base = getApiBaseUrl();
   return base.replace(/\/api\/v1\/?$/, '').replace(/\/api\/?$/, '').replace(/\/+$/, '');

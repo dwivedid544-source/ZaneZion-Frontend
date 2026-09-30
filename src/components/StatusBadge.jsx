@@ -57,6 +57,8 @@ const StatusBadge = ({ status, className }) => {
         return 'bg-danger/10 text-danger border-danger/20';
       case 'received':
         return 'bg-success/10 text-success border-success/20';
+      case 'arrived':
+        return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
       default:
         return 'bg-muted/10 text-muted border-muted/20';
     }

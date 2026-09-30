@@ -27,8 +27,19 @@ export const notifyStateChanged = (queryClient, queryKeys = []) => {
   // Dispatch custom window event so GlobalDataContext and active components refetch state immediately
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { queryKeys } }));
+    try {
+      localStorage.setItem('app_sync_trigger', Date.now().toString());
+    } catch (_) {}
   }
 };
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', (e) => {
+    if (e.key === 'app_sync_trigger' || e.key === 'updated_chauffeur_map' || e.key === 'deleted_chauffeur_ids') {
+      window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'cross-tab-sync' } }));
+    }
+  });
+}
 
 export const getDeletedChauffeurIds = () => {
   try {

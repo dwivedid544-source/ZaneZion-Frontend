@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied, swalLoading, swalClose } from '../../utils/swal';
+import Swal, { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied, swalLoading, swalClose } from '../../utils/swal';
 import {
     Car, Calendar, Clock, MapPin, Navigation,
     Plus, X, CheckCircle, Info, ArrowRight,
@@ -728,6 +728,90 @@ const Chauffeur = () => {
         }
     };
 
+    const handleEmergencyAbort = async (row) => {
+        const rawTargetId = row.db_id || row.id;
+        const targetId = !isNaN(Number(rawTargetId)) && Number(rawTargetId) > 0 ? Number(rawTargetId) : rawTargetId;
+        const strId = String(targetId);
+
+        const { value: reason, isConfirmed } = await Swal.fire({
+            title: 'Emergency Abort Ride',
+            text: `Enter the mandatory operational reason to abort and cancel active trip #${targetId}:`,
+            input: 'textarea',
+            inputPlaceholder: 'State incident, mechanical issue, passenger request, or emergency dispatch reason...',
+            inputAttributes: {
+                'aria-label': 'Type your cancellation reason here'
+            },
+            showCancelButton: true,
+            confirmButtonText: 'Abort Trip',
+            confirmButtonColor: '#ef4444',
+            cancelButtonText: 'Keep Active',
+            inputValidator: (val) => {
+                if (!val || !val.trim()) {
+                    return 'A valid reason is strictly required to cancel an active in-progress trip!';
+                }
+                if (val.trim().length < 5) {
+                    return 'Please provide a more detailed reason (minimum 5 characters).';
+                }
+                return null;
+            },
+            background: '#1a1a2e',
+            color: '#fff',
+            icon: 'warning'
+        });
+
+        if (isConfirmed && reason) {
+            swalLoading("Aborting Trip", "Processing emergency cancellation and audit logging...");
+            try {
+                // 1. Immediately update local sync map
+                setUpdatedChauffeurItem(strId, { status: 'cancelled', chauffeur_status: 'cancelled', cancelReason: reason });
+
+                // 2. TanStack Query cache update
+                queryClient.setQueriesData({ queryKey: ['chauffeurMissions'] }, (old) => {
+                    if (!old || !old.data) return old;
+                    return {
+                        ...old,
+                        data: old.data.map(r =>
+                            (String(r.id) === strId || String(r.db_id) === strId)
+                                ? { ...r, status: 'cancelled', chauffeur_status: 'cancelled', cancelReason: reason }
+                                : r
+                        )
+                    };
+                });
+
+                // 3. Persist to backend with mandatory remarks reason
+                try {
+                    await api.put(`/orders/${targetId}/status`, {
+                        status: 'cancelled',
+                        remarks: `[EXCEPTIONAL_CANCELLATION] ${reason.trim()}`
+                    });
+                } catch (_) {
+                    await api.patch(`/orders/${targetId}/status`, {
+                        status: 'cancelled',
+                        remarks: `[EXCEPTIONAL_CANCELLATION] ${reason.trim()}`
+                    });
+                }
+
+                // 4. Update global context
+                if (updateChauffeurRequestCtx) {
+                    try { await updateChauffeurRequestCtx({ ...row, status: 'cancelled', chauffeur_status: 'cancelled', cancelReason: reason }); } catch (_) {}
+                }
+                if (syncGlobalState) await syncGlobalState();
+
+                swalClose();
+                swalSuccess("Trip Aborted", `Chauffeur booking #${targetId} has been aborted with logged audit remarks.`);
+
+                // 5. Broadcast to all portals
+                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'chauffeur-abort', orderId: targetId } }));
+            } catch (err) {
+                queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+                swalClose();
+                const msg = err.response?.data?.message || err.message || 'Failed to abort trip.';
+                swalError("Error", msg);
+            }
+        }
+    };
+
     const columns = [
         {
             header: "Client",
@@ -778,10 +862,12 @@ const Chauffeur = () => {
             header: "Quick Action",
             accessor: "id",
             render: (row) => {
-                const normSt = String(row.status || '').toLowerCase();
+                const normSt = String(row.status || row.chauffeur_status || '').toLowerCase().replace(/_/g, ' ');
                 const isCompleted = ['completed', 'delivered', 'done'].includes(normSt);
                 const isCancelled = ['cancelled', 'canceled', 'rejected'].includes(normSt);
-                const isAccepted = ['accepted', 'approved', 'assigned', 'on way', 'in transit', 'en route'].includes(normSt);
+                const isArrived = ['arrived'].includes(normSt);
+                const isEnRoute = ['en route', 'in transit', 'on way'].includes(normSt);
+                const isAccepted = ['accepted', 'approved', 'assigned'].includes(normSt);
 
                 if (isCompleted) {
                     return (
@@ -797,6 +883,44 @@ const Chauffeur = () => {
                         </span>
                     );
                 }
+                if (isArrived) {
+                    return (
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black text-emerald-400 uppercase tracking-widest px-2.5 py-1 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
+                                Arrived
+                            </span>
+                            {isAdmin && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleEmergencyAbort(row)}
+                                    className="text-[10px] font-black text-rose-400 uppercase tracking-wider bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500 hover:text-white px-2.5 py-1 rounded-lg transition-all"
+                                    title="Emergency Abort / Exceptional Cancellation (Requires Reason)"
+                                >
+                                    Emergency Abort
+                                </button>
+                            )}
+                        </div>
+                    );
+                }
+                if (isEnRoute) {
+                    return (
+                        <div className="flex items-center gap-1.5">
+                            <span className="text-[10px] font-black text-info uppercase tracking-widest px-2.5 py-1 bg-info/10 border border-info/30 rounded-lg">
+                                En Route
+                            </span>
+                            {isAdmin && (
+                                <button
+                                    type="button"
+                                    onClick={() => handleEmergencyAbort(row)}
+                                    className="text-[10px] font-black text-rose-400 uppercase tracking-wider bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500 hover:text-white px-2.5 py-1 rounded-lg transition-all"
+                                    title="Emergency Abort / Exceptional Cancellation (Requires Reason)"
+                                >
+                                    Emergency Abort
+                                </button>
+                            )}
+                        </div>
+                    );
+                }
                 if (isAccepted) {
                     return (
                         <div className="flex items-center gap-1.5">
@@ -805,11 +929,11 @@ const Chauffeur = () => {
                             </span>
                             <button
                                 type="button"
-                                onClick={() => handleMarkCompleted(row)}
-                                className="text-[10px] font-black text-accent uppercase tracking-wider bg-accent/10 border border-accent/30 hover:bg-accent hover:text-black px-2.5 py-1 rounded-lg transition-all"
-                                title="Conclude and mark ride as completed"
+                                onClick={() => handleRejectBooking(row)}
+                                className="text-[10px] font-black text-rose-400 uppercase tracking-wider bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500 hover:text-white px-2.5 py-1 rounded-lg transition-all"
+                                title="Reject / Cancel Chauffeur Booking"
                             >
-                                Mark Complete
+                                Reject
                             </button>
                         </div>
                     );
@@ -998,7 +1122,11 @@ const Chauffeur = () => {
                                 }
                             }}
                             canEdit={hasMenuPermission('Chauffeur', 'can_edit')}
-                            canDelete={hasMenuPermission('Chauffeur', 'can_delete')}
+                            canDelete={(row) => {
+                                const normSt = String(row?.status || row?.chauffeur_status || '').toLowerCase().replace(/_/g, ' ');
+                                const isTripActiveOrDone = ['en route', 'in transit', 'on way', 'arrived', 'completed', 'delivered'].includes(normSt);
+                                return hasMenuPermission('Chauffeur', 'can_delete') && !isTripActiveOrDone;
+                            }}
                         />
                         {meta.totalItems > 10 && (
                             <div className="mt-6 border-t border-white/5 pt-6">
@@ -1152,9 +1280,27 @@ const Chauffeur = () => {
                                             <button type="button" onClick={() => openModal('view', req)} className="flex-1 py-2 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all bg-white/10 text-white hover:bg-white/20">
                                                 View details
                                             </button>
-                                            <button onClick={() => handleCancel(req.id)} disabled={req.status === 'Cancelled' || req.status === 'Completed'} className={`py-2 px-4 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${req.status === 'Cancelled' || req.status === 'Completed' ? 'bg-white/5 text-muted cursor-not-allowed' : 'bg-danger/20 text-danger hover:bg-danger/30'}`}>
-                                                Cancel
-                                            </button>
+                                            {(() => {
+                                                const normReqSt = String(req.status || req.chauffeur_status || '').toLowerCase().replace(/_/g, ' ');
+                                                const isTripUnderway = ['en route', 'in transit', 'on way', 'arrived'].includes(normReqSt);
+                                                const isDoneOrCancelled = ['completed', 'delivered', 'done', 'cancelled', 'canceled', 'rejected'].includes(normReqSt);
+                                                if (isTripUnderway) {
+                                                    return (
+                                                        <span className="py-2 px-3 rounded-lg text-[9px] font-black uppercase tracking-widest bg-info/10 text-info border border-info/20" title="Trip is actively in progress. Contact dispatch for emergency changes.">
+                                                            In Progress
+                                                        </span>
+                                                    );
+                                                }
+                                                return (
+                                                    <button
+                                                        onClick={() => handleCancel(req.id)}
+                                                        disabled={isDoneOrCancelled}
+                                                        className={`py-2 px-4 rounded-lg text-[9px] font-black uppercase tracking-widest transition-all ${isDoneOrCancelled ? 'bg-white/5 text-muted cursor-not-allowed' : 'bg-danger/20 text-danger hover:bg-danger/30'}`}
+                                                    >
+                                                        Cancel
+                                                    </button>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 </motion.div>
@@ -1839,6 +1985,7 @@ const Chauffeur = () => {
                                                                 <option value="accepted">Accepted / Confirmed</option>
                                                                 <option value="assigned">Assigned</option>
                                                                 <option value="in_transit">En Route / In Transit</option>
+                                                                <option value="arrived">Arrived</option>
                                                                 <option value="completed">Completed / Delivered</option>
                                                                 <option value="cancelled">Cancelled</option>
                                                             </select>

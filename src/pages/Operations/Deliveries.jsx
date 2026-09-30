@@ -33,6 +33,7 @@ function displayDeliveryStatus(raw) {
   if (k === 'pending' || k === 'pending_pickup' || k === 'pending_review') return 'Pending pickup';
   if (k === 'assigned' || k === 'accepted') return 'Driver assigned';
   if (k === 'en_route' || k === 'in_transit' || k === 'dispatched') return 'Out for delivery';
+  if (k === 'arrived') return 'Arrived';
   if (k === 'delivered' || k === 'completed') return 'Delivered';
   if (k === 'cancelled' || k === 'canceled') return 'Cancelled';
   return raw ? String(raw) : '—';

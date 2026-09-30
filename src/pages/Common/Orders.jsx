@@ -375,7 +375,14 @@ const Orders = () => {
         return row.product || row.type || "General Order";
       }
     },
-    { header: "Vendor", accessor: "vendor", render: (row) => row.vendor_name || row.vendor?.name || row.vendor?.companyName || (typeof row.vendor === 'string' ? row.vendor : null) || "N/A" },
+    { 
+      header: "Vendor", 
+      accessor: "vendor", 
+      render: (row) => {
+        const meta = typeof row.metadata === 'string' ? (() => { try { return JSON.parse(row.metadata); } catch { return {}; } })() : (row.metadata || {});
+        return row.vendor_name || row.vendor?.name || row.vendor?.companyName || (typeof row.vendor === 'string' ? row.vendor : null) || meta.vendor || meta.vendor_name || meta.vendorName || "N/A";
+      }
+    },
     {
       header: "Total Value",
       accessor: "totalAmount",
@@ -660,10 +667,12 @@ const Orders = () => {
               onEdit={(item) => handleAction('edit', item)}
               onDelete={(item) => handleDelete(item.id)}
               canEdit={(row) => {
+                if (portalRole === 'logistics' || normalizedRole === 'logistics') return false;
                 const status = resolveLiveOrderStatus(row);
                 return (status !== 'completed' && status !== 'delivered') && (hasMenuPermission('Orders', 'can_edit') || isBusinessClient);
               }}
               canDelete={(row) => {
+                if (portalRole === 'logistics' || normalizedRole === 'logistics') return false;
                 const status = resolveLiveOrderStatus(row);
                 return (status !== 'completed' && status !== 'delivered') && (hasMenuPermission('Orders', 'can_delete') || isBusinessClient);
               }}

@@ -21,6 +21,76 @@ import { useChauffeurMissions, useUpdateChauffeurMission } from '../../hooks/api
 import { useQueryClient } from '@tanstack/react-query';
 import { notifyStateChanged, setUpdatedChauffeurItem } from '../../utils/stateSyncHelper';
 import api from '../../services/api/setupAxios';
+import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
+
+const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
+    const [eta, setEta] = useState(null);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+        if (!pickupLocation || !driverName) {
+            setEta(null);
+            return;
+        }
+
+        let isMounted = true;
+        const fetchEta = async () => {
+            setLoading(true);
+            try {
+                const res = await calculateOSRMRouteDistance("Nassau Hub", pickupLocation);
+                if (res && isMounted) {
+                    setEta(res.durationMins);
+                }
+            } catch (err) {
+                console.error("Failed to calculate ETA:", err);
+            } finally {
+                if (isMounted) setLoading(false);
+            }
+        };
+
+        fetchEta();
+        return () => { isMounted = false; };
+    }, [pickupLocation, status, driverName]);
+
+    const normStatus = String(status || '').toLowerCase().replace(/\s+/g, '_');
+    if (['completed', 'delivered', 'arrived'].includes(normStatus)) {
+        return (
+            <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-lg bg-success/20 border border-success/30 text-success text-[10px] font-black uppercase tracking-wider w-fit">
+                <CheckCircle size={12} />
+                <span>Driver Arrived</span>
+            </div>
+        );
+    }
+
+    if (!driverName) return null;
+
+    if (loading) {
+        return (
+            <div className="text-[10px] text-muted font-bold mt-2 flex items-center gap-1.5 animate-pulse">
+                <Clock size={12} className="animate-spin text-accent" />
+                <span>Calculating driver ETA...</span>
+            </div>
+        );
+    }
+
+    if (eta !== null) {
+        return (
+            <div className="flex flex-col gap-1 mt-2">
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-accent/20 border border-accent/30 text-accent text-[10px] font-black uppercase tracking-wider w-fit">
+                    <Clock size={12} />
+                    <span>ETA: ~{eta} mins ({Math.round(eta * 1.2)} km away)</span>
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className="flex items-center gap-2 mt-2 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-secondary text-[10px] font-black uppercase tracking-wider w-fit">
+            <Clock size={12} />
+            <span>ETA: ~15 mins (Nassau Area)</span>
+        </div>
+    );
+};
 
 const EmployeePortal = () => {
     const {
@@ -31,6 +101,7 @@ const EmployeePortal = () => {
         getVacationBalance, toggleAvailability,
         deliveries, updateDelivery, fetchDeliveries, reportSecurityEvent,
         chauffeurRequests, fetchChauffeurRequests, updateChauffeurRequest,
+        fleet, fetchFleet, syncGlobalState,
         securityEvents, fetchSecurityEvents,
         hasMenuPermission
     } = useData();
@@ -51,16 +122,20 @@ const EmployeePortal = () => {
     useEffect(() => {
         const handleStateChanged = () => {
             queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
+            if (fetchDeliveries) fetchDeliveries();
+            if (fetchChauffeurRequests) fetchChauffeurRequests();
+            if (fetchFleet) fetchFleet();
         };
         window.addEventListener('app:state-changed', handleStateChanged);
         return () => window.removeEventListener('app:state-changed', handleStateChanged);
-    }, [queryClient]);
+    }, [queryClient, fetchDeliveries, fetchChauffeurRequests, fetchFleet]);
 
     useEffect(() => {
         console.log('[StaffPortal] Synchronizing operational data for tab:', activeTab);
         if (fetchSupportingDocs) fetchSupportingDocs();
         if (fetchDeliveries) fetchDeliveries();
         if (fetchChauffeurRequests) fetchChauffeurRequests();
+        if (fetchFleet) fetchFleet();
         if (fetchPayHistory) fetchPayHistory();
         if (fetchLeaveRequests) fetchLeaveRequests();
         if (fetchSecurityEvents) fetchSecurityEvents();
@@ -168,42 +243,92 @@ const EmployeePortal = () => {
             const isNotCompleted = !['completed', 'delivered', 'cancelled', 'rejected', 'canceled'].includes(st);
             return isMine && isNotCompleted;
         }).map(c => {
-            const c0 = c.customItems?.[0] || c.items?.[0] || {};
-            const resolvedVehicle = c.plateNumber || c.vehicleId || c.vehicle || c.vehicleRef || c0.plateNumber || c0.vehicleId || c0.vehicle || 'Assigned Fleet Vehicle';
-            const resolvedDriverName = c.driverName || c.driver || c0.driverName || c0.driver || currentUser?.name;
-            const resolvedDriverId = c.driver_user_id || c.driverId || c0.driver_user_id || c0.driverId;
+            let meta = c.metadata;
+            if (typeof meta === 'string') {
+                try { meta = JSON.parse(meta); } catch { meta = {}; }
+            }
+            meta = meta || {};
+            const c0 = c.customItems?.[0] || meta.customItems?.[0] || c.items?.[0] || {};
+
+            const resolvedVehicle = c.plateNumber || c.vehicleId || c.vehicle || c.vehicleRef || meta.plateNumber || meta.vehicleId || meta.vehicle || meta.vehicleRef || c0.plateNumber || c0.vehicleId || c0.vehicle || '';
+            const resolvedDriverName = c.driverName || c.driver || meta.driverName || meta.driver || c0.driverName || c0.driver || currentUser?.name;
+            const resolvedDriverId = c.driver_user_id || c.driverId || meta.driver_user_id || meta.driverId || c0.driver_user_id || c0.driverId;
+            const resolvedPickup = c.pickupLocation || c.pickup_location || meta.pickupLocation || meta.pickup_location || c0.pickupLocation || c0.pickup_location || 'Pickup Point';
+            const resolvedDrop = c.dropLocation || c.drop_location || c.location || meta.dropLocation || meta.drop_location || meta.location || c0.dropLocation || c0.drop_location || 'Destination';
+            const resolvedClient = c.clientName || c.client?.companyName || c.client?.name || meta.clientName || meta.client?.companyName || meta.client?.name || c.guestName || c.passengerName || c0.clientName || 'Personal Client';
+            const resolvedFee = Number(c.chauffeurFee || c.chauffeur_fee || c.totalAmount || c.total || meta.chauffeurFee || meta.chauffeur_fee || c0.chauffeurFee || c0.totalPrice || 120) || 120;
+            const resolvedServiceType = c.serviceType || meta.serviceType || c0.serviceType || 'One Way';
+            const resolvedDate = c.dueDate || c.executionDate || c.date || meta.dueDate || meta.executionDate || c0.dueDate;
+            const resolvedTime = c.pickupTime || c.time || meta.pickupTime || c0.pickupTime;
+            const resolvedPax = c.numberOfPassengers || c.passengers || meta.numberOfPassengers || meta.passengers || c0.numberOfPassengers || 1;
+            const resolvedPaxName = c.passengerName || c.guestName || meta.passengerName || meta.guestName || c0.passengerName || resolvedClient;
+            const resolvedLuggage = c.luggage || meta.luggage || c0.luggage || 'No';
+            const resolvedBags = c.bags ?? meta.bags ?? c0.bags ?? 0;
+            const resolvedStops = c.stops || meta.stops || c0.stops || 'No';
+            const resolvedStopLocations = c.stopLocations || meta.stopLocations || c0.stopLocations || '';
+            const resolvedAmenities = c.amenities || meta.amenities || c0.amenities || [];
+            const resolvedStatus = c.status || c.chauffeur_status || 'assigned';
+            const resolvedChauffeurStatus = c.chauffeur_status || c.status || 'assigned';
+
             return {
                 ...c,
+                ...meta,
                 id: c.db_id || c.id,
+                db_id: c.db_id || c.id,
                 rawId: c.db_id || c.id,
+                order_id_raw: c.db_id || c.id,
                 orderId: c.orderNumber || (c.id ? `ORD-${c.id}` : 'CHAUFFEUR'),
+                orderNumber: c.orderNumber || (c.id ? `ORD-${c.id}` : 'CHAUFFEUR'),
                 mission_type: 'Chauffeur',
                 missionType: 'Chauffeur',
-                pickupLocation: c.pickupLocation || c.pickup_location || c0.pickupLocation || c0.pickup_location || 'Pickup Point',
-                dropLocation: c.dropLocation || c.drop_location || c.location || c0.dropLocation || c0.drop_location || 'Destination',
-                delivery_fee: c.chauffeurFee || c.chauffeur_fee || c.totalAmount || c.total || c0.totalPrice || 120,
+                orderType: 'CHAUFFEUR',
+                isDirectChauffeurOrder: true,
+                pickupLocation: resolvedPickup,
+                pickup_location: resolvedPickup,
+                dropLocation: resolvedDrop,
+                drop_location: resolvedDrop,
+                location: resolvedDrop,
+                delivery_fee: resolvedFee,
+                chauffeurFee: resolvedFee,
+                chauffeur_fee: resolvedFee,
+                totalAmount: resolvedFee,
                 driverId: resolvedDriverId,
+                driver_user_id: resolvedDriverId,
                 driver: resolvedDriverName,
                 driverName: resolvedDriverName,
                 vehicle: resolvedVehicle,
                 plateNumber: resolvedVehicle,
+                vehicleId: resolvedVehicle,
                 vehicleRef: resolvedVehicle,
-                clientName: c.clientName || c.client?.name || c.client?.companyName || c.guestName || c.passengerName || c0.clientName || 'Guest Client',
-                dueDate: c.dueDate || c.executionDate || c.date,
-                pickupTime: c.pickupTime || c.time,
-                isDirectChauffeurOrder: true
+                clientName: resolvedClient,
+                serviceType: resolvedServiceType,
+                dueDate: resolvedDate,
+                pickupTime: resolvedTime,
+                numberOfPassengers: resolvedPax,
+                passengers: resolvedPax,
+                passengerName: resolvedPaxName,
+                luggage: resolvedLuggage,
+                bags: resolvedBags,
+                stops: resolvedStops,
+                stopLocations: resolvedStopLocations,
+                amenities: resolvedAmenities,
+                status: resolvedStatus,
+                chauffeur_status: resolvedChauffeurStatus
             };
         });
 
-        const merged = [...fromDeliveries];
-        fromChauffeur.forEach(cItem => {
-            const alreadyExists = merged.some(m => 
-                String(m.orderId) === String(cItem.orderId) || 
-                String(m.order_id) === String(cItem.id) || 
-                String(m.id) === String(cItem.id)
-            );
-            if (!alreadyExists) {
-                merged.push(cItem);
+        const merged = [...fromChauffeur];
+        fromDeliveries.forEach(dItem => {
+            const dId = String(dItem.db_id || dItem.order_id_raw || dItem.id || '').replace(/\D/g, '');
+            const exists = merged.some(m => {
+                const mId = String(m.db_id || m.rawId || m.id || '').replace(/\D/g, '');
+                return (mId && dId && mId === dId) ||
+                       String(m.orderId) === String(dItem.orderId) ||
+                       String(m.orderNumber) === String(dItem.orderId) ||
+                       String(m.id) === String(dItem.id);
+            });
+            if (!exists) {
+                merged.push(dItem);
             }
         });
         return merged;
@@ -267,16 +392,19 @@ const EmployeePortal = () => {
     const handleAcceptMission = async (del) => {
         try {
             swalLoading('Accepting Mission...', 'The mission is accepting, please wait...');
-            if (del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR') {
-                const targetId = String(del.db_id || del.id);
-                await api.put(`/orders/${targetId}/status`, { status: 'accepted' }).catch(() =>
-                    api.patch(`/orders/${targetId}/status`, { status: 'accepted' })
+            const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+
+            if (isChauffeur) {
+                await api.put(`/orders/${targetId}/status`, { status: 'assigned' }).catch(() =>
+                    api.patch(`/orders/${targetId}/status`, { status: 'assigned' })
                 );
-                setUpdatedChauffeurItem(targetId, { status: 'accepted', chauffeur_status: 'accepted' });
-                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders']);
+                setUpdatedChauffeurItem(targetId, { status: 'assigned', chauffeur_status: 'assigned' });
+                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
                 window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId } }));
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, status: 'accepted', chauffeur_status: 'accepted' }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'assigned', chauffeur_status: 'assigned' }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
@@ -287,7 +415,8 @@ const EmployeePortal = () => {
                     driver: currentUser?.name
                 });
             }
-            await new Promise(resolve => setTimeout(resolve, 600));
+            if (syncGlobalState) await syncGlobalState();
+            await new Promise(resolve => setTimeout(resolve, 500));
             swalSuccess('Mission Accepted', 'Mission assigned to your roster successfully.');
         } catch (err) {
             swalError('Error', err?.response?.data?.message || err?.message || 'Failed to accept mission.');
@@ -297,16 +426,19 @@ const EmployeePortal = () => {
     const handleRejectMission = async (del) => {
         try {
             swalLoading('Rejecting Mission...', 'The mission is rejecting, please wait...');
-            if (del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR') {
-                const targetId = String(del.db_id || del.id);
+            const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+
+            if (isChauffeur) {
                 await api.put(`/orders/${targetId}/status`, { status: 'pending' }).catch(() =>
                     api.patch(`/orders/${targetId}/status`, { status: 'pending' })
                 );
                 setUpdatedChauffeurItem(targetId, { status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null });
-                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders']);
+                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
                 window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId } }));
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
@@ -318,7 +450,8 @@ const EmployeePortal = () => {
                     driver: null
                 });
             }
-            await new Promise(resolve => setTimeout(resolve, 600));
+            if (syncGlobalState) await syncGlobalState();
+            await new Promise(resolve => setTimeout(resolve, 500));
             swalInfo('Mission Rejected', 'You have rejected this mission. It remains available for other staff.');
         } catch (err) {
             swalError('Error', err?.response?.data?.message || err?.message || 'Failed to reject mission.');
@@ -327,41 +460,91 @@ const EmployeePortal = () => {
 
     const handleStartTrip = async (del) => {
         try {
-            if (del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR') {
-                const targetId = String(del.db_id || del.id);
-                await api.put(`/orders/${targetId}/status`, { status: 'in_transit' }).catch(() =>
-                    api.patch(`/orders/${targetId}/status`, { status: 'in_transit' })
+            const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+
+            if (isChauffeur) {
+                await api.put(`/orders/${targetId}/status`, { status: 'en_route' }).catch(() =>
+                    api.patch(`/orders/${targetId}/status`, { status: 'en_route' })
                 );
-                setUpdatedChauffeurItem(targetId, { status: 'in_transit', chauffeur_status: 'in_transit' });
-                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders']);
-                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId } }));
+                setUpdatedChauffeurItem(targetId, { status: 'en_route', chauffeur_status: 'en_route' });
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, status: 'in_transit', chauffeur_status: 'in_transit' }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'en_route', chauffeur_status: 'en_route' }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
                     ...del,
                     status: 'en_route'
                 });
+                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
+                if (cleanOrderId) {
+                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'in_transit' }).catch(() =>
+                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'in_transit' }).catch(() => {})
+                    );
+                }
             }
+
+            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'en_route' } }));
+            if (syncGlobalState) await syncGlobalState();
+
             swalSuccess('Trip Started', 'Mission status updated to En Route.');
         } catch (err) {
             swalError('Error', err?.response?.data?.message || err?.message || 'Failed to start trip.');
         }
     };
 
+    const handleArriveTrip = async (del) => {
+        try {
+            const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+
+            if (isChauffeur) {
+                await api.put(`/orders/${targetId}/status`, { status: 'arrived' }).catch(() =>
+                    api.patch(`/orders/${targetId}/status`, { status: 'arrived' })
+                );
+                setUpdatedChauffeurItem(targetId, { status: 'arrived', chauffeur_status: 'arrived' });
+                if (updateChauffeurRequest) {
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'arrived', chauffeur_status: 'arrived' }).catch(() => {});
+                }
+            } else {
+                await updateDelivery({
+                    ...del,
+                    status: 'arrived'
+                });
+                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
+                if (cleanOrderId) {
+                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'arrived' }).catch(() =>
+                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'arrived' }).catch(() => {})
+                    );
+                }
+            }
+
+            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'arrived' } }));
+            if (syncGlobalState) await syncGlobalState();
+
+            swalSuccess('Arrived at Destination', 'Trip status updated to Arrived. Passengers may now disembark.');
+        } catch (err) {
+            swalError('Error', err?.response?.data?.message || err?.message || 'Failed to update status to Arrived.');
+        }
+    };
+
     const handleCompleteMission = async (del) => {
         try {
-            if (del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR') {
-                const targetId = String(del.db_id || del.id);
+            const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+
+            if (isChauffeur) {
                 await api.put(`/orders/${targetId}/status`, { status: 'completed' }).catch(() =>
                     api.patch(`/orders/${targetId}/status`, { status: 'completed' })
                 );
                 setUpdatedChauffeurItem(targetId, { status: 'completed', chauffeur_status: 'completed' });
-                notifyStateChanged(queryClient, ['chauffeurMissions', 'orders']);
-                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId } }));
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, status: 'completed', chauffeur_status: 'completed' }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'completed', chauffeur_status: 'completed' }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
@@ -369,7 +552,18 @@ const EmployeePortal = () => {
                     status: 'Delivered',
                     deliveredAt: new Date().toISOString()
                 });
+                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
+                if (cleanOrderId) {
+                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() =>
+                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() => {})
+                    );
+                }
             }
+
+            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'completed' } }));
+            if (syncGlobalState) await syncGlobalState();
+
             swalSuccess('Mission Completed', 'Mission marked as delivered successfully.');
         } catch (err) {
             swalError('Error', err?.response?.data?.message || err?.message || 'Failed to complete mission.');
@@ -708,7 +902,9 @@ const EmployeePortal = () => {
                                 {myChauffeurMissions.map(del => {
                                     const s = String(del.status || del.chauffeur_status || '').toLowerCase().replace(/\s+/g, '_');
                                     const isCompleted = ['delivered', 'completed'].includes(s);
-                                    const isInTransit = ['en_route', 'in_transit'].includes(s);
+                                    const isEnRoute = ['en_route', 'in_transit'].includes(s);
+                                    const isArrived = s === 'arrived';
+                                    const canStart = ['assigned', 'accepted', 'pending', 'pending_review', 'approved'].includes(s);
                                     return (
                                         <div key={del.id} className={`p-5 border rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isCompleted ? 'bg-success/5 border-success/20' : 'bg-accent/5 border-accent/20 hover:border-accent/40'}`}>
                                             <div className="flex items-center gap-4">
@@ -723,12 +919,25 @@ const EmployeePortal = () => {
                                                         </span>
                                                     </div>
                                                     <p className="text-[10px] font-black text-accent uppercase tracking-widest italic">{del.orderId || del.id}</p>
-                                                    {(del.vehicle || del.plateNumber) && (
-                                                        <p className="text-[11px] font-bold text-white/90 mt-1 flex items-center gap-1.5">
-                                                            <span className="text-[9px] font-black text-muted uppercase">Vehicle:</span>
-                                                            <span className="text-amber-300 font-semibold">{del.vehicle || del.plateNumber}</span>
-                                                        </p>
-                                                    )}
+                                                    {(() => {
+                                                        const rawV = String(del.vehicle || del.plateNumber || '').trim();
+                                                        const matchedV = (fleet || []).find(v => {
+                                                            if (!rawV) return false;
+                                                            const vId = String(v.id || '').trim().toLowerCase();
+                                                            const vDbId = String(v.db_id || '').trim().toLowerCase();
+                                                            const vModel = String(v.model || '').trim().toLowerCase();
+                                                            const rLower = rawV.toLowerCase();
+                                                            return rLower === vId || rLower === vDbId || rLower === vModel || rLower.includes(vId) || (vModel && rLower.includes(vModel));
+                                                        });
+                                                        const vDisplay = matchedV?.model ? `${matchedV.model} (${matchedV.id ? '#' + matchedV.id : rawV})` : rawV;
+                                                        if (!vDisplay) return null;
+                                                        return (
+                                                            <p className="text-[11px] font-bold text-white/90 mt-1 flex items-center gap-1.5">
+                                                                <span className="text-[9px] font-black text-muted uppercase">Vehicle:</span>
+                                                                <span className="text-amber-300 font-semibold">{vDisplay}</span>
+                                                            </p>
+                                                        );
+                                                    })()}
                                                     {(del.dueDate || del.pickupTime) && (
                                                         <p className="text-[10px] text-muted font-medium mt-0.5">
                                                             Scheduled: <span className="text-white font-bold">{del.dueDate}</span> {del.pickupTime ? `@ ${del.pickupTime}` : ''}
@@ -772,7 +981,7 @@ const EmployeePortal = () => {
                                                 <StatusBadge status={del.status || del.chauffeur_status} />
 
                                                 {(() => {
-                                                    if (['assigned', 'accepted', 'pending', 'pending_review', 'approved'].includes(s)) {
+                                                    if (canStart) {
                                                         return (
                                                             <>
                                                                 <button
@@ -792,14 +1001,25 @@ const EmployeePortal = () => {
                                                             </>
                                                         );
                                                     }
-                                                    if (isInTransit) {
+                                                    if (isEnRoute) {
+                                                        return (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => handleArriveTrip(del)}
+                                                                className="bg-amber-500 hover:bg-amber-600 text-black py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-md shadow-amber-500/20"
+                                                            >
+                                                                Arrived
+                                                            </button>
+                                                        );
+                                                    }
+                                                    if (isArrived) {
                                                         return (
                                                             <button
                                                                 type="button"
                                                                 onClick={() => handleCompleteMission(del)}
-                                                                className="bg-success text-white py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all"
+                                                                className="bg-success text-white py-2 px-4 rounded-xl text-[10px] font-black uppercase tracking-widest hover:scale-105 transition-all shadow-md shadow-success/20"
                                                             >
-                                                                Mark completed
+                                                                Mark complete
                                                             </button>
                                                         );
                                                     }
@@ -1670,155 +1890,426 @@ const EmployeePortal = () => {
             <Modal
                 isOpen={isMissionModalOpen}
                 onClose={() => setIsMissionModalOpen(false)}
-                title="MISSION INTELLIGENCE DEBRIEF"
+                title={
+                    selectedMission && (selectedMission.mission_type === 'Chauffeur' || selectedMission.isDirectChauffeurOrder || selectedMission.orderType === 'CHAUFFEUR')
+                        ? "MANIFEST DETAILS"
+                        : "MISSION INTELLIGENCE DEBRIEF"
+                }
+                subtitle={
+                    selectedMission && (selectedMission.mission_type === 'Chauffeur' || selectedMission.isDirectChauffeurOrder || selectedMission.orderType === 'CHAUFFEUR')
+                        ? "INSTITUTIONAL VERIFICATION"
+                        : undefined
+                }
             >
-                {selectedMission && (
-                    <div className="space-y-6">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div className="p-4 bg-white/[0.03] border border-white/5 rounded-2xl">
-                                <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">Mission Type</p>
-                                <p className="text-sm font-black text-white italic">{selectedMission.mission_type || 'Standard Delivery'}</p>
-                            </div>
-                            <div className="p-4 bg-white/[0.03] border border-white/5 rounded-2xl">
-                                <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">Operational ID</p>
-                                <p className="text-sm font-black text-accent italic">{selectedMission.orderId || selectedMission.id}</p>
-                            </div>
-                        </div>
+                {selectedMission && (() => {
+                    const isChauffeur = selectedMission.mission_type === 'Chauffeur' || selectedMission.isDirectChauffeurOrder || selectedMission.orderType === 'CHAUFFEUR';
+                    if (isChauffeur) {
+                        const rawAssignedVehicle = String(
+                            selectedMission.plateNumber ||
+                            selectedMission.vehicleId ||
+                            selectedMission.vehicle ||
+                            selectedMission.vehicleRef ||
+                            selectedMission.metadata?.plateNumber ||
+                            selectedMission.metadata?.vehicleId ||
+                            selectedMission.metadata?.vehicle ||
+                            selectedMission.metadata?.vehicleRef ||
+                            ''
+                        ).trim();
 
-                        {selectedMission.vehicle && (
-                            <div className="p-4 bg-accent/5 border border-accent/20 rounded-2xl flex items-center justify-between">
-                                <div>
-                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest">Assigned Vehicle Specification</p>
-                                    <p className="text-sm font-bold text-white mt-1 flex items-center gap-2">
-                                        <Car size={16} className="text-accent" /> {selectedMission.vehicle}
-                                    </p>
+                        const matchedVehicleInfo = (fleet || []).find(v => {
+                            if (!rawAssignedVehicle) return false;
+                            const vId = String(v.id || '').trim();
+                            const vDbId = String(v.db_id || '').trim();
+                            const vModel = String(v.model || '').trim();
+                            const vCombo1 = `${vModel} (${vId})`.toLowerCase();
+                            const vCombo2 = `${vModel} - ${vId}`.toLowerCase();
+                            const rawLower = rawAssignedVehicle.toLowerCase();
+                            return (
+                                rawLower === vCombo1 ||
+                                rawLower === vCombo2 ||
+                                rawLower === vId.toLowerCase() ||
+                                rawLower === vDbId.toLowerCase() ||
+                                rawLower === vModel.toLowerCase() ||
+                                rawLower.includes(vId.toLowerCase()) ||
+                                (vModel && rawLower.includes(vModel.toLowerCase()))
+                            );
+                        });
+
+                        const vehicleDisplayName = matchedVehicleInfo?.model
+                            ? matchedVehicleInfo.model.trim()
+                            : (rawAssignedVehicle || null);
+
+                        const vehiclePlateDisplay = matchedVehicleInfo?.id
+                            ? `#${matchedVehicleInfo.id}`
+                            : (rawAssignedVehicle || null);
+
+                        const s = String(selectedMission.status || selectedMission.chauffeur_status || '').toLowerCase().replace(/\s+/g, '_');
+                        const isEnRoute = ['en_route', 'in_transit'].includes(s);
+                        const isArrived = s === 'arrived';
+                        const canStart = ['assigned', 'accepted', 'pending', 'pending_review', 'approved'].includes(s);
+
+                        const displayOrderId = String(selectedMission.orderNumber || selectedMission.orderId || selectedMission.id || '').replace(/^ORD-2026-0*/, '').replace(/^ORD-0*/, '') || selectedMission.id;
+
+                        return (
+                            <div className="space-y-6">
+                                {/* Header Info Banner */}
+                                <div className="p-6 bg-accent/5 rounded-2xl border border-accent/20 flex items-center justify-between">
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-accent/20 rounded-xl flex items-center justify-center text-accent">
+                                            <Car size={24} />
+                                        </div>
+                                        <div>
+                                            <h4 className="font-bold text-lg text-white">{displayOrderId}</h4>
+                                            <p className="text-xs text-secondary uppercase font-black tracking-widest">{selectedMission.serviceType || 'ONE WAY'}</p>
+                                        </div>
+                                    </div>
+                                    <StatusBadge status={selectedMission.status || selectedMission.chauffeur_status} />
                                 </div>
-                                <span className="text-[9px] font-black uppercase tracking-wider bg-accent/20 text-accent px-2.5 py-1 rounded-full border border-accent/30">
-                                    Fleet Asset
-                                </span>
-                            </div>
-                        )}
 
-                        {(selectedMission.dueDate || selectedMission.pickupTime) && (
+                                {/* Driver & Vehicle Box */}
+                                <div className="p-4 bg-white/[0.03] rounded-2xl border border-white/10 space-y-4">
+                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest">Driver & Vehicle</p>
+                                    <div className="space-y-4">
+                                        {/* Driver */}
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-14 h-14 rounded-xl bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
+                                                <Car size={22} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-sm font-bold text-white">{selectedMission.driverName || selectedMission.driver || currentUser?.name || 'staff'}</p>
+                                                    <span className="text-[8px] font-black uppercase tracking-wider bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/30">Chauffeur</span>
+                                                </div>
+                                                <DriverEtaDisplay pickupLocation={selectedMission.pickupLocation || selectedMission.pickup_location} status={selectedMission.status} driverName={selectedMission.driverName || selectedMission.driver || currentUser?.name} />
+                                            </div>
+                                        </div>
+
+                                        {/* Vehicle */}
+                                        <div className="pt-3 border-t border-white/5">
+                                            <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-2.5">Assigned Vehicle Specification</p>
+                                            {vehicleDisplayName ? (
+                                                <div className="flex items-start gap-4 p-3.5 bg-accent/[0.04] border border-accent/20 rounded-xl">
+                                                    <div className="w-12 h-12 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center text-accent shrink-0">
+                                                        <Car size={20} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 space-y-1">
+                                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                                            <p className="text-sm font-black text-white uppercase tracking-tight">{vehicleDisplayName}</p>
+                                                            <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-md border border-emerald-500/30">
+                                                                {matchedVehicleInfo?.status || 'Active'}
+                                                            </span>
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-2 text-xs">
+                                                            {vehiclePlateDisplay && (
+                                                                <span className="font-mono text-accent font-bold text-xs">Plate / Unit: {vehiclePlateDisplay}</span>
+                                                            )}
+                                                            {matchedVehicleInfo?.type && (
+                                                                <span className="text-[10px] text-secondary font-medium px-2 py-0.5 bg-white/5 rounded border border-white/10 uppercase">
+                                                                    {matchedVehicleInfo.type}
+                                                                </span>
+                                                            )}
+                                                            {matchedVehicleInfo?.capacity && (
+                                                                <span className="text-[10px] text-muted font-medium px-2 py-0.5 bg-white/5 rounded border border-white/10 uppercase">
+                                                                    {matchedVehicleInfo.capacity} Seats
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                <div className="p-3 bg-white/5 rounded-xl border border-white/5 flex items-center gap-2 text-muted">
+                                                    <Car size={14} className="text-muted/60" />
+                                                    <p className="text-xs font-medium italic">No vehicle assigned to this chauffeur mission yet.</p>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Grid Details */}
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Entity / Client</p>
+                                        <p className="text-sm font-bold text-white">{selectedMission.clientName || 'abc'}</p>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Execution Date</p>
+                                        <p className="text-sm font-bold text-white">
+                                            {selectedMission.dueDate || selectedMission.date || 'Scheduled'} {selectedMission.pickupTime ? `@ ${selectedMission.pickupTime}` : ''}
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-xl border border-border col-span-1 sm:col-span-2">
+                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Pickup Vector</p>
+                                        <p className="text-sm font-bold text-white italic">{selectedMission.pickupLocation || selectedMission.pickup_location || 'N/A'}</p>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-xl border border-border col-span-1 sm:col-span-2">
+                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Destination Vector</p>
+                                        <p className="text-sm font-bold text-white italic">{selectedMission.dropLocation || selectedMission.drop_location || selectedMission.location || 'N/A'}</p>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">No. of Passengers</p>
+                                        <p className="text-sm font-bold text-white">
+                                            {selectedMission.numberOfPassengers || selectedMission.passengers || 1} PAX
+                                            {selectedMission.passengerName ? ` (${selectedMission.passengerName})` : ''}
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-xl border border-border">
+                                        <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Luggage</p>
+                                        <p className="text-sm font-bold text-white">
+                                            {selectedMission.luggage === 'Yes'
+                                                ? `Yes — ${selectedMission.bags ?? 0} bag(s)`
+                                                : (selectedMission.luggage || 'No')}
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-white/5 rounded-xl border border-border col-span-1 sm:col-span-2 overflow-hidden">
+                                        <div className="flex items-center justify-between mb-1.5">
+                                            <p className="text-[10px] text-muted uppercase font-black tracking-widest">Extra Stops / Intermediate Waypoints</p>
+                                            {selectedMission.stops === 'Yes' && (
+                                                <span className="text-[9px] font-black uppercase tracking-wider bg-accent/10 text-accent px-2 py-0.5 rounded border border-accent/20">
+                                                    {selectedMission.stopLocations ? 'Stops Specified' : 'Requested'}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {selectedMission.stops === 'Yes' ? (
+                                            selectedMission.stopLocations ? (
+                                                <div className="space-y-1.5 pt-1">
+                                                    {String(selectedMission.stopLocations)
+                                                        .split(/\r?\n/)
+                                                        .map(s => s.trim())
+                                                        .filter(Boolean)
+                                                        .map((loc, idx, arr) => (
+                                                            <div key={idx} className="flex items-start gap-2 text-sm font-bold text-white">
+                                                                {arr.length > 1 && (
+                                                                    <span className="text-[10px] font-mono text-accent shrink-0 mt-0.5">#{idx + 1}</span>
+                                                                )}
+                                                                <p className="break-words break-all [overflow-wrap:anywhere] leading-relaxed flex-1 min-w-0">
+                                                                    {loc}
+                                                                </p>
+                                                            </div>
+                                                        ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-sm font-bold text-white italic">Yes (no specific waypoint addresses specified)</p>
+                                            )
+                                        ) : (
+                                            <p className="text-sm font-bold text-white">No extra stops requested</p>
+                                        )}
+                                    </div>
+                                    <div className="p-4 bg-warning/10 rounded-xl border border-warning/30 col-span-1 sm:col-span-2">
+                                        <p className="text-[10px] text-warning uppercase font-black tracking-widest mb-1">
+                                            Pricing
+                                        </p>
+                                        <p className="text-sm font-bold text-white">
+                                            ${(parseFloat(selectedMission.chauffeurFee || selectedMission.delivery_fee) || 120).toFixed(2)} USD
+                                            <span className="text-warning"> (separate billing)</span>
+                                        </p>
+                                    </div>
+                                    {Boolean(selectedMission.amenities && (Array.isArray(selectedMission.amenities) ? selectedMission.amenities.length > 0 : selectedMission.amenities)) && (
+                                        <div className="p-4 bg-white/5 rounded-xl border border-border col-span-1 sm:col-span-2">
+                                            <p className="text-[10px] text-muted uppercase font-black tracking-widest mb-1">Amenities</p>
+                                            <p className="text-sm font-bold text-white">
+                                                {Array.isArray(selectedMission.amenities)
+                                                    ? selectedMission.amenities.join(', ')
+                                                    : String(selectedMission.amenities)}
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex gap-3">
+                                    <button
+                                        onClick={() => setIsMissionModalOpen(false)}
+                                        className="flex-1 py-4 bg-white/5 border border-white/10 text-secondary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                                    >
+                                        Close Debrief
+                                    </button>
+                                    {canStart && (
+                                        <button
+                                            onClick={async () => {
+                                                await handleStartTrip(selectedMission);
+                                                setIsMissionModalOpen(false);
+                                            }}
+                                            className="flex-1 py-4 bg-accent text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl shadow-accent/20"
+                                        >
+                                            Start Trip
+                                        </button>
+                                    )}
+                                    {isEnRoute && (
+                                        <button
+                                            onClick={async () => {
+                                                await handleArriveTrip(selectedMission);
+                                                setIsMissionModalOpen(false);
+                                            }}
+                                            className="flex-1 py-4 bg-amber-500 hover:bg-amber-600 text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl shadow-amber-500/20"
+                                        >
+                                            Arrived
+                                        </button>
+                                    )}
+                                    {isArrived && (
+                                        <button
+                                            onClick={async () => {
+                                                await handleCompleteMission(selectedMission);
+                                                setIsMissionModalOpen(false);
+                                            }}
+                                            className="flex-1 py-4 bg-success text-white rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all shadow-xl shadow-success/20"
+                                        >
+                                            Mark Complete
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        );
+                    }
+
+                    return (
+                        <div className="space-y-6">
                             <div className="grid grid-cols-2 gap-4">
                                 <div className="p-4 bg-white/[0.03] border border-white/5 rounded-2xl">
-                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">Execution Schedule</p>
-                                    <p className="text-sm font-bold text-white">
-                                        {selectedMission.dueDate || 'Scheduled'} {selectedMission.pickupTime ? `@ ${selectedMission.pickupTime}` : ''}
-                                    </p>
+                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">Mission Type</p>
+                                    <p className="text-sm font-black text-white italic">{selectedMission.mission_type || 'Standard Delivery'}</p>
                                 </div>
                                 <div className="p-4 bg-white/[0.03] border border-white/5 rounded-2xl">
-                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">Passenger Manifest</p>
-                                    <p className="text-sm font-bold text-white">
-                                        {selectedMission.numberOfPassengers || selectedMission.passengers || 1} PAX {selectedMission.passengerName ? `(${selectedMission.passengerName})` : ''}
-                                    </p>
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="space-y-4">
-                            <div className="flex items-start gap-3 p-4 bg-success/5 border border-success/20 rounded-2xl">
-                                <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center shrink-0">
-                                    <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                                </div>
-                                <div>
-                                    <p className="text-[9px] font-black text-muted uppercase tracking-widest">Pickup Requisition</p>
-                                    <p className="text-sm font-bold text-white italic">{selectedMission.pickup_location || selectedMission.pickupLocation || 'Central Hub'}</p>
+                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">Operational ID</p>
+                                    <p className="text-sm font-black text-accent italic">{selectedMission.orderId || selectedMission.id}</p>
                                 </div>
                             </div>
 
-                            <div className="flex items-start gap-3 p-4 bg-accent/5 border border-accent/20 rounded-2xl">
-                                <MapPin size={18} className="text-accent shrink-0 mt-1" />
-                                <div>
-                                    <p className="text-[9px] font-black text-muted uppercase tracking-widest">Target Destination</p>
-                                    <p className="text-sm font-bold text-white italic">{selectedMission.drop_location || selectedMission.dropLocation || selectedMission.location || 'Client Perimeter'}</p>
+                            {selectedMission.vehicle && (
+                                <div className="p-4 bg-accent/5 border border-accent/20 rounded-2xl flex items-center justify-between">
+                                    <div>
+                                        <p className="text-[10px] font-black text-muted uppercase tracking-widest">Assigned Vehicle Specification</p>
+                                        <p className="text-sm font-bold text-white mt-1 flex items-center gap-2">
+                                            <Car size={16} className="text-accent" /> {selectedMission.vehicle}
+                                        </p>
+                                    </div>
+                                    <span className="text-[9px] font-black uppercase tracking-wider bg-accent/20 text-accent px-2.5 py-1 rounded-full border border-accent/30">
+                                        Fleet Asset
+                                    </span>
+                                </div>
+                            )}
+
+                            {(selectedMission.dueDate || selectedMission.pickupTime) && (
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="p-4 bg-white/[0.03] border border-white/5 rounded-2xl">
+                                        <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">Execution Schedule</p>
+                                        <p className="text-sm font-bold text-white">
+                                            {selectedMission.dueDate || 'Scheduled'} {selectedMission.pickupTime ? `@ ${selectedMission.pickupTime}` : ''}
+                                        </p>
+                                    </div>
+                                    <div className="p-4 bg-white/[0.03] border border-white/5 rounded-2xl">
+                                        <p className="text-[10px] font-black text-muted uppercase tracking-widest mb-1">Passenger Manifest</p>
+                                        <p className="text-sm font-bold text-white">
+                                            {selectedMission.numberOfPassengers || selectedMission.passengers || 1} PAX {selectedMission.passengerName ? `(${selectedMission.passengerName})` : ''}
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            <div className="space-y-4">
+                                <div className="flex items-start gap-3 p-4 bg-success/5 border border-success/20 rounded-2xl">
+                                    <div className="w-8 h-8 rounded-full bg-success/20 flex items-center justify-center shrink-0">
+                                        <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                                    </div>
+                                    <div>
+                                        <p className="text-[9px] font-black text-muted uppercase tracking-widest">Pickup Requisition</p>
+                                        <p className="text-sm font-bold text-white italic">{selectedMission.pickup_location || selectedMission.pickupLocation || 'Central Hub'}</p>
+                                    </div>
+                                </div>
+
+                                <div className="flex items-start gap-3 p-4 bg-accent/5 border border-accent/20 rounded-2xl">
+                                    <MapPin size={18} className="text-accent shrink-0 mt-1" />
+                                    <div>
+                                        <p className="text-[9px] font-black text-muted uppercase tracking-widest">Target Destination</p>
+                                        <p className="text-sm font-bold text-white italic">{selectedMission.drop_location || selectedMission.dropLocation || selectedMission.location || 'Client Perimeter'}</p>
+                                    </div>
                                 </div>
                             </div>
-                        </div>
 
-                        <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-3">
-                            <p className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
-                                <ClipboardList size={14} className="text-accent" /> Asset Manifest
-                            </p>
-                            <div className="space-y-2">
-                                {(() => {
-                                    let itemsToRender = selectedMission.items;
-                                    if (!itemsToRender && selectedMission.package_details) {
-                                        if (typeof selectedMission.package_details === 'string' && selectedMission.package_details.startsWith('[')) {
-                                            try {
-                                                const parsed = JSON.parse(selectedMission.package_details);
-                                                if (Array.isArray(parsed)) itemsToRender = parsed;
-                                            } catch(e) {}
-                                        } else if (Array.isArray(selectedMission.package_details)) {
-                                            itemsToRender = selectedMission.package_details;
-                                        }
-                                    }
-                                    if (Array.isArray(itemsToRender) && itemsToRender.length > 0) {
-                                        return itemsToRender.map((item, idx) => (
-                                            <div key={idx} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
-                                                <p className="text-xs font-bold text-white">{item.name || 'Item'}</p>
-                                                <p className="text-[10px] font-black text-secondary">x{item.qty || 1}</p>
-                                            </div>
-                                        ));
-                                    }
-                                    return (
-                                        <p className="text-xs text-secondary leading-relaxed italic">{selectedMission.package_details || selectedMission.item || 'Standard Logistic Unit'}</p>
-                                    );
-                                })()}
-                            </div>
-                        </div>
-
-                        {(() => {
-                            let rawNotes = selectedMission.delivery_instructions || selectedMission.order_instructions || selectedMission.order_notes || '';
-                            let cleanNotes = String(rawNotes).replace(/\[request_meta\].*/g, '').trim();
-                            if (!cleanNotes) return null;
-                            return (
-                                <div className="p-4 bg-warning/5 border border-warning/20 rounded-2xl">
-                                    <p className="text-[10px] font-black text-warning uppercase tracking-widest mb-1 flex items-center gap-2">
-                                        <AlertCircle size={14} /> Customer delivery instructions
-                                    </p>
-                                    <p className="text-xs text-secondary leading-relaxed italic whitespace-pre-wrap">
-                                        "{cleanNotes}"
-                                    </p>
-                                </div>
-                            );
-                        })()}
-
-                        <div className="p-4 bg-accent/5 border border-accent/20 rounded-2xl flex items-center justify-between">
-                            <div>
-                                <p className="text-[10px] font-black text-muted uppercase tracking-widest">Staff Payout (Distance-Based)</p>
-                                <p className="text-lg font-black text-accent">
-                                    {parseFloat(selectedMission.delivery_fee) > 0
-                                        ? `$${parseFloat(selectedMission.delivery_fee).toFixed(2)}`
-                                        : 'Pending Admin Setup'}
+                            <div className="p-4 bg-white/[0.02] border border-white/5 rounded-2xl space-y-3">
+                                <p className="text-[10px] font-black text-muted uppercase tracking-widest flex items-center gap-2">
+                                    <ClipboardList size={14} className="text-accent" /> Asset Manifest
                                 </p>
-                                {selectedMission.route_distance && (
-                                    <p className="text-[9px] text-muted italic mt-0.5">{selectedMission.route_distance} km route</p>
+                                <div className="space-y-2">
+                                    {(() => {
+                                        let itemsToRender = selectedMission.items;
+                                        if (!itemsToRender && selectedMission.package_details) {
+                                            if (typeof selectedMission.package_details === 'string' && selectedMission.package_details.startsWith('[')) {
+                                                try {
+                                                    const parsed = JSON.parse(selectedMission.package_details);
+                                                    if (Array.isArray(parsed)) itemsToRender = parsed;
+                                                } catch(e) {}
+                                            } else if (Array.isArray(selectedMission.package_details)) {
+                                                itemsToRender = selectedMission.package_details;
+                                            }
+                                        }
+                                        if (Array.isArray(itemsToRender) && itemsToRender.length > 0) {
+                                            return itemsToRender.map((item, idx) => (
+                                                <div key={idx} className="flex justify-between items-center py-2 border-b border-white/5 last:border-0">
+                                                    <p className="text-xs font-bold text-white">{item.name || 'Item'}</p>
+                                                    <p className="text-[10px] font-black text-secondary">x{item.qty || 1}</p>
+                                                </div>
+                                            ));
+                                        }
+                                        return (
+                                            <p className="text-xs text-secondary leading-relaxed italic">{selectedMission.package_details || selectedMission.item || 'Standard Logistic Unit'}</p>
+                                        );
+                                    })()}
+                                </div>
+                            </div>
+
+                            {(() => {
+                                let rawNotes = selectedMission.delivery_instructions || selectedMission.order_instructions || selectedMission.order_notes || '';
+                                let cleanNotes = String(rawNotes).replace(/\[request_meta\].*/g, '').trim();
+                                if (!cleanNotes) return null;
+                                return (
+                                    <div className="p-4 bg-warning/5 border border-warning/20 rounded-2xl">
+                                        <p className="text-[10px] font-black text-warning uppercase tracking-widest mb-1 flex items-center gap-2">
+                                            <AlertCircle size={14} /> Customer delivery instructions
+                                        </p>
+                                        <p className="text-xs text-secondary leading-relaxed italic whitespace-pre-wrap">
+                                            "{cleanNotes}"
+                                        </p>
+                                    </div>
+                                );
+                            })()}
+
+                            <div className="p-4 bg-accent/5 border border-accent/20 rounded-2xl flex items-center justify-between">
+                                <div>
+                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest">Staff Payout (Distance-Based)</p>
+                                    <p className="text-lg font-black text-accent">
+                                        {parseFloat(selectedMission.delivery_fee) > 0
+                                            ? `$${parseFloat(selectedMission.delivery_fee).toFixed(2)}`
+                                            : 'Pending Admin Setup'}
+                                    </p>
+                                    {selectedMission.route_distance && (
+                                        <p className="text-[9px] text-muted italic mt-0.5">{selectedMission.route_distance} km route</p>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setIsMissionModalOpen(false)}
+                                    className="flex-1 py-4 bg-white/5 border border-white/10 text-secondary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
+                                >
+                                    Close Debrief
+                                </button>
+                                {!selectedMission.driverId && (
+                                    <button
+                                        onClick={() => {
+                                            handleAcceptMission(selectedMission);
+                                            setIsMissionModalOpen(false);
+                                        }}
+                                        className="flex-1 py-4 bg-accent text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all"
+                                    >
+                                        Accept Mission
+                                    </button>
                                 )}
                             </div>
                         </div>
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={() => setIsMissionModalOpen(false)}
-                                className="flex-1 py-4 bg-white/5 border border-white/10 text-secondary rounded-2xl text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
-                            >
-                                Close Debrief
-                            </button>
-                            {!selectedMission.driverId && (
-                                <button
-                                    onClick={() => {
-                                        handleAcceptMission(selectedMission);
-                                        setIsMissionModalOpen(false);
-                                    }}
-                                    className="flex-1 py-4 bg-accent text-black rounded-2xl text-[10px] font-black uppercase tracking-widest hover:scale-[1.02] transition-all"
-                                >
-                                    Accept Mission
-                                </button>
-                            )}
-                        </div>
-                    </div>
-                )}
+                    );
+                })()}
             </Modal>
         </div>
     );

@@ -33,10 +33,24 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
     const effectiveOrder = fetchedOrderData?.data || selectedOrder;
 
+    /** Logged-in user role drives permissions (parent `role` prop is often a portal default, e.g. ClientDashboard). */
+    const portalRole = normalizeRole(currentUser?.role || role || '');
+    const isLogisticsRole = portalRole === 'logistics';
+    const isPersonalCustomer = portalRole === 'customer';
+
+    const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
+
+    const canCreateManualOrder = (roleCanCreateInstitutionalOrder(portalRole) || isBusinessClient) && !isLogisticsRole;
+    const canEditOrderStatus = (roleCanUpdateOrderStatus(portalRole) || isBusinessClient) && !isLogisticsRole;
+
     useEffect(() => {
-        setCurrentModalType(modalType);
+        if (isLogisticsRole) {
+            setCurrentModalType('view');
+        } else {
+            setCurrentModalType(modalType);
+        }
         setIsDropdownOpen(false);
-    }, [modalType, isOpen]);
+    }, [modalType, isOpen, isLogisticsRole]);
 
     const handleCancel = () => {
         if (modalType === 'view' && currentModalType === 'edit') {
@@ -45,15 +59,6 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             onClose();
         }
     };
-
-    /** Logged-in user role drives permissions (parent `role` prop is often a portal default, e.g. ClientDashboard). */
-    const portalRole = normalizeRole(currentUser?.role || role || '');
-    const isPersonalCustomer = portalRole === 'customer';
-
-    const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
-
-    const canCreateManualOrder = roleCanCreateInstitutionalOrder(portalRole) || isBusinessClient;
-    const canEditOrderStatus = roleCanUpdateOrderStatus(portalRole) || isBusinessClient;
 
     useEffect(() => {
         if (isOpen) {
@@ -248,6 +253,16 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 rawItems = [];
             }
 
+            // Backward compatibility: If metadata.customItems has items that match the saved totalAmount, prioritize them
+            const metaCustomList = Array.isArray(meta?.customItems) ? meta.customItems : (Array.isArray(effectiveOrder.customItems) ? effectiveOrder.customItems : []);
+            if (metaCustomList.length > 0) {
+                const metaSum = metaCustomList.reduce((acc, i) => acc + ((Number(i.qty || i.quantity || 1)) * (Number(i.price != null ? i.price : (i.unitPrice != null ? i.unitPrice : 0)))), 0);
+                const orderTot = Number(effectiveOrder.totalAmount || effectiveOrder.total_amount || 0);
+                if (orderTot > 0 && Math.abs(metaSum - orderTot) < 0.01) {
+                    rawItems = metaCustomList;
+                }
+            }
+
             let parsedItems = [];
             if (isChauffeur) {
                 const sType = firstCustom.serviceType || effectiveOrder.serviceType || 'One Way';
@@ -382,8 +397,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 requestDate,
                 dueDate,
                 department: effectiveOrder.department || '',
-                vendor: effectiveOrder.vendor || '',
-                vendorId: effectiveOrder.vendorId || effectiveOrder.vendor_id || '',
+                vendor: effectiveOrder.vendor || meta?.vendor || effectiveOrder.metadata?.vendor || meta?.vendor_name || '',
+                vendorId: effectiveOrder.vendorId || effectiveOrder.vendor_id || meta?.vendorId || meta?.vendor_id || effectiveOrder.metadata?.vendorId || effectiveOrder.metadata?.vendor_id || '',
                 type: isChauffeur ? 'Chauffeur Service' : (
                     effectiveOrder.orderType === 'Delivery' || 
                     meta?.order_kind === 'marketplace' || 
@@ -531,6 +546,10 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
     const handleSubmit = (e) => {
         e.preventDefault();
+        if (isLogisticsRole) {
+            swalWarning('Logistics department has read-only access to order details.');
+            return;
+        }
         if (modalType === 'add' && !canCreateManualOrder) {
             swalWarning('Only staff can create orders. Customers can use Marketplace and view their orders.');
             return;

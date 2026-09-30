@@ -1870,9 +1870,98 @@ export const GlobalDataProvider = ({ children }) => {
           : (resChauffeur.data.data?.orders || []);
 
         combined.push(...chauffeurOrders.map((order) => {
-          const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
+          let meta = order.metadata;
+          if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch { meta = {}; }
+          }
+          meta = meta || {};
+          const customItem = meta.customItems?.[0] || meta.custom_items?.[0] || {};
+          const orderItem = order.items?.[0] || {};
+          const detail = { ...orderItem, ...meta, ...customItem };
+
           const compId = order.companyId ?? order.company_id ?? order.clientId ?? order.client_id ?? detail.companyId ?? detail.company_id ?? detail.clientId ?? null;
           const usrId = order.createdById ?? order.created_by ?? order.userId ?? order.user_id ?? detail.userId ?? detail.created_by ?? null;
+
+          const resolvedPickup =
+            order.pickup_location ||
+            order.pickupLocation ||
+            meta.pickup_location ||
+            meta.pickupLocation ||
+            customItem.pickupLocation ||
+            customItem.pickup_location ||
+            detail.pickupLocation ||
+            detail.pickup_location ||
+            '';
+
+          const resolvedDrop =
+            order.location ||
+            order.delivery_address ||
+            order.deliveryAddress ||
+            order.dropLocation ||
+            order.drop_location ||
+            meta.location ||
+            meta.delivery_address ||
+            meta.deliveryAddress ||
+            meta.dropLocation ||
+            meta.drop_location ||
+            customItem.dropLocation ||
+            customItem.drop_location ||
+            customItem.location ||
+            detail.dropLocation ||
+            detail.drop_location ||
+            detail.location ||
+            '';
+
+          const resolvedVehicle =
+            order.plateNumber ||
+            order.vehicleId ||
+            order.vehicle ||
+            order.vehicleRef ||
+            meta.plateNumber ||
+            meta.vehicleId ||
+            meta.vehicle ||
+            meta.vehicleRef ||
+            customItem.plateNumber ||
+            customItem.vehicleId ||
+            customItem.vehicle ||
+            detail.plateNumber ||
+            detail.vehicleId ||
+            '';
+
+          const resolvedDriverName =
+            order.driverName ||
+            order.driver ||
+            meta.driverName ||
+            meta.driver ||
+            customItem.driverName ||
+            customItem.driver ||
+            detail.driverName ||
+            detail.driver ||
+            '';
+
+          const resolvedDriverId =
+            order.driver_user_id ||
+            order.driverId ||
+            meta.driver_user_id ||
+            meta.driverId ||
+            customItem.driver_user_id ||
+            customItem.driverId ||
+            detail.driver_user_id ||
+            detail.driverId ||
+            null;
+
+          const resolvedFee = parseFloat(
+            customItem.chauffeurFee ||
+            customItem.chauffeur_fee ||
+            meta.chauffeurFee ||
+            meta.chauffeur_fee ||
+            order.totalAmount ||
+            order.total ||
+            detail.chauffeurFee ||
+            detail.chauffeur_fee ||
+            120
+          ) || 120;
+
           return {
             id: `CH-ORD-${String(order.id).padStart(3, "0")}`,
             db_id: order.id,
@@ -1889,24 +1978,43 @@ export const GlobalDataProvider = ({ children }) => {
             client: formatClientDisplayName(order, clients, users),
             clientName: formatClientDisplayName(order, clients, users),
             mission_type: "Chauffeur",
+            missionType: "Chauffeur",
+            orderType: "CHAUFFEUR",
+            isDirectChauffeurOrder: true,
             item: "VIP Chauffeur Service",
             items: [{ name: "VIP Chauffeur Service", qty: 1 }],
             package_details: JSON.stringify(detail),
             order_instructions: detail.instructions || null,
             status: order.status,
-            driverId: order.driver_user_id || detail.driver_user_id || null,
-            driver: order.driverName || detail.driverName || "",
-            vehicleId: order.plateNumber || detail.plateNumber || "",
-            pickupLocation: detail.pickupLocation || "Nassau Area",
-            drop_location: detail.dropLocation || "Destination",
-            dropLocation: detail.dropLocation || "Destination",
+            driverId: resolvedDriverId,
+            driver_user_id: resolvedDriverId,
+            driver: resolvedDriverName,
+            driverName: resolvedDriverName,
+            vehicleId: resolvedVehicle,
+            vehicle: resolvedVehicle,
+            plateNumber: resolvedVehicle,
+            pickupLocation: resolvedPickup || "Pickup Point",
+            drop_location: resolvedDrop || "Destination",
+            dropLocation: resolvedDrop || "Destination",
             route: detail.route || "",
-            location: detail.dropLocation || "Destination",
+            location: resolvedDrop || "Destination",
             mode: "Road",
             deliveryDate: detail.eta || detail.dueDate || null,
+            dueDate: detail.eta || detail.dueDate || null,
+            pickupTime: detail.pickupTime || null,
             eta: detail.eta || detail.dueDate || "TBD",
             delivery_instructions: detail.delivery_instructions || "",
-            delivery_fee: parseFloat(detail.chauffeurFee ?? detail.chauffeur_fee ?? 0) || 0,
+            delivery_fee: resolvedFee,
+            chauffeurFee: resolvedFee,
+            chauffeur_fee: resolvedFee,
+            numberOfPassengers: detail.numberOfPassengers || detail.passengers || 1,
+            passengerName: detail.passengerName || detail.guestName || formatClientDisplayName(order, clients, users),
+            luggage: detail.luggage || "No",
+            bags: detail.bags || 0,
+            stops: detail.stops || "No",
+            stopLocations: detail.stopLocations || "",
+            amenities: detail.amenities || [],
+            serviceType: detail.serviceType || "One Way",
             route_distance: null,
             staff_pay_rate: null,
             clientConfirmed: false,
@@ -6098,7 +6206,15 @@ export const GlobalDataProvider = ({ children }) => {
           return status !== 'deleted';
         })
         .map((order) => {
-          const detail = order.items?.[0] || order.metadata?.customItems?.[0] || order.metadata || {};
+          let meta = order.metadata;
+          if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch { meta = {}; }
+          }
+          meta = meta || {};
+          const customItem = meta.customItems?.[0] || meta.custom_items?.[0] || {};
+          const orderItem = order.items?.[0] || {};
+          const detail = { ...orderItem, ...meta, ...customItem };
+
           const compId = order.companyId || order.company_id || order.clientId || order.client_id || detail?.companyId || detail?.company_id || detail?.clientId || null;
           const usrId = order.createdById || order.created_by || order.userId || order.user_id || detail?.userId || detail?.created_by || null;
           
@@ -6120,14 +6236,65 @@ export const GlobalDataProvider = ({ children }) => {
           } else if (['completed', 'delivered', 'done'].includes(orderSt) || ['completed', 'delivered', 'done'].includes(deliverySt)) {
             liveStatus = 'completed';
           } else if (['in transit', 'in_transit', 'en route', 'en_route', 'picked up', 'picked_up'].includes(deliverySt) || ['in transit', 'in_transit', 'en route', 'en_route'].includes(orderSt)) {
-            liveStatus = deliverySt || orderSt;
+            liveStatus = (deliverySt === 'en_route' || orderSt === 'en_route') ? 'en_route' : (deliverySt || orderSt);
           } else if (['accepted', 'approved'].includes(orderSt) || ['accepted', 'approved'].includes(deliverySt)) {
             liveStatus = 'accepted';
           } else {
             liveStatus = matchingDelivery?.status || order.status || 'pending';
           }
-          const liveDriver = matchingDelivery?.driver || order.driverName || detail?.driverName || null;
-          const liveVehicle = matchingDelivery?.vehicleId || order.plateNumber || detail?.plateNumber || null;
+
+          const liveDriver =
+            order.driverName ||
+            meta.driverName ||
+            customItem.driverName ||
+            matchingDelivery?.driver ||
+            detail?.driverName ||
+            null;
+
+          const liveVehicle =
+            order.plateNumber ||
+            order.vehicleId ||
+            order.vehicle ||
+            meta.plateNumber ||
+            meta.vehicleId ||
+            meta.vehicle ||
+            customItem.plateNumber ||
+            customItem.vehicleId ||
+            matchingDelivery?.vehicleId ||
+            detail?.plateNumber ||
+            null;
+
+          const resolvedPickup =
+            order.pickup_location ||
+            order.pickupLocation ||
+            meta.pickup_location ||
+            meta.pickupLocation ||
+            customItem.pickupLocation ||
+            customItem.pickup_location ||
+            detail.pickupLocation ||
+            detail.pickup_location ||
+            matchingDelivery?.pickupLocation ||
+            '';
+
+          const resolvedDrop =
+            order.location ||
+            order.delivery_address ||
+            order.deliveryAddress ||
+            order.dropLocation ||
+            order.drop_location ||
+            meta.location ||
+            meta.delivery_address ||
+            meta.deliveryAddress ||
+            meta.dropLocation ||
+            meta.drop_location ||
+            customItem.dropLocation ||
+            customItem.drop_location ||
+            customItem.location ||
+            detail.dropLocation ||
+            detail.drop_location ||
+            detail.location ||
+            matchingDelivery?.dropLocation ||
+            '';
 
           const baseMapped = {
             id: order.id,
@@ -6146,37 +6313,40 @@ export const GlobalDataProvider = ({ children }) => {
             clientName: formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
             driverName: liveDriver,
             plateNumber: liveVehicle,
-            driverPhotoUrl: detail?.driverPhotoUrl || null,
-            driver_user_id: order.driver_user_id || detail?.driver_user_id || matchingDelivery?.driverId || null,
-            serviceType: detail?.serviceType || "One Way",
-            pickupLocation: matchingDelivery?.pickupLocation || detail?.pickupLocation || "Nassau Area",
-            dropLocation: matchingDelivery?.dropLocation || detail?.dropLocation || "Destination",
-            dueDate: detail?.eta || detail?.dueDate || null,
-            pickupDate: detail?.eta || detail?.dueDate || null,
-            pickupTime: detail?.pickupTime || null,
+            vehicle: liveVehicle,
+            vehicleId: liveVehicle,
+            driverPhotoUrl: detail?.driverPhotoUrl || meta?.driverPhotoUrl || null,
+            driver_user_id: order.driver_user_id || meta.driver_user_id || meta.driverId || customItem.driver_user_id || customItem.driverId || detail?.driver_user_id || matchingDelivery?.driverId || null,
+            serviceType: customItem?.serviceType || meta?.serviceType || detail?.serviceType || "One Way",
+            pickupLocation: resolvedPickup || "Pickup Point",
+            dropLocation: resolvedDrop || "Destination",
+            dueDate: detail?.dueDate || meta?.dueDate || customItem?.dueDate || detail?.eta || null,
+            pickupDate: detail?.dueDate || meta?.dueDate || customItem?.dueDate || detail?.eta || null,
+            pickupTime: detail?.pickupTime || meta?.pickupTime || customItem?.pickupTime || null,
             status: liveStatus,
             chauffeurFee: (() => {
-              const sType = detail?.serviceType || order.metadata?.customItems?.[0]?.serviceType || "One Way";
-              const daysVal = parseInt(detail?.numberOfDays || detail?.dailyDays || order.metadata?.customItems?.[0]?.numberOfDays || 1, 10) || 1;
+              const sType = customItem?.serviceType || meta?.serviceType || detail?.serviceType || "One Way";
+              const daysVal = parseInt(customItem?.numberOfDays || meta?.numberOfDays || detail?.numberOfDays || detail?.dailyDays || 1, 10) || 1;
               const qtyMultiplier = sType === "Round Trip" ? 2 : (sType === "Daily Service" ? daysVal : 1);
-              // Always use $120 base — never read stored bloated values
               return Number((120 * qtyMultiplier).toFixed(2));
             })(),
-            chauffeur_fee_mode: detail?.chauffeur_fee_mode || "separate",
-            numberOfPassengers: detail?.numberOfPassengers || detail?.passengers || detail?.numberOfPassengers || detail?.passengerCount || detail?.passenger_count || detail?.pax || detail?.guestCount || detail?.guest_count || order.metadata?.numberOfPassengers || order.metadata?.passengers || 1,
-            passengerName: detail?.passengerName || detail?.passenger_name || detail?.guestName || detail?.guest_name || order.metadata?.passengerName || order.metadata?.guestName || formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
-            guestName: detail?.passengerName || detail?.passenger_name || detail?.guestName || detail?.guest_name || order.metadata?.passengerName || order.metadata?.guestName || formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
-            wifi: detail?.wifi || order.metadata?.wifi || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('wifi')) ? 'Yes' : 'No'),
-            refreshments: detail?.refreshments || order.metadata?.refreshments || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('refreshment')) ? 'Yes' : 'No'),
-            carSeat: detail?.carSeat || detail?.car_seat || order.metadata?.carSeat || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('car seat') || String(a).toLowerCase().includes('baby')) ? 'Yes' : 'No'),
-            bags: detail?.bags || 0,
-            stops: detail?.stops || "No",
-            stopLocations: detail?.stopLocations || "",
-            amenities: detail?.amenities || [],
+            chauffeur_fee_mode: detail?.chauffeur_fee_mode || meta?.chauffeur_fee_mode || "separate",
+            numberOfPassengers: customItem?.numberOfPassengers || customItem?.passengers || meta?.numberOfPassengers || meta?.passengers || detail?.numberOfPassengers || detail?.passengers || 1,
+            passengers: customItem?.numberOfPassengers || customItem?.passengers || meta?.numberOfPassengers || meta?.passengers || detail?.numberOfPassengers || detail?.passengers || 1,
+            passengerName: customItem?.passengerName || meta?.passengerName || detail?.passengerName || detail?.guestName || formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
+            guestName: customItem?.passengerName || meta?.passengerName || detail?.passengerName || detail?.guestName || formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
+            wifi: customItem?.wifi || meta?.wifi || detail?.wifi || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('wifi')) ? 'Yes' : 'No'),
+            refreshments: customItem?.refreshments || meta?.refreshments || detail?.refreshments || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('refreshment')) ? 'Yes' : 'No'),
+            carSeat: customItem?.carSeat || meta?.carSeat || detail?.carSeat || (Array.isArray(detail?.amenities) && detail.amenities.some(a => String(a).toLowerCase().includes('car seat') || String(a).toLowerCase().includes('baby')) ? 'Yes' : 'No'),
+            luggage: customItem?.luggage || meta?.luggage || detail?.luggage || "No",
+            bags: customItem?.bags ?? meta?.bags ?? detail?.bags ?? 0,
+            stops: customItem?.stops || meta?.stops || detail?.stops || "No",
+            stopLocations: customItem?.stopLocations || meta?.stopLocations || detail?.stopLocations || "",
+            amenities: customItem?.amenities || meta?.amenities || detail?.amenities || [],
             passenger_info: detail,
             _passengerInfo: detail,
             remarks: JSON.stringify(detail),
-            adminApproved: !!detail?.adminApproved || !!matchingDelivery?.driver,
+            adminApproved: !!detail?.adminApproved || !!meta?.adminApproved || !!liveDriver,
           };
 
           const overlay = updatedMap[String(order.id)] || {};

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useDepartmentOrders } from '../hooks/api/useOrders';
 import OrderTimeline from './OrderTimeline';
 import Table from './Table';
@@ -34,6 +34,15 @@ const DepartmentWorkflowSection = ({ departmentKey, departmentLabel }) => {
     refetchCurrent();
     refetchProcessed();
   };
+
+  useEffect(() => {
+    const handleSync = () => {
+      refetchCurrent();
+      refetchProcessed();
+    };
+    window.addEventListener('app:state-changed', handleSync);
+    return () => window.removeEventListener('app:state-changed', handleSync);
+  }, [refetchCurrent, refetchProcessed]);
 
   const columns = [
     { header: "Order ID", accessor: "id" },

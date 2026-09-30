@@ -100,6 +100,7 @@ const EmployeePortal = () => {
         leaveRequests, addLeaveRequest, updateLeaveRequest, deleteLeaveRequest, fetchLeaveRequests,
         getVacationBalance, toggleAvailability,
         deliveries, updateDelivery, fetchDeliveries, reportSecurityEvent,
+        missions, fetchMissions,
         chauffeurRequests, fetchChauffeurRequests, updateChauffeurRequest,
         fleet, fetchFleet, syncGlobalState,
         securityEvents, fetchSecurityEvents,
@@ -123,12 +124,13 @@ const EmployeePortal = () => {
         const handleStateChanged = () => {
             queryClient.invalidateQueries({ queryKey: ['chauffeurMissions'] });
             if (fetchDeliveries) fetchDeliveries();
+            if (fetchMissions) fetchMissions();
             if (fetchChauffeurRequests) fetchChauffeurRequests();
             if (fetchFleet) fetchFleet();
         };
         window.addEventListener('app:state-changed', handleStateChanged);
         return () => window.removeEventListener('app:state-changed', handleStateChanged);
-    }, [queryClient, fetchDeliveries, fetchChauffeurRequests, fetchFleet]);
+    }, [queryClient, fetchDeliveries, fetchMissions, fetchChauffeurRequests, fetchFleet]);
 
     useEffect(() => {
         console.log('[StaffPortal] Synchronizing operational data for tab:', activeTab);
@@ -166,6 +168,10 @@ const EmployeePortal = () => {
     // Mission Details States
     const [isMissionModalOpen, setIsMissionModalOpen] = useState(false);
     const [selectedMission, setSelectedMission] = useState(null);
+    const [podTargetDelivery, setPodTargetDelivery] = useState(null);
+    const [showDeliveryPodModal, setShowDeliveryPodModal] = useState(false);
+    const [deliveryPodData, setDeliveryPodData] = useState({ receiverName: '', photo: null, notes: '' });
+    const [isSubmittingDeliveryPod, setIsSubmittingDeliveryPod] = useState(false);
 
 
     const isUserDriverMatch = (d) => {
@@ -532,7 +538,17 @@ const EmployeePortal = () => {
         }
     };
 
-    const handleCompleteMission = async (del) => {
+    const handleDeliveryPhotoUpload = (e) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            setDeliveryPodData(prev => ({ ...prev, photo: reader.result }));
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const handleCompleteMission = async (del, proofData = null) => {
         try {
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
             const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
@@ -547,26 +563,83 @@ const EmployeePortal = () => {
                     await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'completed', chauffeur_status: 'completed' }).catch(() => {});
                 }
             } else {
+                // If non-chauffeur (marketplace delivery) and no proof was provided yet, open POD modal
+                if (!proofData) {
+                    setPodTargetDelivery(del);
+                    setDeliveryPodData({
+                        receiverName: del.clientName || del.client?.name || del.client?.companyName || '',
+                        photo: null,
+                        notes: ''
+                    });
+                    setShowDeliveryPodModal(true);
+                    return;
+                }
+
+                // If proof was provided, submit POD to backend
+                try {
+                    const missionId = del.mission_id || del.missionId || targetId;
+                    await api.post(`/missions/${missionId}/pod`, {
+                        receiverName: proofData.receiverName || 'Verified Client',
+                        signature: proofData.signature || 'Electronic Driver Handover',
+                        photoUrl: proofData.photo,
+                        photo: proofData.photo,
+                        notes: proofData.notes || 'Delivered via Driver Portal'
+                    }).catch(() => 
+                        api.post(`/deliveries/${targetId}/pod`, {
+                            receiverName: proofData.receiverName || 'Verified Client',
+                            signature: proofData.signature || 'Electronic Driver Handover',
+                            photoUrl: proofData.photo,
+                            photo: proofData.photo,
+                            notes: proofData.notes || 'Delivered via Driver Portal'
+                        })
+                    );
+                } catch (_) {}
+
                 await updateDelivery({
                     ...del,
                     status: 'Delivered',
-                    deliveredAt: new Date().toISOString()
+                    deliveredAt: new Date().toISOString(),
+                    pod: proofData
                 });
+
                 const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
-                if (cleanOrderId) {
+                if (cleanOrderId && !cleanOrderId.startsWith('DEL-')) {
                     await api.put(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() =>
                         api.patch(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() => {})
                     );
                 }
             }
 
-            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats', 'missions']);
             window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'completed' } }));
             if (syncGlobalState) await syncGlobalState();
 
-            swalSuccess('Mission Completed', 'Mission marked as delivered successfully.');
+            swalSuccess('Mission Completed', 'Proof of delivery submitted and order marked as completed.');
         } catch (err) {
             swalError('Error', err?.response?.data?.message || err?.message || 'Failed to complete mission.');
+        }
+    };
+
+    const handleSubmitDeliveryPOD = async (e) => {
+        e?.preventDefault();
+        if (!podTargetDelivery) return;
+        if (!deliveryPodData.receiverName.trim()) {
+            swalError('Receiver Name Required', 'Please enter the name of the person receiving the order.');
+            return;
+        }
+        if (!deliveryPodData.photo) {
+            swalError('Proof Photo Required', 'Please capture or upload a proof of delivery photo.');
+            return;
+        }
+
+        setIsSubmittingDeliveryPod(true);
+        try {
+            await handleCompleteMission(podTargetDelivery, deliveryPodData);
+            setShowDeliveryPodModal(false);
+            setPodTargetDelivery(null);
+            setDeliveryPodData({ receiverName: '', photo: null, notes: '' });
+        } finally {
+            setIsSubmittingDeliveryPod(false);
         }
     };
 
@@ -2310,6 +2383,126 @@ const EmployeePortal = () => {
                         </div>
                     );
                 })()}
+            </Modal>
+
+            {/* Delivery Proof (POD) Modal */}
+            <Modal
+                isOpen={showDeliveryPodModal}
+                onClose={() => {
+                    if (!isSubmittingDeliveryPod) {
+                        setShowDeliveryPodModal(false);
+                        setPodTargetDelivery(null);
+                    }
+                }}
+                title="Proof of Delivery (POD) Required"
+            >
+                {podTargetDelivery && (
+                    <form onSubmit={handleSubmitDeliveryPOD} className="space-y-5">
+                        <div className="p-4 bg-white/5 border border-white/10 rounded-2xl flex items-center justify-between">
+                            <div>
+                                <p className="text-[10px] font-black text-accent uppercase tracking-widest">Delivering Requisition</p>
+                                <p className="text-sm font-bold text-white mt-0.5">{podTargetDelivery.deliveryNumber || podTargetDelivery.orderId || podTargetDelivery.id}</p>
+                            </div>
+                            <span className="px-2.5 py-1 bg-warning/20 text-warning text-[10px] font-black uppercase rounded-lg border border-warning/30">
+                                Proof Required
+                            </span>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
+                                <User size={12} className="text-accent" />
+                                Receiver Full Name <span className="text-danger">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                required
+                                placeholder="Full Name of Signee / Client"
+                                value={deliveryPodData.receiverName}
+                                onChange={(e) => setDeliveryPodData({ ...deliveryPodData, receiverName: e.target.value })}
+                                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold text-white"
+                            />
+                        </div>
+
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
+                                <Camera size={12} className="text-accent" />
+                                Proof of Delivery Photo <span className="text-danger">*</span>
+                            </label>
+                            {deliveryPodData.photo ? (
+                                <div className="relative rounded-2xl overflow-hidden border border-white/20 aspect-video bg-black flex items-center justify-center group">
+                                    <img src={deliveryPodData.photo} alt="POD Proof" className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                        <button
+                                            type="button"
+                                            onClick={() => setDeliveryPodData(prev => ({ ...prev, photo: null }))}
+                                            className="px-3 py-1.5 bg-danger text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-lg"
+                                        >
+                                            <X size={14} /> Remove Photo
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <label className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-border hover:border-accent/50 rounded-2xl cursor-pointer bg-white/[0.02] hover:bg-white/[0.05] transition-all">
+                                    <Camera size={32} className="text-muted mb-2 group-hover:text-accent transition-colors" />
+                                    <span className="text-xs font-bold text-white">Capture or Upload Delivery Proof</span>
+                                    <span className="text-[10px] text-muted mt-1 uppercase tracking-wider">Packages, Receipt, or Handover</span>
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        capture="environment"
+                                        onChange={handleDeliveryPhotoUpload}
+                                        className="hidden"
+                                    />
+                                </label>
+                            )}
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[10px] font-bold text-muted uppercase tracking-widest flex items-center gap-1.5">
+                                <FileText size={12} className="text-accent" />
+                                Delivery Notes / Remarks
+                            </label>
+                            <textarea
+                                rows={2}
+                                placeholder="Handover notes, reception confirmation..."
+                                value={deliveryPodData.notes}
+                                onChange={(e) => setDeliveryPodData({ ...deliveryPodData, notes: e.target.value })}
+                                className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-medium text-white resize-none"
+                            />
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowDeliveryPodModal(false);
+                                    setPodTargetDelivery(null);
+                                }}
+                                className="btn-secondary flex-1 py-3 text-xs uppercase font-bold"
+                                disabled={isSubmittingDeliveryPod}
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={isSubmittingDeliveryPod || !deliveryPodData.photo || !deliveryPodData.receiverName.trim()}
+                                className={`flex-1 py-3 rounded-xl font-black uppercase text-xs tracking-widest transition-all flex items-center justify-center gap-2 ${
+                                    isSubmittingDeliveryPod || !deliveryPodData.photo || !deliveryPodData.receiverName.trim()
+                                        ? 'bg-success/40 text-white/50 cursor-not-allowed'
+                                        : 'bg-success text-white hover:bg-success/90 shadow-lg shadow-success/20'
+                                }`}
+                            >
+                                {isSubmittingDeliveryPod ? (
+                                    <>Verifying Proof...</>
+                                ) : (
+                                    <>
+                                        <CheckCircle2 size={16} /> Confirm Delivery
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </form>
+                )}
             </Modal>
         </div>
     );

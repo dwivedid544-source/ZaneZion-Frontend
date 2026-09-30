@@ -2311,18 +2311,39 @@ export const GlobalDataProvider = ({ children }) => {
 
           const driverNameResolved = meta.driverName || (m.assignee ? `${m.assignee.firstName || ''} ${m.assignee.lastName || ''}`.trim() : '') || m.driver_name || m.driverName || '';
           const plateResolved = meta.plateNumber || meta.vehicleId || (m.assignee && m.assignee.vehiclePlate) || m.plate_number || m.plateNumber || '';
-          const orderIdResolved = m.order_id || m.orderId || meta.orderId || meta.order_id || (m.delivery ? (m.delivery.deliveryNumber || m.delivery.orderId) : '') || '';
+          
+          const deliveryNumberResolved = m.delivery?.deliveryNumber || meta.deliveryNumber || (String(m.orderId || '').startsWith('DEL-') ? m.orderId : '') || '';
+          
+          let actualOrderId = m.orderId || m.order_id || m.delivery?.orderId || meta.orderId || meta.order_id || meta.orderRef || null;
+          if (typeof actualOrderId === 'string' && actualOrderId.startsWith('DEL-')) {
+            actualOrderId = m.delivery?.orderId || meta.orderId || meta.orderRef || null;
+          }
+
+          const clientNameResolved = m.client?.companyName || m.client?.name || m.delivery?.client?.companyName || m.delivery?.client?.name || m.order?.client?.companyName || m.order?.client?.name || meta.clientName || meta.client || '';
+          
+          const pickupResolved = m.delivery?.pickupLocation || meta.pickupLocation || meta.pickup_location || '';
+          const dropResolved = m.delivery?.dropLocation || meta.dropLocation || meta.destination || meta.location || m.destination_type || meta.destination_type || 'Client Site';
+          const itemsResolved = (m.delivery?.items && m.delivery.items.length > 0) ? m.delivery.items : ((m.order?.items && m.order.items.length > 0) ? m.order.items : (Array.isArray(meta.items) ? meta.items : []));
+          const payoutResolved = m.delivery?.deliveryFee || (m.delivery?.routeDistance ? (m.delivery.routeDistance * (m.delivery.staffPayRate || 0)) : meta.payout) || null;
 
           return {
             ...m,
-            orderId: orderIdResolved,
-            order_id: orderIdResolved,
+            orderId: actualOrderId,
+            order_id: actualOrderId,
+            orderNumber: m.order?.orderNumber || meta.orderNumber || (actualOrderId && !String(actualOrderId).startsWith('DEL-') ? actualOrderId : null),
+            deliveryNumber: deliveryNumberResolved,
+            deliveryId: m.deliveryId || m.delivery?.id || meta.deliveryId || null,
+            clientName: clientNameResolved,
+            pickupLocation: pickupResolved,
+            dropLocation: dropResolved,
+            items: itemsResolved,
+            payout: payoutResolved,
             driverId: m.assignedEmployeeId || m.assigned_driver || m.driverId || meta.driverId || null,
             driverName: driverNameResolved,
             vehicleId: plateResolved,
             plateNumber: plateResolved,
             missionType: m.mission_type || m.missionType || meta.missionType || 'LOGISTICS',
-            destinationType: m.destination_type || meta.destination_type || 'Client Site',
+            destinationType: dropResolved,
             date: m.event_date
               ? m.event_date.split("T")[0]
               : m.created_at || m.createdAt
@@ -3967,70 +3988,37 @@ export const GlobalDataProvider = ({ children }) => {
       );
 
       if (targetMission) {
-        const mOrderId = targetMission.orderId || targetMission.order_id;
-        const linkedPrj = (projects || []).find(p => String(p.id) === String(mOrderId) || String(p.orderId) === String(mOrderId));
+        let mOrderId = targetMission.orderId || targetMission.order_id || targetMission.metadata?.orderId;
+        if (typeof mOrderId === 'string' && mOrderId.startsWith('DEL-')) {
+          mOrderId = targetMission.delivery?.orderId || targetMission.metadata?.orderId;
+        }
+        const linkedPrj = (projects || []).find(p => String(p.id) === String(mOrderId) || String(p.orderId) === String(mOrderId) || String(p.id) === String(targetMission.metadata?.projectId));
         const orderRef = linkedPrj?.orderRef || linkedPrj?.order_ref || linkedPrj?.orderId || mOrderId;
 
         let targetOrderStatus = null;
         if (['completed', 'delivered', 'done'].includes(normSt)) {
           targetOrderStatus = 'completed';
         } else if (['en_route', 'in_transit', 'dispatched'].includes(normSt)) {
-          targetOrderStatus = 'in_transit';
+          targetOrderStatus = 'en_route';
         } else if (['assigned', 'accepted', 'in_progress'].includes(normSt)) {
           targetOrderStatus = 'logistics';
         }
 
         if (targetOrderStatus) {
-          const idsToUpdate = [mOrderId, orderRef, linkedPrj?.id].filter(Boolean);
+          const idsToUpdate = [mOrderId, orderRef, linkedPrj?.id].filter(oId => oId && !String(oId).startsWith('DEL-'));
           for (const targetId of new Set(idsToUpdate)) {
-            try { await api.put(`/orders/${targetId}/status`, { status: targetOrderStatus }); } catch (_) {}
-          }
-        }
-      }
-
-      // If mission is dispatched, ensure a delivery row exists for operations tracking.
-      if (String(status).toLowerCase() === "en_route") {
-        const mission = missions.find((m) => String(m.id) === String(id) || String(m.missionNumber) === String(id) || String(m.db_id) === String(id) || String(m.mission_number) === String(id));
-        if (mission) {
-          const hasLinkedDelivery = deliveries.some((d) => {
-            const dOrderRaw =
-              d.order_id_raw ??
-              (d.orderId
-                ? parseInt(String(d.orderId).replace(/[^0-9]/g, ""), 10)
-                : null);
-            return (
-              (mission.orderId &&
-                Number(dOrderRaw) === Number(mission.orderId)) ||
-              (mission.id && String(d.mission_id || "") === String(mission.id))
-            );
-          });
-
-          if (!hasLinkedDelivery) {
-            await addDelivery({
-              orderId: mission.orderId || null,
-              missionType:
-                mission.missionType || mission.mission_type || "Delivery",
-              location: mission.route || mission.location || "",
-              driver: mission.driverName || mission.driver_name || "",
-              vehicleId:
-                mission.plateNumber ||
-                mission.vehicleId ||
-                mission.plate_number ||
-                "",
-              items: mission.items || [
-                { name: `Mission ${mission.id}`, qty: 1 },
-              ],
-              pickupLocation: mission.pickup_location || "",
-              dropLocation: mission.drop_location || mission.destination || "",
-              dueDate: mission.date || null,
-              status: "In Transit",
-            });
+            try {
+              await api.put(`/orders/${targetId}/status`, { status: targetOrderStatus }).catch(() =>
+                api.patch(`/orders/${targetId}/status`, { status: targetOrderStatus })
+              );
+            } catch (_) {}
           }
         }
       }
 
       await syncGlobalState();
       window.dispatchEvent(new CustomEvent('app:state-changed'));
+      notifyStateChanged(queryClient, ['missions', 'deliveries', 'orders', 'projects', 'dashboardStats']);
 
       addLog({
         action: "Mission Update",
@@ -4039,6 +4027,48 @@ export const GlobalDataProvider = ({ children }) => {
       });
     } catch (error) {
       console.error("Failed to update mission status:", error);
+    }
+  };
+
+  const submitMissionPOD = async (missionId, podData) => {
+    try {
+      const res = await api.post(`/missions/${missionId}/pod`, podData);
+
+      const targetMission = (missions || []).find((m) =>
+        String(m.id) === String(missionId) || String(m.missionNumber) === String(missionId) || String(m.db_id) === String(missionId)
+      );
+
+      if (targetMission) {
+        let mOrderId = targetMission.orderId || targetMission.order_id || targetMission.metadata?.orderId;
+        if (typeof mOrderId === 'string' && mOrderId.startsWith('DEL-')) {
+          mOrderId = targetMission.delivery?.orderId || targetMission.metadata?.orderId;
+        }
+        const linkedPrj = (projects || []).find(p => String(p.id) === String(mOrderId) || String(p.orderId) === String(mOrderId) || String(p.id) === String(targetMission.metadata?.projectId));
+        const orderRef = linkedPrj?.orderRef || linkedPrj?.order_ref || linkedPrj?.orderId || mOrderId;
+
+        const idsToUpdate = [mOrderId, orderRef, linkedPrj?.id].filter(oId => oId && !String(oId).startsWith('DEL-'));
+        for (const targetId of new Set(idsToUpdate)) {
+          try {
+            await api.put(`/orders/${targetId}/status`, { status: 'completed' }).catch(() =>
+              api.patch(`/orders/${targetId}/status`, { status: 'completed' })
+            );
+          } catch (_) {}
+        }
+      }
+
+      await syncGlobalState();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
+      notifyStateChanged(queryClient, ['missions', 'deliveries', 'orders', 'projects', 'dashboardStats']);
+
+      addLog({
+        action: "Mission POD Submitted",
+        detail: `POD submitted for Mission ${missionId}. Status marked completed.`,
+        type: "logistics",
+      });
+      return res.data;
+    } catch (error) {
+      console.error("Submit mission POD failed", error);
+      throw error;
     }
   };
 
@@ -8065,6 +8095,7 @@ export const GlobalDataProvider = ({ children }) => {
         setMissions,
         fetchMissions,
         updateMissionStatus,
+        submitMissionPOD,
         assignMissionDriver,
         deleteMission,
         projects,

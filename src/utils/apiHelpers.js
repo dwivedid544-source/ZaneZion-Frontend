@@ -106,6 +106,8 @@ export const formatClientDisplayName = (item, clients = [], users = []) => {
     }
   }
 
+  const meta = item.order?.metadata || item.metadata || {};
+  
   const candidates = [
     userObj?.name,
     userObj?.fullName,
@@ -117,6 +119,10 @@ export const formatClientDisplayName = (item, clients = [], users = []) => {
     item.customer_name,
     item.passengerInfo?.name,
     item.passenger_info?.name,
+    meta.guestName,
+    meta.client_name,
+    meta.customer_name,
+    meta.passengerName,
     typeof item.client === 'string' ? item.client : null,
     typeof item.clientName === 'string' ? item.clientName : null,
     clientObj?.name,

@@ -30,14 +30,27 @@ function isAssignableDeliveryRole(roleRaw) {
 
 function displayDeliveryStatus(raw) {
   const k = String(raw || '').toLowerCase().replace(/\s+/g, '_');
-  if (k === 'pending' || k === 'pending_pickup' || k === 'pending_review') return 'Pending pickup';
-  if (k === 'assigned' || k === 'accepted') return 'Driver assigned';
-  if (k === 'en_route' || k === 'in_transit' || k === 'dispatched') return 'Out for delivery';
-  if (k === 'arrived') return 'Arrived';
-  if (k === 'delivered' || k === 'completed') return 'Delivered';
-  if (k === 'cancelled' || k === 'canceled') return 'Cancelled';
-  return raw ? String(raw) : '—';
+  if (k === 'pending' || k === 'pending_pickup' || k === 'pending_review') return 'pending';
+  if (k === 'assigned' || k === 'accepted') return 'assigned';
+  if (k === 'en_route' || k === 'in_transit' || k === 'dispatched' || k === 'out_for_delivery') return 'in_transit';
+  if (k === 'arrived') return 'arrived';
+  if (k === 'delivered' || k === 'completed') return 'completed';
+  if (k === 'cancelled' || k === 'canceled') return 'cancelled';
+  return 'pending';
 }
+
+export const displayDeliveryStatusLabel = (raw) => {
+  const s = displayDeliveryStatus(raw);
+  const map = {
+    'pending': 'Pending pickup',
+    'assigned': 'Driver assigned',
+    'in_transit': 'Out for delivery',
+    'arrived': 'Arrived',
+    'completed': 'Delivered',
+    'cancelled': 'Cancelled'
+  };
+  return map[s] || s;
+};
 
 const Deliveries = () => {
   const { users, fleet, fetchFleet, fetchStaff, hasMenuPermission, warehouses, fetchWarehouses, currentUser, clients = [], fetchClients, customerUsers = [], fetchCustomerUsers, inventory, orders = [], chauffeurRequests = [], fetchOrders, fetchDeliveries, fetchChauffeurRequests } = useData();
@@ -641,7 +654,7 @@ const Deliveries = () => {
 
     const nextFormData = del && del.id ? {
       ...del,
-      status: type === 'delivered' ? 'Delivered' : (del.status || 'pending'),
+      status: type === 'delivered' ? 'completed' : displayDeliveryStatus(del.status),
       orderId: del.order?.orderNumber || del.deliveryNumber || del.orderId || '',
       clientId: parsedRemarks.clientId || String(del.clientId || ''),
       client: typeof del.client === 'object' ? del.client?.companyName : (del.clientName || ''),
@@ -690,7 +703,7 @@ const Deliveries = () => {
       location: del?.dropLocation || del?.drop_location || del?.location || del?.order?.location || del?.order?.dropLocation || '',
       pickupLocation: del?.pickupLocation || del?.pickup_location || del?.order?.pickupLocation || del?.order?.pickup_location || (warehouses || [])[0]?.name || '',
       dropLocation: del?.dropLocation || del?.drop_location || del?.location || del?.order?.location || del?.order?.dropLocation || '',
-      status: 'Pending',
+      status: 'pending',
       driver: '',
       mode: del?.mode || 'Road',
       delivery_instructions: del?.delivery_instructions || del?.order_instructions || '',
@@ -700,13 +713,13 @@ const Deliveries = () => {
       pod: { signature: null, image: null, actualTime: null }
     };
     // Quick "Complete Delivery" flow from list action.
-    setFormData(type === 'delivered' ? { ...nextFormData, status: 'Delivered' } : nextFormData);
+    setFormData(type === 'delivered' ? { ...nextFormData, status: 'completed' } : nextFormData);
     setIsModalOpen(true);
   };
 
   const handleSave = () => {
     // POD Enforcement
-    if ((formData.status === 'Completed' || formData.status === 'Delivered') && modalType === 'edit') {
+    if ((formData.status === 'completed' || formData.status === 'delivered') && modalType === 'edit') {
       const hasSignature = !!formData.pod?.signature;
       const hasCarrierVerification = !!(formData.pod?.carrierName && formData.pod?.documentRef);
 
@@ -718,7 +731,7 @@ const Deliveries = () => {
 
     const finalData = {
       ...formData,
-      pod: formData.status === 'Completed' || formData.status === 'Delivered'
+      pod: formData.status === 'completed' || formData.status === 'delivered'
         ? { ...formData.pod, actualTime: new Date().toISOString() }
         : formData.pod
     };
@@ -828,6 +841,7 @@ const Deliveries = () => {
               await api.put(`/orders/${cleanOrderId}/status`, { status: finalData.assigned_driver ? 'assigned' : 'logistics' });
             } catch (_) {}
           }
+          if (refetchDeliveries) await refetchDeliveries();
           notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
           swalClose();
           swalSuccess("Mission Dispatched", "Order has been dispatched and mission deployed successfully.");
@@ -868,7 +882,7 @@ const Deliveries = () => {
         remarks: JSON.stringify(manifestMeta)
       };
 
-      if (modalType === 'delivered' || formData.status === 'Completed' || formData.status === 'Delivered' || finalData.status === 'Completed' || finalData.status === 'Delivered') {
+      if (modalType === 'delivered' || formData.status === 'completed' || formData.status === 'delivered' || finalData.status === 'completed' || finalData.status === 'delivered') {
         // It's a POD completion
         swalLoading("Submitting POD", "Verifying proof of delivery and completing mission...");
         setIsModalOpen(false);
@@ -897,7 +911,7 @@ const Deliveries = () => {
             Array.isArray(arr)
               ? arr.map((item) =>
                   String(item.id) === String(targetDelId) || String(item.deliveryNumber) === String(targetDelId)
-                    ? { ...item, status: 'Delivered', clientConfirmed: true }
+                    ? { ...item, status: 'completed', clientConfirmed: true }
                     : item
                 )
               : arr;
@@ -944,22 +958,25 @@ const Deliveries = () => {
 
         // 2. Perform backend updates in parallel
         Promise.all([
-          targetDelId ? api.put(`/deliveries/${targetDelId}`, { status: 'Delivered' }).catch(() => {}) : Promise.resolve(),
-          cleanOrderId ? api.put(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() => {}) : Promise.resolve(),
+          targetDelId ? api.put(`/deliveries/${targetDelId}`, { status: 'completed' }) : Promise.resolve(),
+          cleanOrderId ? api.put(`/orders/${cleanOrderId}/status`, { status: 'completed' }) : Promise.resolve(),
           targetDelId ? submitPODMutation.mutateAsync({
             id: targetDelId,
             podData: {
-              receiverName: resolvedReceiver,
-              receiverSignature: resolvedSignature,
-              deliveryPhoto: resolvedPhoto,
-              remarks: resolvedNotes
+              receiverName: resolvedReceiver || "Unknown",
+              receiverSignature: resolvedSignature || "",
+              deliveryPhoto: resolvedPhoto || "",
+              remarks: resolvedNotes || ""
             }
-          }).catch(() => {}) : Promise.resolve()
+          }).catch((err) => { console.error("POD Error", err); throw err; }) : Promise.resolve()
         ]).then(async () => {
           if (refetchDeliveries) await refetchDeliveries();
           notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'chauffeurMissions', 'dashboardStats']);
           swalClose();
           swalSuccess("Mission Delivered", "POD submitted and order marked as Delivered successfully.");
+        }).catch((err) => {
+          swalClose();
+          Swal.fire('Error', 'Failed to submit POD: ' + (err?.response?.data?.message || err.message), 'error');
         });
       } else {
         // If driver is assigned in edit modal and status was pending, advance status to Assigned
@@ -993,6 +1010,7 @@ const Deliveries = () => {
                 });
               } catch (_) {}
             }
+            if (refetchDeliveries) await refetchDeliveries();
             notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
             swalClose();
             swalSuccess("Protocol Updated", "Delivery protocol and driver assignment updated successfully.");
@@ -1008,7 +1026,8 @@ const Deliveries = () => {
       setIsModalOpen(false);
 
       deleteDeliveryMutation.mutateAsync(selectedDelivery.id)
-        .then(() => {
+        .then(async () => {
+          if (refetchDeliveries) await refetchDeliveries();
           notifyStateChanged(queryClient, ['deliveries', 'orders', 'missions', 'dashboardStats']);
           swalClose();
           swalSuccess("Success", "Delivery deleted successfully.");
@@ -2118,13 +2137,12 @@ const Deliveries = () => {
                       onChange={(e) => setFormData({ ...formData, status: e.target.value })}
                       disabled={modalType === 'view'}
                     >
-                      <option>Pending</option>
-                      <option value="Pending Pickup">Awaiting Pickup</option>
-                      <option value="In Transit">In Transit (Dispatched)</option>
-                      <option>Re-routed</option>
-                      <option>Failed</option>
-                      <option>Completed</option>
-                      <option>Delivered</option>
+                      <option value="pending">Pending</option>
+                      <option value="assigned">Driver assigned</option>
+                      <option value="in_transit">In Transit (Dispatched)</option>
+                      <option value="arrived">Arrived</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
                     </select>
                   </div>
                 </div>

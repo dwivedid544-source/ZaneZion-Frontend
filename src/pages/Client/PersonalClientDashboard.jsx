@@ -8,6 +8,7 @@ import Modal from '../../components/Modal';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../context/GlobalDataContext';
 import { ShoppingCart, Truck, CreditCard, ChevronRight, History, Package, ArrowUpRight, Car, HelpCircle, FileText, Eye, ShoppingBag, Gift } from 'lucide-react';
+import { useUpdateOrder, useCreateOrder } from '../../hooks/api/useOrders';
 
 // Re‑used UI components (StatCard, SectionCard, EmptyState) are defined inline for clarity
 const StatCard = ({ label, value, icon: Icon, color = 'text-accent', bg = 'bg-accent/10', onClick }) => (
@@ -90,6 +91,27 @@ const PersonalClientDashboard = () => {
     syncGlobalState
   } = useData();
   const navigate = useNavigate();
+  const updateOrderMutation = useUpdateOrder();
+  const createOrderMutation = useCreateOrder();
+
+  const handleSave = async (formData, orderId) => {
+    const targetId = orderId || selectedOrder?.id || formData?.id;
+    try {
+      if (targetId) {
+        await updateOrderMutation.mutateAsync({ id: targetId, orderData: formData });
+        swalSuccess('Success', 'Order updated successfully.');
+      } else {
+        await createOrderMutation.mutateAsync(formData);
+        swalSuccess('Success', 'Order created successfully.');
+      }
+      setIsModalOpen(false);
+      if (fetchOrders) fetchOrders();
+      if (fetchDeliveries) fetchDeliveries();
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || err?.message || 'Failed to save order.';
+      swalError('Error', errMsg);
+    }
+  };
 
   useEffect(() => {
     fetchOrders();
@@ -623,7 +645,7 @@ const PersonalClientDashboard = () => {
       </div>
 
       {/* Modals */}
-      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} modalType={modalType} selectedOrder={selectedOrder} onSave={() => { }} onDelete={() => { }} role={currentUser?.role || 'client'} />
+      <OrderModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} modalType={modalType} selectedOrder={selectedOrder} onSave={handleSave} onDelete={() => { setIsModalOpen(false); }} role={currentUser?.role || 'client'} />
       <Modal isOpen={isInvoiceModalOpen} onClose={() => setIsInvoiceModalOpen(false)} title={`Invoice: ${viewingInvoice?.id}`}>
         {/* Minimal invoice view – details already displayed in the main list */}
       </Modal>

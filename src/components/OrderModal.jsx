@@ -22,10 +22,24 @@ const clampDueDateToRequest = (requestDate, dueDate) => {
 };
 
 const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelete, initialData, role }) => {
-    const { currentUser, marketplaceVendors = [], clients, fetchVendors, fetchClients, customerUsers, fetchCustomerUsers } = useData();
+    const { currentUser, marketplaceVendors = [], vendors = [], clients, fetchVendors, fetchClients, customerUsers, fetchCustomerUsers } = useData();
     const [currentModalType, setCurrentModalType] = useState(modalType);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
+
+    const allAvailableVendors = React.useMemo(() => {
+        const list = [];
+        const seen = new Set();
+        [...(marketplaceVendors || []), ...(vendors || [])].forEach(v => {
+            if (!v || !v.id) return;
+            const key = String(v.id);
+            if (!seen.has(key)) {
+                seen.add(key);
+                list.push(v);
+            }
+        });
+        return list;
+    }, [vendors, marketplaceVendors]);
 
     const { data: fetchedOrderData, isLoading: isFetchingDetails } = useOrder(
         isOpen && selectedOrder?.id && modalType !== 'add' ? selectedOrder.id : null
@@ -135,6 +149,9 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         isPreferredVendor: false,
         type: 'Custom Order',
         deliveryType: 'Road',
+        transportAsset: '',
+        transportAssetCustom: '',
+        islandLocation: '',
         pickupLocation: '',
         pickupTime: '',
         totalDistance: '',
@@ -204,6 +221,9 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 isPreferredVendor: false,
                 type: initialData?.orderType || initialData?.type || 'Delivery',
                 deliveryType: initialData?.deliveryType || initialData?.delivery_mode || initialData?.deliveryMode || initialData?.mode || 'Road',
+                transportAsset: initialData?.transportAsset || initialData?.transport_asset || (initialData?.deliveryType === 'Air' ? 'Charter Jet' : (initialData?.deliveryType === 'Sea' ? 'Boat' : '')),
+                transportAssetCustom: initialData?.transportAssetCustom || initialData?.transport_asset_custom || initialData?.charterDetails || initialData?.charter_details || '',
+                islandLocation: initialData?.islandLocation || initialData?.island_location || '',
                 pickupLocation: initialData?.pickupLocation || initialData?.pickup_location || '',
                 pickupTime: initialData?.pickupTime || initialData?.pickup_time || '',
                 totalDistance: initialData?.totalDistance || initialData?.total_distance || '',
@@ -387,6 +407,19 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             const initialDist = effectiveOrder.totalDistance || effectiveOrder.total_distance || effectiveOrder.distance || meta?.totalDistance || meta?.total_distance || meta?.distance_km || meta?.distanceKm || meta?.distance || firstCustom.totalDistance || firstCustom.total_distance || firstCustom.distance || '';
             const formattedDist = initialDist ? (String(initialDist).toLowerCase().includes('km') ? String(initialDist) : `${initialDist} km`) : '';
 
+            const rawVendorId = effectiveOrder.vendorId || effectiveOrder.vendor_id || meta?.vendorId || meta?.vendor_id || effectiveOrder.metadata?.vendorId || effectiveOrder.metadata?.vendor_id || '';
+            const rawVendorName = effectiveOrder.vendor || meta?.vendor || effectiveOrder.metadata?.vendor || meta?.vendor_name || '';
+
+            const rawSavedType = effectiveOrder.orderType || effectiveOrder.type || meta?.orderType || meta?.type || '';
+            const validOrderTypes = ['Procurement', 'Provisioning', 'Delivery', 'Inventory', 'Custom Order', 'Chauffeur Service'];
+            const matchedType = validOrderTypes.find(opt => opt.toLowerCase() === String(rawSavedType).toLowerCase());
+            const resolvedType = matchedType || (isChauffeur ? 'Chauffeur Service' : (rawSavedType || 'Delivery'));
+
+            const loadedDeliveryType = effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || meta?.deliveryType || meta?.delivery_mode || 'Road';
+            const loadedTransportAsset = effectiveOrder.transportAsset || effectiveOrder.transport_asset || meta?.transportAsset || meta?.transport_asset || (loadedDeliveryType === 'Air' ? 'Charter Jet' : (loadedDeliveryType === 'Sea' ? 'Boat' : ''));
+            const loadedTransportAssetCustom = effectiveOrder.transportAssetCustom || effectiveOrder.transport_asset_custom || effectiveOrder.charterDetails || effectiveOrder.charter_details || meta?.transportAssetCustom || meta?.transport_asset_custom || meta?.charter_details || meta?.charterDetails || '';
+            const loadedIslandLocation = effectiveOrder.islandLocation || effectiveOrder.island_location || meta?.islandLocation || meta?.island_location || '';
+
             setFormData({
                 client: clientDisplayName,
                 clientId: existingClientId,
@@ -397,16 +430,13 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                 requestDate,
                 dueDate,
                 department: effectiveOrder.department || '',
-                vendor: effectiveOrder.vendor || meta?.vendor || effectiveOrder.metadata?.vendor || meta?.vendor_name || '',
-                vendorId: effectiveOrder.vendorId || effectiveOrder.vendor_id || meta?.vendorId || meta?.vendor_id || effectiveOrder.metadata?.vendorId || effectiveOrder.metadata?.vendor_id || '',
-                type: isChauffeur ? 'Chauffeur Service' : (
-                    effectiveOrder.orderType === 'Delivery' || 
-                    meta?.order_kind === 'marketplace' || 
-                    typeStr.includes('marketplace') || 
-                    typeStr.includes('delivery') || 
-                    effectiveOrder.orderType === 'PRODUCT'
-                ) ? 'Delivery' : (effectiveOrder.orderType || effectiveOrder.type || 'Delivery'),
-                deliveryType: effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road',
+                vendor: rawVendorName,
+                vendorId: rawVendorId ? String(rawVendorId) : '',
+                type: resolvedType,
+                deliveryType: loadedDeliveryType,
+                transportAsset: loadedTransportAsset,
+                transportAssetCustom: loadedTransportAssetCustom,
+                islandLocation: loadedIslandLocation,
                 pickupLocation: pickLoc,
                 pickupTime: isChauffeur ? parsedPickupTime : '',
                 totalDistance: formattedDist,
@@ -570,6 +600,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         const dueDate = clampDueDateToRequest(requestDate, formData.dueDate);
         const payload = {
             ...formData,
+            id: selectedOrder?.id,
             pickupLocation: formData.pickupLocation || '',
             location: formData.location || '',
             deliveryAddress: formData.location || '',
@@ -578,7 +609,19 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             dueDate,
             totalAmount: parseFloat(calculateTotal()),
             clientId: parsedClientId || Number(formData.clientId) || undefined,
-            orderType: formData.type || (isChauffeurOrder ? 'Chauffeur Service' : 'Delivery')
+            orderType: formData.type || (isChauffeurOrder ? 'Chauffeur Service' : 'Delivery'),
+            type: formData.type || (isChauffeurOrder ? 'Chauffeur Service' : 'Delivery'),
+            vendor: formData.vendor || '',
+            vendorId: formData.vendorId ? (isNaN(Number(formData.vendorId)) ? formData.vendorId : Number(formData.vendorId)) : null,
+            deliveryType: formData.deliveryType || 'Road',
+            transportAsset: formData.transportAsset || '',
+            transport_asset: formData.transportAsset || '',
+            transportAssetCustom: formData.transportAssetCustom || '',
+            transport_asset_custom: formData.transportAssetCustom || '',
+            charterDetails: formData.transportAssetCustom || '',
+            charter_details: formData.transportAssetCustom || '',
+            islandLocation: formData.islandLocation || '',
+            island_location: formData.islandLocation || ''
         };
         if (!canEditOrderStatus) {
             delete payload.status;
@@ -598,7 +641,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             delete payload.returnTime;
             delete payload.returnLocation;
         }
-        onSave(payload);
+        onSave(payload, selectedOrder?.id);
     };
 
     return (
@@ -1131,21 +1174,22 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 </div>
 
                                                 <select
-                                                    value={formData.vendorId}
+                                                    value={formData.vendorId ? String(formData.vendorId) : ''}
                                                     onChange={(e) => {
-                                                        const selectedVendor = marketplaceVendors.find(v => v.id.toString() === e.target.value);
+                                                        const selectedVal = e.target.value;
+                                                        const selectedVendor = allAvailableVendors.find(v => String(v.id) === String(selectedVal));
                                                         setFormData({
                                                             ...formData,
-                                                            vendorId: e.target.value,
-                                                            vendor: selectedVendor ? selectedVendor.name : ''
+                                                            vendorId: selectedVal,
+                                                            vendor: selectedVendor ? (selectedVendor.name || selectedVendor.companyName || '') : ''
                                                         });
                                                     }}
                                                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold"
                                                     disabled={currentModalType === 'view'}
                                                 >
                                                     <option value="">Select Vendor...</option>
-                                                    {marketplaceVendors.map(v => (
-                                                        <option key={v.id} value={v.id}>{v.name} {v.category ? `(${v.category})` : ''}</option>
+                                                    {allAvailableVendors.map(v => (
+                                                        <option key={v.id} value={String(v.id)}>{v.name || v.companyName} {v.category ? `(${v.category})` : ''}</option>
                                                     ))}
                                                 </select>
                                             </div>
@@ -1167,14 +1211,18 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                             <p className="text-[9px] text-muted italic mt-1">Requested On: {new Date(effectiveOrder.createdAt).toLocaleDateString()}</p>
                                         )}
                                     </div>
-                                    <div className="space-y-1">
+                                    <div className="space-y-2">
                                         <label className="text-[10px] font-bold text-muted uppercase tracking-widest">Logistics Transport Mode</label>
                                         <div className="flex gap-2">
                                             {['Road', 'Sea', 'Air'].map((mode) => (
                                                 <button
                                                     key={mode}
                                                     type="button"
-                                                    onClick={() => setFormData({ ...formData, deliveryType: mode })}
+                                                    onClick={() => setFormData({
+                                                        ...formData,
+                                                        deliveryType: mode,
+                                                        transportAsset: mode === 'Air' ? (formData.transportAsset || 'Charter Jet') : mode === 'Sea' ? (formData.transportAsset || 'Boat') : ''
+                                                    })}
                                                     className={`flex-1 py-2 rounded-xl text-[10px] font-black uppercase tracking-tighter border transition-all ${formData.deliveryType === mode
                                                         ? 'bg-accent/20 border-accent text-accent shadow-lg shadow-accent/5'
                                                         : 'bg-white/5 border-white/10 text-muted hover:border-white/30'
@@ -1185,6 +1233,69 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 </button>
                                             ))}
                                         </div>
+
+                                        {/* Air / Sea Transport & Charter Details Section */}
+                                        {(formData.deliveryType === 'Air' || formData.deliveryType === 'Sea') && (
+                                            <div className="p-3.5 bg-accent/5 border border-accent/20 rounded-xl space-y-3 mt-2">
+                                                <div className="flex items-center justify-between">
+                                                    <label className="text-[10px] font-black text-accent uppercase tracking-widest">
+                                                        {formData.deliveryType === 'Air' ? '✈ Air Charter & Aircraft Fleet' : '🛥 Sea Logistics & Marine Vessel'}
+                                                    </label>
+                                                </div>
+
+                                                {/* Preset asset buttons */}
+                                                <div className="flex gap-2">
+                                                    {(formData.deliveryType === 'Air' 
+                                                        ? ['Charter Jet', 'Airplane', 'Cargo Plane'] 
+                                                        : ['Boat', 'Cargo Boat', 'Ferry']
+                                                    ).map((asset) => (
+                                                        <button
+                                                            key={asset}
+                                                            type="button"
+                                                            disabled={currentModalType === 'view'}
+                                                            onClick={() => setFormData({ ...formData, transportAsset: asset })}
+                                                            className={`flex-1 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border transition-all ${
+                                                                (formData.transportAsset || (formData.deliveryType === 'Air' ? 'Charter Jet' : 'Boat')) === asset
+                                                                    ? 'bg-accent/20 border-accent text-accent shadow-sm'
+                                                                    : 'bg-white/5 border-white/10 text-muted hover:border-white/30'
+                                                            }`}
+                                                        >
+                                                            {asset}
+                                                        </button>
+                                                    ))}
+                                                </div>
+
+                                                {/* Custom charter or tail number / vessel notes */}
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-bold text-muted uppercase">
+                                                        {formData.deliveryType === 'Air' ? 'Charter Specs / Tail Number / Instructions' : 'Vessel Specs / Tender Name / Instructions'}
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={formData.transportAssetCustom || ''}
+                                                        onChange={(e) => setFormData({ ...formData, transportAssetCustom: e.target.value })}
+                                                        placeholder={formData.deliveryType === 'Air' ? 'e.g. Private Charter Jet, tail number, flight notes' : 'e.g. Private tender, yacht name, marina berth'}
+                                                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-white focus:border-accent outline-none font-bold placeholder:text-muted/40"
+                                                        disabled={currentModalType === 'view'}
+                                                    />
+                                                </div>
+
+                                                {/* Island / Airstrip dispatch location */}
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-bold text-muted uppercase">
+                                                        {formData.deliveryType === 'Air' ? 'Airstrip / Island Location' : 'Jetty / Marina / Island Location'}
+                                                    </label>
+                                                    <input
+                                                        type="text"
+                                                        value={formData.islandLocation || ''}
+                                                        onChange={(e) => setFormData({ ...formData, islandLocation: e.target.value })}
+                                                        placeholder={formData.deliveryType === 'Air' ? 'e.g. Exuma Airstrip, Staniel Cay' : 'e.g. Paradise Island Jetty, Blue Lagoon'}
+                                                        className="w-full bg-background border border-border rounded-lg px-3 py-2 text-xs text-white focus:border-accent outline-none font-bold placeholder:text-muted/40"
+                                                        disabled={currentModalType === 'view'}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                     <div className="space-y-1">
                                         <label className="text-[10px] font-bold text-muted uppercase">Order Type</label>

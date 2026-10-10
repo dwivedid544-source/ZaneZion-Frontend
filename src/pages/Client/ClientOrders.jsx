@@ -13,6 +13,7 @@ import OrderModal from '../../components/OrderModal';
 import StatusBadge from '../../components/StatusBadge';
 import { displayOrderStatus, isoDateSlice, formatDateDisplayDMY } from '../../utils/orderWorkflow';
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
+import { useUpdateOrder } from '../../hooks/api/useOrders';
 
 const CATEGORY_CONFIG = {
     'Marketplace Order': { label: 'Marketplace Order', icon: ShoppingBag, color: 'bg-info/10 text-info border-info/20' },
@@ -47,6 +48,7 @@ const ClientOrders = () => {
         fetchTickets,
         syncGlobalState
     } = useData();
+    const updateOrderMutation = useUpdateOrder();
 
     const userRole = localStorage.getItem('userRole') || 'client';
     const portalRole = normalizeRole(currentUser?.role || userRole);
@@ -322,6 +324,10 @@ const ClientOrders = () => {
                 status: effectiveStatus,
                 location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || o.dropLocation || 'Client Address',
                 pickupLocation: linkedDelivery?.pickupLocation || o.pickupLocation || o.pickup_location || null,
+                deliveryType: o.deliveryType || o.mode || o.delivery_mode || o.metadata?.deliveryType || 'Road',
+                transport_asset: o.transport_asset || o.transportAsset || o.metadata?.transport_asset || o.metadata?.transportAsset || null,
+                transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || o.charterDetails || o.metadata?.transport_asset_custom || o.metadata?.charter_details || null,
+                island_location: o.island_location || o.islandLocation || o.metadata?.island_location || null,
                 driverName: linkedDelivery?.driver || o.driverName || null,
                 source: 'orders',
                 originalRecord: o
@@ -580,7 +586,19 @@ const ClientOrders = () => {
         setIsProofModalOpen(true);
     };
 
-    const handleSaveOrder = async (orderData) => {
+    const handleSaveOrder = async (orderData, orderId) => {
+        const targetId = orderId || selectedOrder?.id || orderData?.id;
+        if (targetId) {
+            try {
+                await updateOrderMutation.mutateAsync({ id: targetId, orderData });
+                setIsOrderModalOpen(false);
+                if (fetchOrders) fetchOrders();
+            } catch (err) {
+                console.error('Failed to update order:', err);
+            }
+            return;
+        }
+
         if (!roleCanCreateInstitutionalOrder(portalRole) && !isBusinessClient) {
             window.alert('Only authorised staff can create orders on behalf of clients. Use Marketplace to shop, or contact your representative.');
             setIsOrderModalOpen(false);
@@ -595,6 +613,7 @@ const ClientOrders = () => {
             due_date: isoDateSlice(orderData.dueDate),
         });
         setIsOrderModalOpen(false);
+        if (fetchOrders) fetchOrders();
     };
 
     const handlePrintProof = () => {
@@ -1039,6 +1058,51 @@ const ClientOrders = () => {
                                             )}
                                         </div>
                                     )}
+
+                                    {/* Logistics Transport & Air Charter Details */}
+                                    {(() => {
+                                        const orig = selectedTransaction.originalRecord || {};
+                                        const origMeta = typeof orig.metadata === 'string' ? JSON.parse(orig.metadata) : (orig.metadata || {});
+                                        const delType = selectedTransaction.deliveryType || orig.deliveryType || orig.delivery_mode || origMeta.deliveryType || origMeta.delivery_mode;
+                                        const tAsset = selectedTransaction.transport_asset || orig.transport_asset || orig.transportAsset || origMeta.transport_asset || origMeta.transportAsset;
+                                        const tAssetCustom = selectedTransaction.transport_asset_custom || orig.transport_asset_custom || orig.transportAssetCustom || orig.charterDetails || origMeta.transport_asset_custom || origMeta.charter_details;
+                                        const islLoc = selectedTransaction.island_location || orig.island_location || orig.islandLocation || origMeta.island_location || origMeta.islandLocation;
+
+                                        if (delType !== 'Air' && delType !== 'Sea' && !tAsset && !tAssetCustom && !islLoc) {
+                                            return null;
+                                        }
+
+                                        return (
+                                            <div className="p-4 rounded-2xl bg-accent/5 border border-accent/20 space-y-3">
+                                                <div className="flex items-center justify-between">
+                                                    <p className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-1.5">
+                                                        {delType === 'Air' ? '✈ Logistics Mode: Air Charter Protocol' : '🛥 Logistics Mode: Sea Marine Protocol'}
+                                                    </p>
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-accent/20 text-accent border border-accent/30">
+                                                        {tAsset || (delType === 'Air' ? 'Charter Jet' : 'Sea Vessel')}
+                                                    </span>
+                                                </div>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                                                    <div>
+                                                        <p className="text-[9px] font-bold text-muted uppercase">Fleet / Asset Type</p>
+                                                        <p className="font-bold text-white">{tAsset || (delType === 'Air' ? 'Charter Jet' : 'Sea Vessel')}</p>
+                                                    </div>
+                                                    {islLoc && (
+                                                        <div>
+                                                            <p className="text-[9px] font-bold text-muted uppercase">Island / Airstrip Location</p>
+                                                            <p className="font-bold text-white">{islLoc}</p>
+                                                        </div>
+                                                    )}
+                                                    {tAssetCustom && (
+                                                        <div className="sm:col-span-2">
+                                                            <p className="text-[9px] font-bold text-muted uppercase">Charter Specs / Tail Number / Instructions</p>
+                                                            <p className="font-black text-accent">{tAssetCustom}</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        );
+                                    })()}
 
                                     {/* Chauffeur / Passenger Info */}
                                     {(() => {

@@ -16,6 +16,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../context/GlobalDataContext';
 import { normalizeRole } from '../../utils/authUtils';
+import { useUpdateOrder, useCreateOrder } from '../../hooks/api/useOrders';
 
 const StatCard = ({ label, value, icon: Icon, color = 'text-accent', bg = 'bg-accent/10', onClick }) => (
   <motion.div
@@ -80,6 +81,8 @@ const ClientDashboard = () => {
     guestRequests = [], luxuryItems = [], fetchLuxuryItems,
   } = useData();
   const navigate = useNavigate();
+  const updateOrderMutation = useUpdateOrder();
+  const createOrderMutation = useCreateOrder();
 
   useEffect(() => {
     fetchOrders();
@@ -219,7 +222,24 @@ const ClientDashboard = () => {
     }
   };
 
-  const handleSave = (formData) => { setIsModalOpen(false); };
+  const handleSave = async (formData, orderId) => {
+    const targetId = orderId || selectedOrder?.id || formData?.id;
+    try {
+      if (targetId) {
+        await updateOrderMutation.mutateAsync({ id: targetId, orderData: formData });
+        swalSuccess('Success', 'Order updated successfully.');
+      } else {
+        await createOrderMutation.mutateAsync(formData);
+        swalSuccess('Success', 'Order created successfully.');
+      }
+      setIsModalOpen(false);
+      if (fetchOrders) fetchOrders();
+      if (fetchDeliveries) fetchDeliveries();
+    } catch (err) {
+      const errMsg = err?.response?.data?.message || err?.message || 'Failed to save order.';
+      swalError('Error', errMsg);
+    }
+  };
   const handleDelete = (id) => { setIsModalOpen(false); };
 
   const handleProfileUpdate = async () => {

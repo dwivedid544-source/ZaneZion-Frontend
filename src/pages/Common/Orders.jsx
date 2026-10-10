@@ -280,12 +280,13 @@ const Orders = () => {
     setIsModalOpen(true);
   };
 
-  const handleSave = async (formData) => {
+  const handleSave = async (formData, orderId) => {
     try {
-      if (modalType === 'add') {
+      const targetId = orderId || selectedOrder?.id || formData?.id;
+      if (targetId) {
+        await updateOrderMutation.mutateAsync({ id: targetId, orderData: formData });
+      } else {
         await createOrderMutation.mutateAsync(formData);
-      } else if (modalType === 'edit') {
-        await updateOrderMutation.mutateAsync({ id: selectedOrder.id, orderData: formData });
       }
       setIsModalOpen(false);
       swalSuccess('Order saved successfully.');

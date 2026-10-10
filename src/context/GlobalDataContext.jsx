@@ -4855,22 +4855,24 @@ export const GlobalDataProvider = ({ children }) => {
   const addVendor = async (vendor) => {
     try {
       const companyId = currentUser?.company_id ?? currentUser?.companyId;
-      const vendorWithGate = { ...vendor, status: "inactive" };
+      const desiredStatus = String(vendor.status || "active").toLowerCase() === "inactive" ? "inactive" : "active";
+      const vendorWithGate = { ...vendor, status: desiredStatus };
       const reqData = buildVendorApiBody(vendorWithGate, companyId);
-      reqData.status = "inactive";
+      reqData.status = desiredStatus;
       const res = await api.post("/vendors", reqData);
 
       // Re-fetch to ensure correct mapping and sync
       await fetchVendors();
+      if (syncGlobalState) await syncGlobalState();
 
       addLog({
         action: "Vendor Onboarding",
-        detail: `${vendor.name || "Vendor"} saved as pending — hidden from marketplace until a Super Admin approves (Active).`,
+        detail: `${vendor.name || "Vendor"} added successfully to directory & marketplace.`,
         type: "system",
       });
-      await swalInfo(
-        "Awaiting Super Admin approval",
-        "This vendor is saved as pending. It will appear in the marketplace and vendor pickers only after a Super Admin approves it from Vendor directory.",
+      await swalSuccess(
+        "Vendor Added",
+        `${vendor.name || "Vendor"} is now active and available in the marketplace.`,
       );
       return res.data;
     } catch (error) {

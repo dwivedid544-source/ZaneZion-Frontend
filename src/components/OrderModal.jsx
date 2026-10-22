@@ -8,6 +8,7 @@ import { ORDER_STATUS_OPTIONS, coerceOrderStatusToApi, isoDateSlice, displayOrde
 import { normalizeRole, roleCanCreateInstitutionalOrder, roleCanUpdateOrderStatus } from '../utils/authUtils';
 import { swalWarning } from '../utils/swal';
 import { useOrder } from '../hooks/api/useOrders';
+import { isClientBusinessAccount, getAssignedAccountManager, isOrderHeldFromFieldStaff } from '../utils/accountManagerService';
 
 const todayIso = () => new Date().toISOString().split('T')[0];
 const normalizeIsoDate = (v) => {
@@ -22,7 +23,7 @@ const clampDueDateToRequest = (requestDate, dueDate) => {
 };
 
 const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelete, initialData, role }) => {
-    const { currentUser, marketplaceVendors = [], vendors = [], clients, fetchVendors, fetchClients, customerUsers, fetchCustomerUsers } = useData();
+    const { currentUser, marketplaceVendors = [], vendors = [], clients, fetchVendors, fetchClients, customerUsers, fetchCustomerUsers, inventory = [], fetchInventory } = useData();
     const [currentModalType, setCurrentModalType] = useState(modalType);
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isCalculatingDistance, setIsCalculatingDistance] = useState(false);
@@ -705,12 +706,29 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 )}
                                             </label>
                                             {currentModalType === 'view' ? (
-                                                <input
-                                                    type="text"
-                                                    value={formData.client || 'No Customer Assigned'}
-                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-muted cursor-not-allowed"
-                                                    disabled
-                                                />
+                                                <div className="space-y-2">
+                                                    <input
+                                                        type="text"
+                                                        value={formData.client || 'No Customer Assigned'}
+                                                        className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm font-bold text-muted cursor-not-allowed"
+                                                        disabled
+                                                    />
+                                                    {isClientBusinessAccount(effectiveOrder, clients) && (
+                                                        <div className="p-3 rounded-lg bg-accent/10 border border-accent/25 flex flex-col gap-1">
+                                                            <div className="flex items-center justify-between">
+                                                                <span className="text-[10px] font-black uppercase text-accent tracking-wider">
+                                                                    Business Account • Direct Manager Control
+                                                                </span>
+                                                                <span className="text-[10px] font-bold text-white bg-accent/20 px-2 py-0.5 rounded">
+                                                                    {getAssignedAccountManager(effectiveOrder, 'Assigned Account Manager')}
+                                                                </span>
+                                                            </div>
+                                                            <span className="text-[10px] text-muted">
+                                                                Field Staff Routing: {isOrderHeldFromFieldStaff(effectiveOrder, clients) ? 'Held under Account Manager supervision (Not visible to field staff)' : 'Released to Logistics / Field Drivers'}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
                                             ) : (
                                                 <div className="relative">
                                                     <button
@@ -955,13 +973,34 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                                         <Tag className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" size={12} />
                                                                         <input
                                                                             type="text"
+                                                                            list={`inventory-items-datalist-${index}`}
                                                                             value={item.name}
-                                                                            onChange={(e) => handleItemChange(index, 'name', e.target.value)}
-                                                                            placeholder="e.g. Vintage Champagne"
+                                                                            onChange={(e) => {
+                                                                                const val = e.target.value;
+                                                                                handleItemChange(index, 'name', val);
+                                                                                const matched = (inventory || []).find(inv => (inv.name || '').toLowerCase() === val.toLowerCase());
+                                                                                if (matched) {
+                                                                                    if (matched.price != null && !item.price) {
+                                                                                        handleItemChange(index, 'price', matched.price);
+                                                                                    }
+                                                                                    const storeName = matched.store || matched.vendorName || matched.vendor;
+                                                                                    if (storeName && !formData.vendor) {
+                                                                                        setFormData(prev => ({ ...prev, vendor: storeName }));
+                                                                                    }
+                                                                                }
+                                                                            }}
+                                                                            placeholder="Type or select product..."
                                                                             className="w-full bg-background border border-border rounded-lg pl-9 pr-3 py-2 text-xs focus:border-accent outline-none font-bold"
                                                                             disabled={currentModalType === 'view'}
                                                                             required
                                                                         />
+                                                                        <datalist id={`inventory-items-datalist-${index}`}>
+                                                                            {(inventory || []).map((inv, iIdx) => (
+                                                                                <option key={inv.id || iIdx} value={inv.name}>
+                                                                                    {inv.name} - ${parseFloat(inv.price || 0).toFixed(2)} ({inv.vendorName || inv.store || 'Marketplace'})
+                                                                                </option>
+                                                                            ))}
+                                                                        </datalist>
                                                                     </div>
                                                                 </div>
                                                                 <div className="space-y-1">

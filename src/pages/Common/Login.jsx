@@ -89,6 +89,19 @@ const Login = ({ onLogin }) => {
           return;
         }
 
+        const isBusinessUser = ['client', 'business_client', 'saas_client'].includes(String(userData.role || '').toLowerCase());
+        const isPendingBusiness = isBusinessUser && (
+          String(userData.status || '').toLowerCase() === 'pending_approval' ||
+          String(userData.status || '').toLowerCase() === 'pending' ||
+          Boolean(JSON.parse(localStorage.getItem('pending_business_signups') || '[]').some(p => p.email?.toLowerCase() === (user.email || loginEmail || '').toLowerCase() && p.status === 'pending_approval'))
+        );
+
+        if (isPendingBusiness) {
+          setError('Your Business Account application is currently pending admin review. A dedicated Account Manager will be assigned upon activation.');
+          setLoading(false);
+          return;
+        }
+
         // Clear cached queries and localStorage overrides from previous sessions
         try {
           queryClient.clear();

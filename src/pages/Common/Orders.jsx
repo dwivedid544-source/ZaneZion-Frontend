@@ -15,6 +15,7 @@ import { formatClientDisplayName } from '../../utils/apiHelpers';
 import { isOrderVisibleToConcierge } from '../../utils/conciergeVisibility';
 import api from '../../services/api/setupAxios';
 import { setUpdatedChauffeurItem } from '../../utils/stateSyncHelper';
+import { isClientBusinessAccount, isOrderHeldFromFieldStaff, getAssignedAccountManager } from '../../utils/accountManagerService';
 
 /** Bespoke / concierge-path orders (store custom request or any row with a custom_request_category). */
 function isCustomRequestFlowOrder(order) {
@@ -227,6 +228,35 @@ const Orders = () => {
     }
   };
 
+  const handleReleaseToFieldStaff = async (order) => {
+    const mgr = getAssignedAccountManager(order, 'Account Manager');
+    const confirm = await swalConfirm(
+      `Release Order #${order.id} to Field Staff?`,
+      `Authorize this Business order and dispatch it to Logistics / Field Drivers for pickup & delivery?`
+    );
+    if (!confirm?.isConfirmed) return;
+
+    try {
+      await updateOrderStatusMutation.mutateAsync({ id: order.id, status: 'logistics' });
+      try {
+        const cleanId = String(order.id).replace(/^#|^ORD-/i, '');
+        await api.put(`/orders/${cleanId}/status`, { status: 'logistics' });
+      } catch (_) {
+        try {
+          const cleanId = String(order.id).replace(/^#|^ORD-/i, '');
+          await api.patch(`/orders/${cleanId}/status`, { status: 'logistics' });
+        } catch (_) {}
+      }
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
+      swalSuccess(
+        'Order Released to Field Staff',
+        `Order #${order.id} has been released from Account Manager hold and forwarded to Logistics & Field Drivers.`
+      );
+    } catch (err) {
+      swalError(err?.message || 'Failed to release order to field staff.');
+    }
+  };
+
   const currentOrders = (() => {
     // Exclude converted Project records and Chauffeur bookings from the Orders list (they belong in Projects / Chauffeur views)
     const nonProjectOrders = orders.filter(o => {
@@ -249,6 +279,12 @@ const Orders = () => {
     // Concierge Portal Visibility: Concierge sees Concierge Requests + Marketplace orders of upgraded clients only
     if (portalRole === 'concierge' || normalizedRole === 'concierge') {
       list = list.filter(o => isOrderVisibleToConcierge(o, clients));
+    }
+
+    // Field Staff Visibility: Drivers / Couriers / Field Staff do NOT see unreleased business orders
+    const isFieldStaffRole = ['driver', 'staff', 'field_staff'].includes(portalRole) || ['driver', 'staff', 'field_staff'].includes(normalizedRole);
+    if (isFieldStaffRole) {
+      list = list.filter(o => !isOrderHeldFromFieldStaff(o, clients));
     }
 
     return [...list].sort((a, b) => {
@@ -329,7 +365,34 @@ const Orders = () => {
     {
       header: "Client",
       accessor: "client",
-      render: (row) => formatClientDisplayName(row, clients, [...(users || []), ...(customerUsers || [])])
+      render: (row) => {
+        const clientName = formatClientDisplayName(row, clients, [...(users || []), ...(customerUsers || [])]);
+        const isBiz = isClientBusinessAccount(row, clients);
+        const mgr = getAssignedAccountManager(row, isBiz ? 'Account Manager (Triage)' : '');
+        const isHeld = isOrderHeldFromFieldStaff(row, clients);
+
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="font-bold text-white tracking-tight">{clientName}</span>
+            {isBiz ? (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-purple-500/15 text-purple-400 border border-purple-500/30">
+                  Business • {mgr}
+                </span>
+                {isHeld && (
+                  <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    Held from Field Staff
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 w-fit">
+                Personal • Auto-Routed
+              </span>
+            )}
+          </div>
+        );
+      }
     },
     {
       header: "Order Type",
@@ -694,8 +757,21 @@ const Orders = () => {
                   return null;
                 }
 
+                const isBizHeld = isClientBusinessAccount(item, clients) && isOrderHeldFromFieldStaff(item, clients);
+
                 return (
                   <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                    {isBizHeld && (
+                      <button
+                        type="button"
+                        onClick={() => handleReleaseToFieldStaff(item)}
+                        className="px-2.5 py-1.5 rounded-lg bg-accent/20 hover:bg-accent/30 text-accent border border-accent/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer"
+                        title="Authorize & release business order to field staff"
+                      >
+                        <Truck size={13} className="text-accent" />
+                        <span>Release to Field</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => handleAcceptOrder(item)}

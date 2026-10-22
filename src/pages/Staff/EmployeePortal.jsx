@@ -22,6 +22,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { notifyStateChanged, setUpdatedChauffeurItem } from '../../utils/stateSyncHelper';
 import api from '../../services/api/setupAxios';
 import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
+import { isOrderHeldFromFieldStaff } from '../../utils/accountManagerService';
 
 const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
     const [eta, setEta] = useState(null);
@@ -104,7 +105,7 @@ const EmployeePortal = () => {
         chauffeurRequests, fetchChauffeurRequests, updateChauffeurRequest,
         fleet, fetchFleet, syncGlobalState,
         securityEvents, fetchSecurityEvents,
-        hasMenuPermission
+        hasMenuPermission, clients = []
     } = useData();
 
     const queryClient = useQueryClient();
@@ -346,7 +347,10 @@ const EmployeePortal = () => {
         const isAssignedOrFinished = ['assigned', 'accepted', 'en_route', 'in_transit', 'dispatched', 'delivered', 'completed', 'logistics'].includes(s);
         const isOpenStatus = ['pending', 'pending_pickup', 'pending_review', 'unassigned', ''].includes(s);
         const hasAssignedDriver = !!(d.assignedTo || d.assigned_driver || d.driverId || d.driver_id || (typeof d.driver === 'string' && d.driver.trim()));
-        return isLogisticsMission && isOpenStatus && !hasAssignedDriver && !isAssignedOrFinished;
+        
+        // Business Account Protocol: Orders from Business clients are kept under Account Manager control and NOT visible in open field driver queue
+        const isHeldBusinessOrder = isOrderHeldFromFieldStaff(d, clients);
+        return isLogisticsMission && isOpenStatus && !hasAssignedDriver && !isAssignedOrFinished && !isHeldBusinessOrder;
     });
 
     const pendingAssignments = staffAssignments.filter(a => a.status === 'Pending' && !a.assigneeId);

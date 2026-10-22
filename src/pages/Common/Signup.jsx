@@ -165,6 +165,31 @@ const Signup = () => {
         headers: { 'Content-Type': 'multipart/form-data' },
       });
 
+      if (accountType === 'business') {
+        try {
+          const pending = JSON.parse(localStorage.getItem('pending_business_signups') || '[]');
+          const newBiz = {
+            id: `biz-${Date.now()}`,
+            name: form.name.trim(),
+            companyName: form.companyName.trim(),
+            business_name: form.companyName.trim(),
+            contactPerson: form.name.trim(),
+            email: form.email.trim().toLowerCase(),
+            phone: form.phone.trim(),
+            clientType: 'Business',
+            client_type: 'Business',
+            status: 'pending_approval',
+            accountManager: 'Unassigned (Awaiting Admin Assignment)',
+            created_at: new Date().toISOString()
+          };
+          if (!pending.some(p => p.email?.toLowerCase() === newBiz.email.toLowerCase())) {
+            pending.unshift(newBiz);
+            localStorage.setItem('pending_business_signups', JSON.stringify(pending));
+            window.dispatchEvent(new CustomEvent('app:state-changed'));
+          }
+        } catch (_) {}
+      }
+
       try {
         localStorage.removeItem('token');
         localStorage.removeItem('userRole');

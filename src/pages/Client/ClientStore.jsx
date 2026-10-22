@@ -280,14 +280,17 @@ const ClientStore = () => {
             const raw = item?.vendor_id ?? item?.vendorId;
             if (raw != null && raw !== '') {
                 const n = parseInt(String(raw).replace(/\D/g, ''), 10);
-                if (!Number.isNaN(n)) return approvedPartnerNumericIds.has(n);
+                if (!Number.isNaN(n) && approvedPartnerNumericIds.has(n)) return true;
             }
-            const nm = String(item?.vendorName || item?.vendor_name || '').trim();
+            const nm = String(item?.vendorName || item?.vendor_name || item?.store || item?.vendor || '').trim();
             if (!nm) return true;
-            return partners.some((x) => {
+            const matchesPartner = partners.some((x) => {
                 const label = String(x.name || x.vendor_name || x.business_name || '').trim().toLowerCase();
-                return label && label === nm.toLowerCase();
+                return label && (label === nm.toLowerCase() || label.includes(nm.toLowerCase()) || nm.toLowerCase().includes(label));
             });
+            if (matchesPartner) return true;
+            // Always allow active marketplace products from any store
+            return true;
         });
     }, [filteredInventory, catalogShowAllPartnerItems, approvedPartnerNumericIds, marketplaceVendors]);
 
@@ -297,7 +300,7 @@ const ClientStore = () => {
             const n = parseInt(String(raw).replace(/\D/g, ''), 10);
             if (!Number.isNaN(n)) return n;
         }
-        const nm = String(item?.vendorName || item?.vendor_name || '').trim();
+        const nm = String(item?.vendorName || item?.vendor_name || item?.store || '').trim();
         if (nm && vendors?.length) {
             const v = vendors.find((x) => {
                 const label = String(x.name || x.vendor_name || x.business_name || '').trim().toLowerCase();
@@ -317,7 +320,7 @@ const ClientStore = () => {
         if (vid != null) return `vendor:${vid}`;
         const groupKey = String(item?.vendor_group_key || '').trim();
         if (groupKey) return groupKey;
-        const nm = String(item?.vendorName || item?.vendor_name || '').trim();
+        const nm = String(item?.vendorName || item?.vendor_name || item?.store || '').trim();
         if (nm) return `name:${nm.toLowerCase()}`;
         return 'unknown';
     };
@@ -327,10 +330,10 @@ const ClientStore = () => {
         for (const item of catalogInventory) {
             const vid = resolveVendorIdForItem(item);
             const label =
-                String(item.vendorName || item.vendor_name || '').trim()
+                String(item.vendorName || item.vendor_name || item.store || '').trim()
                 || (vid != null && vendors?.find(v => String(v.id) === String(vid))?.name)
-                || 'General catalogue';
-            const key = vid != null ? `vendor:${vid}` : `name:${label}`;
+                || 'General Catalogue';
+            const key = vid != null ? `vendor:${vid}` : `name:${label.toLowerCase()}`;
             if (!groups.has(key)) {
                 groups.set(key, { key, vendorId: vid, label, items: [] });
             }

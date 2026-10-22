@@ -4,13 +4,14 @@ import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredent
 import { createPortal } from 'react-dom';
 import { useData } from '../../context/GlobalDataContext';
 import { useClients, useCreateClient, useUpdateClient, useDeleteClient } from '../../hooks/api/useCRM';
-import { Search, Plus, Download, User, MapPin, Package, CreditCard, Eye, EyeOff, Edit2, ToggleLeft, ToggleRight, XCircle, X, Mail, Phone, Globe, Calendar, Shield, Activity, Trash2, ShoppingCart, ChevronDown, FileText, Truck } from 'lucide-react';
+import { Search, Plus, Download, User, MapPin, Package, CreditCard, Eye, EyeOff, Edit2, ToggleLeft, ToggleRight, XCircle, X, Mail, Phone, Globe, Calendar, Shield, Activity, Trash2, ShoppingCart, ChevronDown, FileText, Truck, UserCheck, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import BootstrapPagination from '../../components/Common/Pagination';
 import api from '../../services/api/setupAxios.js';
 import realApi from '../../services/api/setupAxios';
 import { normalizeRole } from '../../utils/authUtils';
 import { useQueryClient } from '@tanstack/react-query';
+import { DEFAULT_ACCOUNT_MANAGERS, getAssignedAccountManager, setClientAccountManager } from '../../utils/accountManagerService';
 
 const Clients = () => {
   const queryClient = useQueryClient();
@@ -145,7 +146,13 @@ const Clients = () => {
   const [formData, setFormData] = useState({
     name: '', email: '', phone: '', password: '', location: '', source: 'Manual', clientType: 'SaaS',
     companyName: '', logo: '', plan: 'Starter', billingCycle: 'Monthly', paymentMethod: 'Wire Transfer',
-    contact: '', address: '', status: 'active'
+    contact: '', address: '', status: 'active', accountManager: DEFAULT_ACCOUNT_MANAGERS[0].name
+  });
+
+  const [approvalModal, setApprovalModal] = useState({
+    isOpen: false,
+    client: null,
+    selectedManager: DEFAULT_ACCOUNT_MANAGERS[0].name
   });
 
   React.useEffect(() => {
@@ -267,19 +274,105 @@ const Clients = () => {
         }));
     }
 
-    return clientsList.map(c => ({ ...c, isRequest: false }));
+    let base = clientsList.map(c => ({
+      ...c,
+      isRequest: false,
+      accountManager: getAssignedAccountManager(c, (c.clientType === 'Business' || c.client_type === 'Business') ? 'Unassigned (Pending Review)' : '')
+    }));
+
+    if (clientTypeFilter === 'Business') {
+      try {
+        const pendingBiz = JSON.parse(localStorage.getItem('pending_business_signups') || '[]');
+        const existingEmails = new Set(base.map(c => (c.email || '').toLowerCase().trim()));
+        const extraBiz = pendingBiz
+          .filter(b => b.email && !existingEmails.has(b.email.toLowerCase().trim()))
+          .map(b => ({
+            ...b,
+            isRequest: false,
+            accountManager: getAssignedAccountManager(b, b.accountManager || 'Unassigned (Pending Review)')
+          }));
+        base = [...extraBiz, ...base];
+      } catch (_) {}
+    }
+
+    if (debounceSearch) {
+      const q = debounceSearch.toLowerCase();
+      base = base.filter(c =>
+        (c.name || '').toLowerCase().includes(q) ||
+        (c.companyName || '').toLowerCase().includes(q) ||
+        (c.business_name || '').toLowerCase().includes(q) ||
+        (c.email || '').toLowerCase().includes(q) ||
+        (c.phone || '').toLowerCase().includes(q) ||
+        (c.accountManager || '').toLowerCase().includes(q)
+      );
+    }
+
+    return base;
   })();
 
   const filteredClients = allClients.sort((a, b) => new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0));
-  const currentItems = clientTypeFilter === 'Website'
+  const currentItems = (clientTypeFilter === 'Website' || clientTypeFilter === 'Business')
     ? filteredClients.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
     : filteredClients;
 
   // Stats
-  const totalClients = clientTypeFilter === 'Website' ? allClients.length : (totalFromBackend || allClients.length);
+  const totalClients = (clientTypeFilter === 'Website' || clientTypeFilter === 'Business') ? allClients.length : (totalFromBackend || allClients.length);
   const activeClients = allClients.filter(c => (c.status || '').toLowerCase() === 'active').length;
-  const pendingClients = allClients.filter(c => (c.status || '').toLowerCase() === 'pending').length;
+  const pendingClients = allClients.filter(c => {
+    const s = (c.status || '').toLowerCase();
+    return s === 'pending' || s === 'pending_approval' || s === 'verification needed';
+  }).length;
   const inactiveClients = allClients.filter(c => ['inactive', 'deactivated'].includes((c.status || '').toLowerCase())).length;
+
+  const handleOpenApprovalModal = (client) => {
+    const existing = getAssignedAccountManager(client, '');
+    const defaultManager = (existing && !existing.includes('Unassigned')) ? existing : DEFAULT_ACCOUNT_MANAGERS[0].name;
+    setApprovalModal({
+      isOpen: true,
+      client,
+      selectedManager: defaultManager
+    });
+  };
+
+  const handleConfirmApproval = async () => {
+    const client = approvalModal.client;
+    const manager = approvalModal.selectedManager;
+    if (!client || !manager) return;
+
+    try {
+      setClientAccountManager(client.id, manager, 'active');
+      if (client.email) {
+        setClientAccountManager(client.email, manager, 'active');
+      }
+
+      if (!String(client.id).startsWith('biz-') && !client.isRequest) {
+        try {
+          await updateMutation.mutateAsync({
+            id: client.id,
+            data: {
+              ...client,
+              status: 'active',
+              accountManager: manager,
+              account_manager: manager
+            }
+          });
+        } catch (apiErr) {
+          console.warn('Backend update failed, local state updated successfully:', apiErr);
+        }
+      }
+
+      setApprovalModal({ isOpen: false, client: null, selectedManager: DEFAULT_ACCOUNT_MANAGERS[0].name });
+      await queryClient.invalidateQueries({ queryKey: ['clients'] });
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
+
+      swalSuccess(
+        'Business Account Approved!',
+        `${client.companyName || client.name || 'Client'} has been approved and assigned to Account Manager ${manager}. Orders will be routed directly to ${manager} and bypass field staff.`
+      );
+    } catch (err) {
+      swalError('Approval Error', err.message || 'Failed to approve business client.');
+    }
+  };
 
   const handleView = (client) => {
     setSelectedClient(client);
@@ -314,7 +407,8 @@ const Clients = () => {
       billingCycle: client.billingCycle || client.billing_cycle || 'Monthly',
       paymentMethod: client.paymentMethod || client.payment_method || 'Wire Transfer',
       contact: client.contactPerson || client.contact || client.contact_person || '',
-      status: client.status || 'active'
+      status: client.status || 'active',
+      accountManager: getAssignedAccountManager(client, DEFAULT_ACCOUNT_MANAGERS[0].name)
     });
     setErrors({});
     setShowEditModal(true);
@@ -327,7 +421,8 @@ const Clients = () => {
       name: '', email: '', phone: '', password: '', location: '', source: 'Manual',
       clientType: isPersonal ? 'Personal' : (clientTypeFilter === 'Website' ? 'SaaS' : clientTypeFilter),
       companyName: '', logo: '', plan: defaultPlanName, billingCycle: 'Monthly', paymentMethod: 'Wire Transfer',
-      contact: '', address: '', city: '', country: '', status: 'active'
+      contact: '', address: '', city: '', country: '', status: 'active',
+      accountManager: DEFAULT_ACCOUNT_MANAGERS[0].name
     });
     setErrors({});
     setShowAddModal(true);
@@ -344,6 +439,12 @@ const Clients = () => {
     }
 
     try {
+      if (formData.accountManager && selectedClient) {
+        setClientAccountManager(selectedClient.id, formData.accountManager, formData.status || 'active');
+        if (selectedClient.email) {
+          setClientAccountManager(selectedClient.email, formData.accountManager, formData.status || 'active');
+        }
+      }
       if (selectedClient.isRequest) {
         const numericId = selectedClient.id.toString().replace('REQ-', '');
         // Full update of website request fields (name, phone, email, etc.)
@@ -638,7 +739,11 @@ const Clients = () => {
                   </>
                 ) : (
                   <>
-                    {clientTypeFilter !== 'Business' && <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Plan</th>}
+                    {clientTypeFilter === 'Business' ? (
+                      <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Account Manager</th>
+                    ) : (
+                      <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Plan</th>
+                    )}
                     {clientTypeFilter === 'Website' && <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Payment Status</th>}
                     <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Phone</th>
                     <th className="p-6 text-[10px] font-black text-muted uppercase tracking-widest">Source</th>
@@ -693,7 +798,24 @@ const Clients = () => {
                       </>
                     ) : (
                       <>
-                        {clientTypeFilter !== 'Business' && (
+                        {clientTypeFilter === 'Business' ? (
+                          <td className="p-6">
+                            <div className="flex flex-col">
+                              <span className={`text-xs font-bold ${
+                                client.accountManager && !client.accountManager.includes('Unassigned') 
+                                  ? 'text-accent' 
+                                  : 'text-warning italic'
+                              }`}>
+                                {client.accountManager || 'Unassigned (Pending Review)'}
+                              </span>
+                              <span className="text-[9px] text-muted font-medium mt-0.5">
+                                {client.accountManager && !client.accountManager.includes('Unassigned')
+                                  ? 'Direct Manager Assigned'
+                                  : 'Awaiting Assignment'}
+                              </span>
+                            </div>
+                          </td>
+                        ) : (
                           <td className="p-6">
                             <span className="text-sm font-bold text-accent">{getClientPlanDisplay(client)}</span>
                           </td>
@@ -725,7 +847,25 @@ const Clients = () => {
                       </span>
                     </td>
                     <td className="p-6">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {clientTypeFilter === 'Business' && (
+                          <button
+                            onClick={() => handleOpenApprovalModal(client)}
+                            className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm active:scale-95 cursor-pointer ${
+                              (client.status || '').toLowerCase() === 'pending_approval' || (client.status || '').toLowerCase() === 'pending' || !client.accountManager || client.accountManager.includes('Unassigned')
+                                ? 'bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/40'
+                                : 'bg-accent/15 hover:bg-accent/25 text-accent border border-accent/30'
+                            }`}
+                            title={client.accountManager && !client.accountManager.includes('Unassigned') ? "Reassign Account Manager" : "Approve & Assign Account Manager"}
+                          >
+                            <UserCheck size={13} />
+                            <span>
+                              {(client.status || '').toLowerCase() === 'pending_approval' || (client.status || '').toLowerCase() === 'pending' || !client.accountManager || client.accountManager.includes('Unassigned')
+                                ? "Approve & Assign"
+                                : "Assign Manager"}
+                            </span>
+                          </button>
+                        )}
                         <button
                           onClick={() => handleView(client)}
                           className="p-2.5 bg-white/5 border border-border text-secondary rounded-lg hover:text-white hover:bg-white/10 transition-all"
@@ -876,6 +1016,26 @@ const Clients = () => {
                         </div>
                       </div>
                     </div>
+
+                    {/* Business Account Manager Banner */}
+                    {(selectedClient.clientType === 'Business' || selectedClient.client_type === 'Business') && (
+                      <div className="p-4 bg-accent/10 border border-accent/25 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div className="space-y-1">
+                          <span className="text-[10px] font-black uppercase text-accent tracking-widest block">
+                            Assigned Account Manager
+                          </span>
+                          <p className="text-sm font-black text-white">
+                            {selectedClient.accountManager || getAssignedAccountManager(selectedClient, 'Unassigned (Pending Review)')}
+                          </p>
+                          <span className="text-[10px] text-muted block">
+                            Direct Account Manager Protocol: All orders placed by this account will bypass field staff and remain under direct manager supervision.
+                          </span>
+                        </div>
+                        <span className="px-3 py-1 rounded-lg bg-accent/20 text-accent text-[10px] font-black uppercase tracking-wider shrink-0 self-start md:self-auto">
+                          Business Account
+                        </span>
+                      </div>
+                    )}
 
                     {/* Details Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1257,9 +1417,28 @@ const Clients = () => {
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold appearance-none cursor-pointer">
                       <option value="active">Active</option>
                       <option value="inactive">Inactive</option>
+                      <option value="pending_approval">Pending Approval</option>
                       <option value="Pending">Pending</option>
                     </select>
                   </div>
+                  {(formData.clientType === 'Business' || clientTypeFilter === 'Business') && (
+                    <div className="space-y-2 col-span-1 md:col-span-2">
+                      <label className="text-[10px] font-black text-accent uppercase tracking-widest pl-1">
+                        Assigned Account Manager
+                      </label>
+                      <select
+                        value={formData.accountManager || DEFAULT_ACCOUNT_MANAGERS[0].name}
+                        onChange={(e) => setFormData({ ...formData, accountManager: e.target.value })}
+                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-bold"
+                      >
+                        {DEFAULT_ACCOUNT_MANAGERS.map(m => (
+                          <option key={m.id} value={m.name} className="bg-sidebar text-white">
+                            {m.name} ({m.role})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
                 {!isAdminRole && (
                 <>
@@ -1417,6 +1596,105 @@ const Clients = () => {
                 <button onClick={() => setDeliveryModal({ isOpen: false, order: null })} className="px-8 py-3 text-secondary text-[10px] font-black uppercase tracking-widest hover:text-white transition-all italic">Cancel</button>
                 <button onClick={handleCreateDelivery} className="btn-primary flex items-center gap-3 px-10 shadow-xl shadow-accent/20">
                   <Truck size={16} /> <span>Dispatch Now</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Business Client Approval & Account Manager Assignment Modal */}
+        {approvalModal.isOpen && approvalModal.client && (
+          <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              className="w-full max-w-lg bg-sidebar border border-accent/30 rounded-2xl p-6 shadow-2xl space-y-6 relative"
+            >
+              <button 
+                onClick={() => setApprovalModal({ isOpen: false, client: null, selectedManager: DEFAULT_ACCOUNT_MANAGERS[0].name })}
+                className="absolute top-4 right-4 text-muted hover:text-white p-2 rounded-lg hover:bg-white/5 transition-all"
+              >
+                <X size={18} />
+              </button>
+
+              <div className="flex items-center gap-3 border-b border-border/20 pb-4">
+                <div className="w-10 h-10 rounded-xl bg-accent/20 flex items-center justify-center text-accent">
+                  <Shield size={20} />
+                </div>
+                <div>
+                  <h2 className="text-lg font-black tracking-tight text-white uppercase italic">
+                    Approve Business Account
+                  </h2>
+                  <p className="text-xs text-secondary mt-0.5 font-medium">
+                    Assign a dedicated Account Manager. Orders will bypass field staff.
+                  </p>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="p-4 rounded-xl bg-white/[0.03] border border-white/5 space-y-2 text-xs">
+                  <div className="flex justify-between">
+                    <span className="text-muted uppercase font-bold text-[10px]">Company / Business:</span>
+                    <span className="text-white font-bold">{approvalModal.client.companyName || approvalModal.client.name || approvalModal.client.business_name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted uppercase font-bold text-[10px]">Contact Person:</span>
+                    <span className="text-white font-bold">{approvalModal.client.contactPerson || approvalModal.client.contact || approvalModal.client.name || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted uppercase font-bold text-[10px]">Email:</span>
+                    <span className="text-secondary font-medium">{approvalModal.client.email || 'N/A'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted uppercase font-bold text-[10px]">Phone:</span>
+                    <span className="text-secondary font-medium">{approvalModal.client.phone || 'N/A'}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black uppercase tracking-wider text-accent block pl-1">
+                    Select Assigned Account Manager *
+                  </label>
+                  <select
+                    value={approvalModal.selectedManager}
+                    onChange={(e) => setApprovalModal(prev => ({ ...prev, selectedManager: e.target.value }))}
+                    className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-accent font-semibold"
+                  >
+                    {DEFAULT_ACCOUNT_MANAGERS.map(mgr => (
+                      <option key={mgr.id} value={mgr.name} className="bg-sidebar text-white">
+                        {mgr.name} — {mgr.role}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[10px] text-muted pl-1">
+                    The assigned Account Manager directly supervises this client&apos;s requests and order queue.
+                  </p>
+                </div>
+
+                <div className="p-3.5 rounded-xl bg-accent/10 border border-accent/25 text-[11px] text-accent flex items-start gap-2.5">
+                  <Activity size={16} className="shrink-0 mt-0.5 text-accent" />
+                  <span className="leading-relaxed">
+                    <strong>Routing Enforcement:</strong> Orders placed by this Business account will NOT be routed to open field staff. Direct Account Manager triage and release will be required.
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2 border-t border-border/10">
+                <button
+                  type="button"
+                  onClick={() => setApprovalModal({ isOpen: false, client: null, selectedManager: DEFAULT_ACCOUNT_MANAGERS[0].name })}
+                  className="px-5 py-2.5 rounded-xl border border-white/10 text-xs font-bold text-muted hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmApproval}
+                  className="btn-primary px-6 py-2.5 text-xs flex items-center gap-2 shadow-lg shadow-accent/20 cursor-pointer"
+                >
+                  <CheckCircle2 size={16} />
+                  <span>Confirm Approval & Assign</span>
                 </button>
               </div>
             </motion.div>

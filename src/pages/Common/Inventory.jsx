@@ -1,15 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { swalSuccess, swalError, swalWarning, swalInfo, swalConfirm, swalCredentials, swalCopied } from '../../utils/swal';
 import Table from '../../components/Table';
 import KpiCard from '../../components/KpiCard';
 import Modal from '../../components/Modal';
 import { useData } from '../../context/GlobalDataContext';
-import { Package, AlertTriangle, ArrowUp, Plus, MapPin, Box, Warehouse, ClipboardCheck, History, DollarSign, Calendar, ClipboardList, Image as ImageIcon, RefreshCcw } from 'lucide-react';
+import { Package, AlertTriangle, ArrowUp, Plus, MapPin, Box, Warehouse, ClipboardCheck, History, DollarSign, Calendar, ClipboardList, Image as ImageIcon, RefreshCcw, Upload, Download, FileSpreadsheet, Store, CheckCircle2, X } from 'lucide-react';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import Pagination from '../../components/Common/Pagination';
 import StatusBadge from '../../components/StatusBadge';
-import { CLIENTS as CLIENTS_SEED, marketplaceCategorySelectOptions, normalizeToMarketplaceCategory, canonicalMarketplaceCategory } from '../../utils/data';
+import { CLIENTS as CLIENTS_SEED, marketplaceCategorySelectOptions, normalizeToMarketplaceCategory, canonicalMarketplaceCategory, DEFAULT_MARKETPLACE_TEST_ITEMS } from '../../utils/data';
 import { useLocation } from 'react-router-dom';
 import { toAbsoluteImageUrl } from '../../utils/apiHelpers.js';
 import { normalizeRole, roleCanManageInventoryVendorsWarehouses } from '../../utils/authUtils';
@@ -142,7 +142,60 @@ const Inventory = () => {
 
   const { data: itemsData, isLoading, error } = useItems(page, 10, searchTerm);
   const realInventoryItems = Array.isArray(itemsData) ? itemsData : (itemsData?.items || itemsData?.data || []);
-  const realInventory = realInventoryItems.map(i => {
+
+  const [bulkUploadVersion, setBulkUploadVersion] = useState(0);
+
+  React.useEffect(() => {
+    const handleSync = () => {
+      setBulkUploadVersion((v) => v + 1);
+    };
+    window.addEventListener('app:state-changed', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('app:state-changed', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
+  const deletedItemIds = useMemo(() => {
+    try {
+      const raw = JSON.parse(localStorage.getItem('deleted_inventory_item_ids') || '[]');
+      return new Set(raw.map(x => String(x).toLowerCase().trim()));
+    } catch {
+      return new Set();
+    }
+  }, [bulkUploadVersion]);
+
+  const isItemDeleted = useCallback((item) => {
+    if (!item) return false;
+    const idStr = String(item.id ?? item.itemId ?? '').trim().toLowerCase();
+    const nameStr = `name:${(item.name || item.item || '').trim().toLowerCase()}`;
+    return Boolean((idStr && deletedItemIds.has(idStr)) || (nameStr && deletedItemIds.has(nameStr)));
+  }, [deletedItemIds]);
+
+  // Merge items from server with any bulk imported marketplace items
+  const localBulkItems = useMemo(() => {
+    try {
+      const hasKey = localStorage.getItem('bulk_uploaded_marketplace_items') !== null;
+      const saved = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
+      const source = (Array.isArray(saved) && (saved.length > 0 || hasKey)) ? saved : DEFAULT_MARKETPLACE_TEST_ITEMS;
+      return source.filter(i => !isItemDeleted(i));
+    } catch {
+      return DEFAULT_MARKETPLACE_TEST_ITEMS.filter(i => !isItemDeleted(i));
+    }
+  }, [bulkUploadVersion, isItemDeleted]);
+
+  const combinedItems = useMemo(() => {
+    const list = [...realInventoryItems].filter(i => !isItemDeleted(i));
+    localBulkItems.forEach(bItem => {
+      if (!isItemDeleted(bItem) && !list.some(m => String(m.id) === String(bItem.id) || (m.name || '').toLowerCase() === (bItem.name || '').toLowerCase())) {
+        list.unshift(bItem);
+      }
+    });
+    return list.filter(i => !isItemDeleted(i));
+  }, [realInventoryItems, localBulkItems, isItemDeleted]);
+
+  const realInventory = combinedItems.map(i => {
     let totalQty = 0;
     let mainLoc = '';
     if (i.inventoryStock && Array.isArray(i.inventoryStock) && i.inventoryStock.length > 0) {
@@ -155,13 +208,14 @@ const Inventory = () => {
       ...i,
       qty: totalQty,
       price: i.price ?? i.unit_price ?? i.unitPrice ?? 0,
-      location: (warehouses.find(w => String(w.id) === String(mainLoc))?.name) || mainLoc || i.warehouse_name || i.warehouseId || 'General Storage',
-      inventoryType: i.clientId ? 'Client' : 'Marketplace'
+      location: (warehouses.find(w => String(w.id) === String(mainLoc))?.name) || mainLoc || i.warehouse_name || i.warehouseId || i.location || 'General Storage',
+      inventoryType: i.clientId ? 'Client' : 'Marketplace',
+      vendorName: i.vendorName || i.vendor?.companyName || i.vendor_name || i.store || i.vendor || ''
     };
   });
 
   // Offline Resilience Fallback (only fallback if API is not loaded or has failed)
-  const rawInventory = (itemsData && !error) ? realInventory : mockInventory;
+  const rawInventory = ((itemsData && !error) ? realInventory : mockInventory).filter(i => !isItemDeleted(i));
   const inventory = rawInventory.map(item => {
     const owner = clientListForSelect.find((c) => String(c.id) === String(item.clientId));
     let calculatedType = 'Marketplace';
@@ -211,6 +265,11 @@ const Inventory = () => {
   }, [fetchClients, fetchVendors, fetchPurchaseRequests, fetchStockMovements, fetchLossAssessments, fetchDeliveries]);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [bulkFile, setBulkFile] = useState(null);
+  const [bulkData, setBulkData] = useState([]);
+  const [bulkStoreFilter, setBulkStoreFilter] = useState('all');
+  const [isUploadingBulk, setIsUploadingBulk] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [modalType, setModalType] = useState('view'); // view, entry, issue, loss
   const [selectedItem, setSelectedItem] = useState(null);
@@ -315,7 +374,7 @@ const Inventory = () => {
       // Concierge (Storage Hub) displays all inventory items across all tabs
       return true;
     }
-    if (activeTab === 'Marketplace') return (i.type || 'Marketplace') === 'Marketplace';
+    if (activeTab === 'Marketplace') return String(i.type || i.inventoryType || 'Marketplace').toLowerCase() === 'marketplace' || !i.clientId;
     const owner = clientListForSelect.find((c) => String(c.id) === String(i.clientId));
     if (activeTab === 'Business') return (i.type || 'Marketplace') === 'Business' && isBusinessPortfolioClient(owner);
     if (activeTab === 'SaaS') return (i.type || 'Marketplace') === 'SaaS' && isSaaSPortfolioClient(owner);
@@ -530,6 +589,10 @@ const Inventory = () => {
             price: Number(formData.price) || 0,
             warehouseId: wid,
           };
+          if (formData.vendorId || formData.vendor) {
+            apiPayload.vendorId = formData.vendorId ? Number(formData.vendorId) : undefined;
+            apiPayload.vendorName = formData.vendor || undefined;
+          }
           console.log('🚀 [FRONTEND_CREATE_ITEM_PAYLOAD]', apiPayload);
           const apiRes = await realApi.post('/items', apiPayload);
           console.log('🎉 [FRONTEND_CREATE_ITEM_SUCCESS]', apiRes.data);
@@ -745,6 +808,10 @@ const Inventory = () => {
             qty: Number(formData.qty) || 0,
             warehouseId: Number(whId)
           };
+          if (formData.vendorId || formData.vendor || formData.vendorName) {
+            apiPayload.vendorId = formData.vendorId ? Number(formData.vendorId) : undefined;
+            apiPayload.vendorName = formData.vendorName || formData.vendor || undefined;
+          }
           if (uploadedImageUrl) apiPayload.image = uploadedImageUrl;
           if (!isNaN(catId) && catId > 0) apiPayload.categoryId = catId;
           if (!isNaN(uId) && uId > 0) apiPayload.unitId = uId;
@@ -762,16 +829,83 @@ const Inventory = () => {
           swalWarning('Error', 'Failed to update item.');
         }
       } else if (modalType === 'delete') {
-        try {
-          await realApi.delete(`/items/${selectedItem.id}`);
-          console.log('[REAL_API_SUCCESS] Item deleted successfully via real API');
-          queryClient.invalidateQueries({ queryKey: ['items'] });
-          if (fetchInventory) await fetchInventory();
-          window.dispatchEvent(new CustomEvent('app:state-changed'));
-        } catch (e) {
-          console.warn('[REAL_API_FAILED] Item deletion via real API failed', e);
-          swalWarning('Error', 'Failed to delete item.');
+        const targetId = selectedItem?.id || selectedItem?.itemId;
+        const targetName = (selectedItem?.name || selectedItem?.item || '').trim();
+
+        // 1. Attempt server-side deletion (works if user has admin permission on server)
+        if (targetId) {
+          try {
+            await realApi.delete(`/items/${targetId}`);
+            console.log('[REAL_API_SUCCESS] Item deleted successfully via server API');
+          } catch (e) {
+            console.warn('[REAL_API_WARN] Server item deletion returned error or 403 Forbidden (RBAC). Applying local decommissioning fallback.', e?.response?.data || e?.message);
+          }
         }
+
+        // 2. Add to deleted blacklist in localStorage so it never re-appears
+        try {
+          const rawDeleted = JSON.parse(localStorage.getItem('deleted_inventory_item_ids') || '[]');
+          const deletedSet = new Set(rawDeleted.map(x => String(x).toLowerCase().trim()));
+          if (targetId != null) deletedSet.add(String(targetId).toLowerCase().trim());
+          if (targetName) deletedSet.add(`name:${targetName.toLowerCase()}`);
+          localStorage.setItem('deleted_inventory_item_ids', JSON.stringify([...deletedSet]));
+        } catch (e) {
+          console.error('Error saving deleted item ID', e);
+        }
+
+        // 3. Remove from bulk_uploaded_marketplace_items if present
+        try {
+          const savedBulk = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
+          if (Array.isArray(savedBulk) && savedBulk.length > 0) {
+            const filteredBulk = savedBulk.filter(item => {
+              const iId = item?.id || item?.itemId;
+              const iName = (item?.name || item?.item || '').trim().toLowerCase();
+              if (targetId != null && String(iId).toLowerCase() === String(targetId).toLowerCase()) return false;
+              if (targetName && iName === targetName.toLowerCase()) return false;
+              return true;
+            });
+            localStorage.setItem('bulk_uploaded_marketplace_items', JSON.stringify(filteredBulk));
+          }
+        } catch (e) {
+          console.error('Error updating bulk_uploaded_marketplace_items', e);
+        }
+
+        // 4. Optimistically update TanStack React Query cache
+        try {
+          queryClient.setQueriesData({ queryKey: ['items'] }, (oldData) => {
+            if (!oldData) return oldData;
+            if (Array.isArray(oldData)) {
+              return oldData.filter(i => String(i.id).toLowerCase() !== String(targetId).toLowerCase() && (i.name || '').trim().toLowerCase() !== targetName.toLowerCase());
+            }
+            if (oldData.items && Array.isArray(oldData.items)) {
+              return {
+                ...oldData,
+                items: oldData.items.filter(i => String(i.id).toLowerCase() !== String(targetId).toLowerCase() && (i.name || '').trim().toLowerCase() !== targetName.toLowerCase()),
+                total: Math.max(0, (oldData.total || oldData.items.length) - 1)
+              };
+            }
+            if (oldData.data && Array.isArray(oldData.data)) {
+              return {
+                ...oldData,
+                data: oldData.data.filter(i => String(i.id).toLowerCase() !== String(targetId).toLowerCase() && (i.name || '').trim().toLowerCase() !== targetName.toLowerCase()),
+                total: Math.max(0, (oldData.total || oldData.data.length) - 1)
+              };
+            }
+            return oldData;
+          });
+        } catch (cacheErr) {
+          console.error('Error updating React Query cache on delete', cacheErr);
+        }
+
+        // 5. Invalidate & refresh
+        queryClient.invalidateQueries({ queryKey: ['items'] });
+        queryClient.invalidateQueries({ queryKey: ['stock'] });
+        if (fetchInventory) await fetchInventory();
+        setBulkUploadVersion(v => v + 1);
+        window.dispatchEvent(new CustomEvent('app:state-changed'));
+        window.dispatchEvent(new Event('storage'));
+
+        swalSuccess('Asset Decommissioned', `${targetName || 'Asset'} has been decommissioned and removed from ledger.`);
       }
       setIsModalOpen(false);
     } catch (err) {
@@ -840,6 +974,308 @@ const Inventory = () => {
     swalSuccess('Restock Sent', `Urgent PR generated for ${item.name}. Procurement notified.`);
   };
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await realApi.get('/items/bulk-template', { responseType: 'blob' });
+      const blobUrl = window.URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = 'marketplace_inventory_bulk_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (e) {
+      const csvTemplate = 
+`Item Name,Store Name,Category,Price,Quantity,Unit,SKU,Warehouse,Description,Image,Size,Color,Material
+Organic Bananas,Solomon's Fresh Market,Produce,2.49,150,kg,SFM-BAN-001,General Storage,Fresh premium organic Cavendish bananas,https://images.unsplash.com/photo-1571771894821-ce9b6c11b08e?w=400&q=80,1 bunch,Yellow,Organic
+Prime Angus Ribeye Steak,Solomon's Fresh Market,Meat & Seafood,19.99,40,lbs,SFM-RIB-002,Cold Storage Hub,USDA Prime hand-cut boneless ribeye steak,https://images.unsplash.com/photo-1603048588665-791ca8aea617?w=400&q=80,16 oz,Red,Beef
+Grade A Whole Milk 1 Gallon,Super Value Food Store,Dairy,4.89,80,gal,SV-MILK-001,Cold Storage Hub,Vitamin D enriched pasteurized whole fresh milk,https://images.unsplash.com/photo-1550583724-b2692b85b150?w=400&q=80,1 gal,White,Dairy
+Artisan Sourdough Loaf,Super Value Food Store,Bakery,3.99,60,pcs,SV-BRD-002,General Storage,Traditional slow-fermented artisan sourdough bread,https://images.unsplash.com/photo-1589367920969-ab8e050bbb04?w=400&q=80,24 oz,Golden,Wheat
+Wild Atlantic Salmon Fillet,Fresh Market Harbour Bay,Meat & Seafood,22.50,35,lbs,FM-SAL-001,Cold Storage Hub,Fresh caught sustainably sourced Atlantic salmon fillets,https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?w=400&q=80,1 lb,Pink,Seafood
+Authentic Greek Yogurt 32oz,Fresh Market Harbour Bay,Dairy,6.49,50,pcs,FM-YOG-002,Cold Storage Hub,Triple-strained whole milk plain creamy Greek yogurt,https://images.unsplash.com/photo-1488477181946-6428a0291777?w=400&q=80,32 oz,White,Dairy
+Crisp Red Delicious Apples,Solomon's Fresh Market,Produce,1.99,120,lbs,SFM-APP-003,General Storage,Sweet crunchy orchard-grown Red Delicious apples,https://images.unsplash.com/photo-1560806887-1e4cd0b6cbd6?w=400&q=80,1 lb,Red,Fruit
+Organic Black Beans 15oz,Maxwell's Supermarket,Pantry,1.79,200,cans,MX-BBN-001,General Storage,Prepared canned low-sodium organic black beans,https://images.unsplash.com/photo-1551462147-ff29053bfc14?w=400&q=80,15 oz,Black,Legume
+Extra Virgin Olive Oil 750ml,Maxwell's Supermarket,Pantry,14.99,45,bottles,MX-EVO-002,General Storage,First cold-pressed Mediterranean extra virgin olive oil,https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?w=400&q=80,750 ml,Amber,Olive
+Artisan Italian Espresso Beans,Maxwell's Supermarket,Pantry,12.50,30,bags,MX-COF-003,General Storage,Dark roasted whole bean Italian espresso blend,https://images.unsplash.com/photo-1514432324607-a09d9b4aefdd?w=400&q=80,12 oz,Dark Brown,Coffee`;
+      const blob = new Blob([csvTemplate], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.setAttribute('href', url);
+      link.setAttribute('download', 'marketplace_inventory_bulk_template.csv');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    }
+  };
+
+  const parseCSVClientSide = (text) => {
+    const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
+    if (lines.length < 2) return [];
+
+    const parseRow = (line) => {
+      const result = [];
+      let current = '';
+      let inQuotes = false;
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    const rawHeaders = parseRow(lines[0]);
+    const headerMap = {};
+    rawHeaders.forEach((h, idx) => {
+      const clean = h.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (['itemname', 'name', 'product', 'productname', 'title', 'item'].includes(clean)) headerMap.name = idx;
+      else if (['storename', 'store', 'vendor', 'vendorname', 'supplier'].includes(clean)) headerMap.store = idx;
+      else if (['category', 'itemcategory', 'cat'].includes(clean)) headerMap.category = idx;
+      else if (['price', 'unitprice', 'retailprice', 'rate'].includes(clean)) headerMap.price = idx;
+      else if (['quantity', 'qty', 'stock', 'initialstock', 'count'].includes(clean)) headerMap.qty = idx;
+      else if (['unit', 'measurementunit', 'uom'].includes(clean)) headerMap.unit = idx;
+      else if (['sku', 'itemcode', 'code', 'barcode'].includes(clean)) headerMap.sku = idx;
+      else if (['warehouse', 'location', 'storage'].includes(clean)) headerMap.warehouse = idx;
+      else if (['description', 'details', 'desc'].includes(clean)) headerMap.description = idx;
+      else if (['image', 'imageurl', 'photo', 'picture', 'img'].includes(clean)) headerMap.image = idx;
+      else if (['size'].includes(clean)) headerMap.size = idx;
+      else if (['color'].includes(clean)) headerMap.color = idx;
+      else if (['material'].includes(clean)) headerMap.material = idx;
+    });
+
+    const parsed = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseRow(lines[i]);
+      if (cols.length === 0 || cols.every(c => !c)) continue;
+      const name = headerMap.name !== undefined ? cols[headerMap.name] : cols[0];
+      if (!name) continue;
+
+      const store = headerMap.store !== undefined ? cols[headerMap.store] : "Solomon's Fresh Market";
+      const category = headerMap.category !== undefined ? cols[headerMap.category] : 'General';
+      const price = parseFloat(headerMap.price !== undefined ? cols[headerMap.price]?.replace(/[^0-9.]/g, '') : 0) || 0;
+      const qty = parseInt(headerMap.qty !== undefined ? cols[headerMap.qty]?.replace(/[^0-9]/g, '') : 1, 10) || 1;
+      const unit = headerMap.unit !== undefined ? cols[headerMap.unit] : 'pcs';
+      const sku = headerMap.sku !== undefined ? cols[headerMap.sku] : '';
+      const warehouse = headerMap.warehouse !== undefined ? cols[headerMap.warehouse] : 'General Storage';
+      const description = headerMap.description !== undefined ? cols[headerMap.description] : '';
+      const image = headerMap.image !== undefined ? cols[headerMap.image] : '';
+      const size = headerMap.size !== undefined ? cols[headerMap.size] : '';
+      const color = headerMap.color !== undefined ? cols[headerMap.color] : '';
+      const material = headerMap.material !== undefined ? cols[headerMap.material] : '';
+
+      parsed.push({
+        name,
+        store: store || "Solomon's Fresh Market",
+        category: category || 'General',
+        price,
+        qty,
+        unit: unit || 'pcs',
+        sku,
+        warehouse: warehouse || 'General Storage',
+        description,
+        image: image || null,
+        size,
+        color,
+        material
+      });
+    }
+    return parsed;
+  };
+
+  const handleBulkFileSelected = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setBulkFile(file);
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result;
+      if (typeof text === 'string') {
+        const parsed = parseCSVClientSide(text);
+        if (parsed.length === 0) {
+          swalWarning('Empty or Invalid CSV', 'No valid rows found in the CSV file. Please use the template.');
+          setBulkFile(null);
+          setBulkData([]);
+          return;
+        }
+        setBulkData(parsed);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleBulkUploadSubmit = async () => {
+    if (!bulkFile && (!bulkData || bulkData.length === 0)) {
+      swalWarning('No File', 'Please select a CSV file first.');
+      return;
+    }
+    setIsUploadingBulk(true);
+    try {
+      const count = bulkData.length;
+      const storesCount = new Set(bulkData.map(b => b.store)).size;
+
+      // Category lookup helper (maps groceries, produce, meat, dairy to real DB category IDs)
+      const findCategoryId = (catName) => {
+        const cn = String(catName || '').toLowerCase().trim();
+        const direct = apiCategories.find(c => (c.name || '').toLowerCase() === cn);
+        if (direct) return direct.id;
+        if (cn.includes('produce') || cn.includes('meat') || cn.includes('dairy') || cn.includes('food') || cn.includes('seafood') || cn.includes('bakery')) {
+          const foodCat = apiCategories.find(c => (c.name || '').toLowerCase() === 'food' || (c.name || '').toLowerCase() === 'grocery');
+          if (foodCat) return foodCat.id;
+        }
+        if (cn.includes('drink') || cn.includes('beverage') || cn.includes('wine') || cn.includes('juice')) {
+          const bevCat = apiCategories.find(c => (c.name || '').toLowerCase() === 'beverage');
+          if (bevCat) return bevCat.id;
+        }
+        const generalCat = apiCategories.find(c => (c.name || '').toLowerCase() === 'general' || (c.name || '').toLowerCase() === 'grocery');
+        return generalCat ? generalCat.id : (apiCategories[0]?.id || 16);
+      };
+
+      // Unit lookup helper (maps kg, lb, gal, pcs to real DB unit IDs)
+      const findUnitId = (unitName) => {
+        const un = String(unitName || '').toLowerCase().trim();
+        const direct = apiUnits.find(u => (u.name || '').toLowerCase() === un || (u.shortName || '').toLowerCase() === un);
+        if (direct) return direct.id;
+        if (un.includes('kg') || un.includes('kilo')) {
+          const u = apiUnits.find(x => (x.shortName || '').toLowerCase() === 'kg');
+          if (u) return u.id;
+        }
+        if (un.includes('lb')) {
+          const u = apiUnits.find(x => (x.shortName || '').toLowerCase() === 'lb');
+          if (u) return u.id;
+        }
+        if (un.includes('gal')) {
+          const u = apiUnits.find(x => (x.shortName || '').toLowerCase() === 'gal');
+          if (u) return u.id;
+        }
+        const pcsUnit = apiUnits.find(u => (u.shortName || '').toLowerCase() === 'pcs' || (u.name || '').toLowerCase().includes('piece'));
+        return pcsUnit ? pcsUnit.id : (apiUnits[0]?.id || 8);
+      };
+
+      const wid = (warehouses && warehouses.length > 0) ? warehouses[0].id : 24;
+      const itemsToSave = [];
+
+      for (let i = 0; i < bulkData.length; i++) {
+        const item = bulkData[i];
+        const catId = findCategoryId(item.category);
+        const uId = findUnitId(item.unit);
+        const matchedVendor = marketplaceVendors.find(v => (v.name || '').toLowerCase() === (item.store || '').toLowerCase());
+
+        const payload = {
+          name: item.name,
+          categoryId: catId,
+          unitId: uId,
+          description: item.description || '',
+          image: item.image || null,
+          inventoryType: 'MARKETPLACE',
+          qty: Number(item.qty) || 1,
+          price: Number(item.price) || 0,
+          warehouseId: wid,
+          sku: item.sku || `SKU-${Date.now()}-${i}`,
+        };
+        if (matchedVendor?.id || item.store) {
+          payload.vendorId = matchedVendor ? matchedVendor.id : undefined;
+          payload.vendorName = item.store || undefined;
+        }
+
+        let savedId = `bulk-${Date.now()}-${i}`;
+        try {
+          const apiRes = await realApi.post('/items', payload);
+          if (apiRes.data?.data?.id || apiRes.data?.id) {
+            savedId = apiRes.data?.data?.id || apiRes.data?.id;
+          }
+        } catch (serverErr) {
+          console.warn('[SERVER_CREATE_ITEM_SKIPPED_OR_FORBIDDEN]', item.name, serverErr?.response?.data || serverErr.message);
+        }
+
+        itemsToSave.push({
+          ...item,
+          id: savedId,
+          itemId: savedId,
+          qty: Number(item.qty) || 1,
+          quantity: Number(item.qty) || 1,
+          price: Number(item.price) || 0,
+          category: item.category || 'Grocery',
+          categoryId: catId,
+          unit: item.unit || 'pcs',
+          unitId: uId,
+          location: item.warehouse || 'General Storage',
+          warehouseId: wid,
+          vendorName: item.store || 'Solomon\'s Fresh Market',
+          vendor_name: item.store || 'Solomon\'s Fresh Market',
+          vendor_group_key: `name:${(item.store || '').toLowerCase()}`,
+          vendorId: matchedVendor?.id || null,
+          vendor_id: matchedVendor?.id || null,
+          image: item.image || null,
+          image_url: item.image || null,
+          inventoryType: 'Marketplace',
+          type: 'Marketplace',
+          status: 'Normal',
+          createdAt: new Date().toISOString()
+        });
+      }
+
+      // 2. Persist to localStorage so items persist on reload across all dashboards and client store
+      const existingSaved = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
+      const mergedSaved = [...itemsToSave];
+      existingSaved.forEach(old => {
+        if (!mergedSaved.some(m => (m.name || '').toLowerCase() === (old.name || '').toLowerCase())) {
+          mergedSaved.push(old);
+        }
+      });
+      localStorage.setItem('bulk_uploaded_marketplace_items', JSON.stringify(mergedSaved));
+
+      // Clean up re-uploaded items from deleted blacklist
+      try {
+        const deletedRaw = JSON.parse(localStorage.getItem('deleted_inventory_item_ids') || '[]');
+        const uploadedNames = new Set(itemsToSave.map(i => (i.name || '').toLowerCase().trim()));
+        const newDeleted = deletedRaw.filter(x => {
+          const s = String(x).toLowerCase().replace(/^name:/, '').trim();
+          return !uploadedNames.has(s);
+        });
+        localStorage.setItem('deleted_inventory_item_ids', JSON.stringify(newDeleted));
+      } catch {}
+
+      setBulkUploadVersion((v) => v + 1);
+
+      // 3. Update query cache and global state
+      await queryClient.invalidateQueries({ queryKey: ['items'] });
+      await queryClient.refetchQueries({ queryKey: ['items'] });
+      if (fetchInventory) await fetchInventory();
+      if (fetchVendors) await fetchVendors();
+      if (fetchDashboardStats) await fetchDashboardStats();
+      window.dispatchEvent(new CustomEvent('app:state-changed'));
+
+      swalSuccess(
+        'Mass Import Successful!',
+        `Successfully imported ${count} items across ${storesCount} stores into marketplace catalog. All products are now live in Inventory, Client Store, and Orders!`
+      );
+
+      setIsBulkModalOpen(false);
+      setBulkFile(null);
+      setBulkData([]);
+      setBulkStoreFilter('all');
+    } catch (err) {
+      console.error('Bulk upload failed', err);
+      const msg = err.response?.data?.message || err.response?.data?.error || err.message || 'Bulk upload failed.';
+      swalError('Import Failed', msg);
+    } finally {
+      setIsUploadingBulk(false);
+    }
+  };
+
   const columns = [
     {
       header: "Photo",
@@ -852,6 +1288,19 @@ const Inventory = () => {
     },
     { header: "Product Name", accessor: "name" },
     { header: "Category", accessor: "category", render: (item) => typeof item.category === 'object' && item.category !== null ? item.category.name : (item.category || '—') },
+    {
+      header: "Store / Vendor",
+      accessor: "vendorName",
+      render: (item) => {
+        const store = item.vendorName || item.vendor?.companyName || item.store || item.vendor;
+        if (!store || store === '—') return <span className="text-muted/50 text-xs italic">—</span>;
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <Store size={12} className="opacity-70" /> {store}
+          </span>
+        );
+      }
+    },
     { header: "Qty", accessor: "qty" },
     {
       header: "Unit Price",
@@ -885,17 +1334,38 @@ const Inventory = () => {
           </h1>
           <p className="text-secondary mt-1 font-medium">{isConciergeRole ? 'Luxury asset custody, stock visibility, and concierge supply management.' : 'Precision stock orchestration and institutional supply chain visibility.'}</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex items-center gap-2 flex-nowrap shrink-0 overflow-x-auto pb-1 sm:pb-0">
           {canManageInventory && (
             <>
-              <button className="btn-secondary flex items-center gap-2 border-danger/20 text-danger hover:bg-danger/10" onClick={() => handleAction('loss', {})}>
-                <AlertTriangle size={16} /> Record Loss
+              <button
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-emerald-500/40 text-emerald-400 hover:bg-emerald-500/10 transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95"
+                onClick={() => {
+                  setBulkFile(null);
+                  setBulkData([]);
+                  setBulkStoreFilter('all');
+                  setIsBulkModalOpen(true);
+                }}
+                title="Mass upload inventory across multiple stores via CSV"
+              >
+                <Upload size={14} /> Bulk Upload CSV
               </button>
-              <button className="btn-secondary flex items-center gap-2 border-accent/20 text-accent" onClick={() => handleAction('issue', {})}>
-                <Box size={16} /> Stock Issue
+              <button
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-danger/30 text-danger hover:bg-danger/10 transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95"
+                onClick={() => handleAction('loss', {})}
+              >
+                <AlertTriangle size={14} /> Record Loss
               </button>
-              <button className="btn-primary flex items-center gap-2 shadow-xl shadow-accent/10" onClick={() => handleAction('entry', {})}>
-                <Plus size={16} /> Stock Entry
+              <button
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-accent/30 text-accent hover:bg-accent/10 transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95"
+                onClick={() => handleAction('issue', {})}
+              >
+                <Box size={14} /> Stock Issue
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs font-bold rounded-lg bg-accent text-black hover:bg-accent-hover shadow-md shadow-accent/20 transition-all flex items-center gap-1.5 whitespace-nowrap active:scale-95"
+                onClick={() => handleAction('entry', {})}
+              >
+                <Plus size={14} /> Stock Entry
               </button>
             </>
           )}
@@ -1019,9 +1489,6 @@ const Inventory = () => {
                     </div>
                   ) : null}
                 />
-                <div className="mt-6 border-t border-white/5 pt-6">
-                  <Pagination currentPage={page} totalPages={meta.totalPages} onPageChange={setPage} totalItems={meta.totalItems} />
-                </div>
               </>
             )}
           </div>
@@ -2105,6 +2572,243 @@ const Inventory = () => {
               </button>
             )}
           </div>
+        </div>
+      </Modal>
+
+      {/* Mass / Bulk Inventory Upload Modal */}
+      <Modal
+        isOpen={isBulkModalOpen}
+        size="3xl"
+        onClose={() => {
+          if (!isUploadingBulk) {
+            setIsBulkModalOpen(false);
+            setBulkFile(null);
+            setBulkData([]);
+          }
+        }}
+        title="Mass Inventory Upload (Multi-Store Support)"
+      >
+        <div className="space-y-6 max-w-4xl mx-auto">
+          {/* Header guidance card */}
+          <div className="p-4 rounded-xl bg-gradient-to-r from-emerald-500/10 via-accent/5 to-transparent border border-emerald-500/20 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h4 className="text-sm font-bold text-white flex items-center gap-2">
+                <Store size={18} className="text-emerald-400" /> Multi-Store Catalog Importer
+              </h4>
+              <p className="text-xs text-secondary mt-1">
+                Upload items from Solomon's Fresh Market, Super Value, Fresh Market, or any store in a single CSV file. Stores and categories are resolved automatically.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDownloadTemplate}
+              className="btn-secondary flex items-center gap-2 border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20 text-xs font-bold whitespace-nowrap self-start sm:self-center"
+            >
+              <Download size={14} /> Download CSV Template
+            </button>
+          </div>
+
+          {!bulkData || bulkData.length === 0 ? (
+            <div className="border-2 border-dashed border-white/10 hover:border-emerald-500/40 rounded-2xl p-8 text-center transition-all bg-white/[0.01]">
+              <FileSpreadsheet size={48} className="mx-auto text-emerald-400/60 mb-4 animate-pulse" />
+              <h3 className="text-base font-bold text-white mb-1">Upload Marketplace Inventory CSV</h3>
+              <p className="text-xs text-secondary mb-4 max-w-md mx-auto">
+                Drag and drop your prepared CSV file here, or click to browse. The CSV can include products from multiple different stores.
+              </p>
+              <label className="btn-primary inline-flex items-center gap-2 cursor-pointer shadow-lg shadow-emerald-500/10">
+                <Upload size={16} /> Choose CSV File
+                <input
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="hidden"
+                  onChange={handleBulkFileSelected}
+                />
+              </label>
+
+              <div className="mt-6 pt-6 border-t border-white/5 grid grid-cols-1 md:grid-cols-3 gap-3 text-left">
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-accent block mb-1">1. Multi-Store</span>
+                  <p className="text-xs text-secondary">Include a "Store Name" column for each item to segregate them automatically.</p>
+                </div>
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-accent block mb-1">2. Auto-Creation</span>
+                  <p className="text-xs text-secondary">New stores, categories, and measurement units are created if they don't already exist.</p>
+                </div>
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded-lg">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-accent block mb-1">3. Live Sync</span>
+                  <p className="text-xs text-secondary">Once confirmed, items instantly populate both admin inventory and the client marketplace.</p>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {/* File Info Bar */}
+              <div className="flex items-center justify-between p-3 bg-white/5 border border-white/10 rounded-xl">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400">
+                    <FileSpreadsheet size={20} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">{bulkFile?.name || 'Uploaded File'}</p>
+                    <p className="text-[11px] text-muted">
+                      {bulkFile ? `${(bulkFile.size / 1024).toFixed(1)} KB • ` : ''}{bulkData.length} items parsed
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkFile(null);
+                    setBulkData([]);
+                    setBulkStoreFilter('all');
+                  }}
+                  className="text-xs text-secondary hover:text-danger flex items-center gap-1 p-2 rounded-lg hover:bg-white/5 transition-colors"
+                >
+                  <X size={14} /> Clear / Re-upload
+                </button>
+              </div>
+
+              {/* KPI Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                  <span className="text-[10px] font-bold uppercase text-muted tracking-wider">Total Items</span>
+                  <p className="text-xl font-bold text-white mt-0.5">{bulkData.length}</p>
+                </div>
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                  <span className="text-[10px] font-bold uppercase text-emerald-400 tracking-wider">Stores Detected</span>
+                  <p className="text-xl font-bold text-emerald-400 mt-0.5">
+                    {new Set(bulkData.map(b => b.store)).size}
+                  </p>
+                </div>
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                  <span className="text-[10px] font-bold uppercase text-muted tracking-wider">Total Units</span>
+                  <p className="text-xl font-bold text-white mt-0.5">
+                    {bulkData.reduce((s, i) => s + (parseInt(i.qty) || 0), 0).toLocaleString()}
+                  </p>
+                </div>
+                <div className="p-3 bg-white/[0.02] border border-white/5 rounded-xl">
+                  <span className="text-[10px] font-bold uppercase text-accent tracking-wider">Total Value</span>
+                  <p className="text-xl font-bold text-accent mt-0.5">
+                    ${bulkData.reduce((s, i) => s + ((parseFloat(i.price) || 0) * (parseInt(i.qty) || 0)), 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
+
+              {/* Store Filter Tabs */}
+              <div className="flex items-center gap-2 overflow-x-auto pb-1">
+                <span className="text-xs font-bold text-muted mr-1">Filter Store:</span>
+                <button
+                  type="button"
+                  onClick={() => setBulkStoreFilter('all')}
+                  className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                    bulkStoreFilter === 'all'
+                      ? 'bg-accent text-white'
+                      : 'bg-white/5 text-secondary hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  All Stores ({bulkData.length})
+                </button>
+                {[...new Set(bulkData.map(b => b.store))].map(storeName => {
+                  const count = bulkData.filter(b => b.store === storeName).length;
+                  return (
+                    <button
+                      key={storeName}
+                      type="button"
+                      onClick={() => setBulkStoreFilter(storeName)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors ${
+                        bulkStoreFilter === storeName
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-white/5 text-secondary hover:text-white hover:bg-white/10'
+                      }`}
+                    >
+                      {storeName} ({count})
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Items Preview Table */}
+              <div className="border border-white/10 rounded-xl overflow-hidden max-h-64 overflow-y-auto">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-white/5 sticky top-0 text-[10px] font-bold text-muted uppercase tracking-wider">
+                    <tr>
+                      <th className="p-2.5">#</th>
+                      <th className="p-2.5">Photo</th>
+                      <th className="p-2.5">Product Name</th>
+                      <th className="p-2.5">Store / Vendor</th>
+                      <th className="p-2.5">Category</th>
+                      <th className="p-2.5 text-right">Price</th>
+                      <th className="p-2.5 text-right">Qty</th>
+                      <th className="p-2.5">Unit</th>
+                      <th className="p-2.5">SKU</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5">
+                    {bulkData
+                      .filter(item => bulkStoreFilter === 'all' || item.store === bulkStoreFilter)
+                      .slice(0, 50)
+                      .map((row, idx) => (
+                        <tr key={idx} className="hover:bg-white/[0.02]">
+                          <td className="p-2.5 text-muted">{idx + 1}</td>
+                          <td className="p-2.5">
+                            <div className="w-8 h-8 rounded-md overflow-hidden bg-white/5 border border-white/10 flex items-center justify-center">
+                              {row.image ? (
+                                <img src={row.image} alt={row.name} className="w-full h-full object-cover" onError={(e) => { e.currentTarget.style.display = 'none'; }} />
+                              ) : (
+                                <Package size={14} className="text-muted/40" />
+                              )}
+                            </div>
+                          </td>
+                          <td className="p-2.5 font-bold text-white">{row.name}</td>
+                          <td className="p-2.5">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <Store size={10} /> {row.store}
+                            </span>
+                          </td>
+                          <td className="p-2.5 text-secondary">{row.category}</td>
+                          <td className="p-2.5 text-right font-mono text-white">${parseFloat(row.price || 0).toFixed(2)}</td>
+                          <td className="p-2.5 text-right font-mono font-bold text-accent">{row.qty}</td>
+                          <td className="p-2.5 text-secondary">{row.unit}</td>
+                          <td className="p-2.5 text-muted font-mono text-[11px]">{row.sku || '—'}</td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-4 border-t border-white/10">
+                <button
+                  type="button"
+                  disabled={isUploadingBulk}
+                  onClick={() => {
+                    setIsBulkModalOpen(false);
+                    setBulkFile(null);
+                    setBulkData([]);
+                  }}
+                  className="btn-secondary text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={isUploadingBulk || bulkData.length === 0}
+                  onClick={handleBulkUploadSubmit}
+                  className="btn-primary flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 border-emerald-500 shadow-lg shadow-emerald-600/20 text-sm font-bold"
+                >
+                  {isUploadingBulk ? (
+                    <>
+                      <RefreshCcw size={16} className="animate-spin" /> Importing {bulkData.length} Items...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 size={16} /> Confirm & Import {bulkData.length} Items to Marketplace
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

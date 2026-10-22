@@ -20,7 +20,7 @@ import {
   canonicalMarketplaceCategory,
   PERSONAL_MEMBERSHIP_FEE_USD,
 } from "../utils/constants";
-import { INVENTORY, VENDORS, ACCESS_PLANS } from "../utils/data";
+import { INVENTORY, VENDORS, ACCESS_PLANS, DEFAULT_MARKETPLACE_TEST_ITEMS, getAutoSyncedMarketplaceVendors } from "../utils/data";
 
 import { notifyStateChanged, getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from "../utils/stateSyncHelper";
 import { formatClientDisplayName, BACKEND_ORIGIN } from "../utils/apiHelpers";
@@ -1357,6 +1357,12 @@ export const GlobalDataProvider = ({ children }) => {
           90,
       }));
       // Server status is source of truth (pending/inactive until super-admin approval).
+      const autoMarketplace = getAutoSyncedMarketplaceVendors();
+      autoMarketplace.forEach((mv) => {
+        if (!mapped.some(v => (v.name || v.companyName || '').toLowerCase() === (mv.name || '').toLowerCase())) {
+          mapped.push(mv);
+        }
+      });
       setVendors(vendorsVisibleInDirectory(mapped, currentUser?.role));
     } catch (e) {
       console.error("Fetch vendors failed", e);
@@ -1378,17 +1384,44 @@ export const GlobalDataProvider = ({ children }) => {
             Math.round((v.rating || 0) * 100)) ||
           90,
       }));
+      const autoMarketplace = getAutoSyncedMarketplaceVendors();
+      autoMarketplace.forEach((mv) => {
+        if (!seed.some(v => (v.name || v.companyName || '').toLowerCase() === (mv.name || '').toLowerCase())) {
+          seed.push(mv);
+        }
+      });
       setVendors(vendorsVisibleInDirectory(seed, currentUser?.role));
     }
   }, [currentUser?.role, currentUser?.id]);
 
-  const marketplaceVendors = React.useMemo(
-    () =>
-      (vendors || []).filter(
-        (v) => String(v?.status || "").trim().toLowerCase() === "active",
-      ),
-    [vendors],
-  );
+  const [bulkDataVersion, setBulkDataVersion] = React.useState(0);
+
+  React.useEffect(() => {
+    const handleSync = () => {
+      setBulkDataVersion((v) => v + 1);
+    };
+    window.addEventListener('app:state-changed', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('app:state-changed', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
+  }, []);
+
+  const marketplaceVendors = React.useMemo(() => {
+    const list = (vendors || []).filter(
+      (v) => String(v?.status || "").trim().toLowerCase() === "active",
+    );
+    try {
+      const autoStores = getAutoSyncedMarketplaceVendors();
+      autoStores.forEach(s => {
+        if (!list.some(v => (v.name || v.companyName || '').toLowerCase() === s.name.toLowerCase())) {
+          list.push(s);
+        }
+      });
+    } catch {}
+    return list;
+  }, [vendors, bulkDataVersion]);
 
   const fetchInventory = React.useCallback(async () => {
     let itemsArr = [];
@@ -1499,6 +1532,85 @@ export const GlobalDataProvider = ({ children }) => {
         console.error("Fetch /inventory fallback failed, using default mock data", e);
         inventoryData = INVENTORY;
       }
+    }
+
+    try {
+      let savedBulk = [];
+      const hasKey = localStorage.getItem('bulk_uploaded_marketplace_items') !== null;
+      try {
+        savedBulk = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
+      } catch {
+        savedBulk = [];
+      }
+      if (!Array.isArray(savedBulk) || (!hasKey && savedBulk.length === 0)) {
+        savedBulk = DEFAULT_MARKETPLACE_TEST_ITEMS;
+        localStorage.setItem('bulk_uploaded_marketplace_items', JSON.stringify(DEFAULT_MARKETPLACE_TEST_ITEMS));
+      }
+
+      // Filter out deleted items from savedBulk
+      try {
+        const deletedRaw = JSON.parse(localStorage.getItem('deleted_inventory_item_ids') || '[]');
+        if (Array.isArray(deletedRaw) && deletedRaw.length > 0) {
+          const deletedSet = new Set(deletedRaw.map(x => String(x).toLowerCase().trim()));
+          savedBulk = savedBulk.filter(bItem => {
+            const idStr = String(bItem.id ?? bItem.itemId ?? '').trim().toLowerCase();
+            const nameStr = `name:${(bItem.name || bItem.item || '').trim().toLowerCase()}`;
+            return !(idStr && deletedSet.has(idStr)) && !(nameStr && deletedSet.has(nameStr));
+          });
+        }
+      } catch {}
+
+      if (Array.isArray(savedBulk) && savedBulk.length > 0) {
+        savedBulk.forEach(bItem => {
+          const matchIdx = inventoryData.findIndex(existing => String(existing.id) === String(bItem.id) || (existing.name || '').toLowerCase() === (bItem.name || '').toLowerCase());
+          const formattedBulkItem = {
+            ...bItem,
+            id: bItem.id || bItem.itemId,
+            itemId: bItem.id || bItem.itemId,
+            qty: Number(bItem.qty || bItem.quantity || 1),
+            quantity: Number(bItem.qty || bItem.quantity || 1),
+            price: Number(bItem.price || 0),
+            unitPrice: Number(bItem.price || 0),
+            unit_price: Number(bItem.price || 0),
+            image: bItem.image || bItem.image_url || bItem.imageUrl || '',
+            image_url: bItem.image || bItem.image_url || bItem.imageUrl || '',
+            store: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
+            vendorName: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
+            vendor_name: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
+            vendor_group_key: bItem.vendor_group_key || `name:${(bItem.store || bItem.vendorName || '').toLowerCase()}`,
+            category: canonicalMarketplaceCategory(bItem.category || 'Grocery'),
+            location: bItem.warehouse || bItem.location || 'General Storage',
+            warehouse_name: bItem.warehouse || bItem.location || 'General Storage',
+            inventoryType: 'Marketplace',
+            type: 'Marketplace',
+            status: bItem.status || 'Normal',
+          };
+          if (matchIdx >= 0) {
+            inventoryData[matchIdx] = { ...inventoryData[matchIdx], ...formattedBulkItem };
+          } else {
+            inventoryData.unshift(formattedBulkItem);
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('Failed parsing bulk_uploaded_marketplace_items in fetchInventory', e);
+    }
+
+    // Filter out decommissioned/deleted items from inventoryData
+    try {
+      const deletedRaw = JSON.parse(localStorage.getItem('deleted_inventory_item_ids') || '[]');
+      if (Array.isArray(deletedRaw) && deletedRaw.length > 0) {
+        const deletedSet = new Set(deletedRaw.map(x => String(x).toLowerCase().trim()));
+        inventoryData = inventoryData.filter(i => {
+          const idStr = String(i.id ?? i.itemId ?? '').trim().toLowerCase();
+          const nameStr = `name:${(i.name || i.item || '').trim().toLowerCase()}`;
+          if (idStr && deletedSet.has(idStr)) return false;
+          if (nameStr && deletedSet.has(nameStr)) return false;
+          return true;
+        });
+      }
+    } catch (delErr) {
+      console.warn('Failed filtering deleted_inventory_item_ids in fetchInventory', delErr);
     }
 
     setInventory(inventoryData);
@@ -2311,16 +2423,16 @@ export const GlobalDataProvider = ({ children }) => {
 
           const driverNameResolved = meta.driverName || (m.assignee ? `${m.assignee.firstName || ''} ${m.assignee.lastName || ''}`.trim() : '') || m.driver_name || m.driverName || '';
           const plateResolved = meta.plateNumber || meta.vehicleId || (m.assignee && m.assignee.vehiclePlate) || m.plate_number || m.plateNumber || '';
-          
+
           const deliveryNumberResolved = m.delivery?.deliveryNumber || meta.deliveryNumber || (String(m.orderId || '').startsWith('DEL-') ? m.orderId : '') || '';
-          
+
           let actualOrderId = m.orderId || m.order_id || m.delivery?.orderId || meta.orderId || meta.order_id || meta.orderRef || null;
           if (typeof actualOrderId === 'string' && actualOrderId.startsWith('DEL-')) {
             actualOrderId = m.delivery?.orderId || meta.orderId || meta.orderRef || null;
           }
 
           const clientNameResolved = m.client?.companyName || m.client?.name || m.delivery?.client?.companyName || m.delivery?.client?.name || m.order?.client?.companyName || m.order?.client?.name || meta.clientName || meta.client || '';
-          
+
           const pickupResolved = m.delivery?.pickupLocation || meta.pickupLocation || meta.pickup_location || '';
           const dropResolved = m.delivery?.dropLocation || meta.dropLocation || meta.destination || meta.location || m.destination_type || meta.destination_type || 'Client Site';
           const itemsResolved = (m.delivery?.items && m.delivery.items.length > 0) ? m.delivery.items : ((m.order?.items && m.order.items.length > 0) ? m.order.items : (Array.isArray(meta.items) ? meta.items : []));
@@ -2671,15 +2783,15 @@ export const GlobalDataProvider = ({ children }) => {
         api.get("/concierge/luxury-items?tenantId=1"),
         api.get("/concierge/luxury-items")
       ]);
-      
+
       const adminItems = resAdmin.status === 'fulfilled' && resAdmin.value.data?.success
         ? (Array.isArray(resAdmin.value.data.data) ? resAdmin.value.data.data : (Array.isArray(resAdmin.value.data) ? resAdmin.value.data : []))
         : (resAdmin.status === 'fulfilled' && Array.isArray(resAdmin.value.data) ? resAdmin.value.data : []);
-        
+
       const clientItems = resClient.status === 'fulfilled' && resClient.value.data?.success
         ? (Array.isArray(resClient.value.data.data) ? resClient.value.data.data : (Array.isArray(resClient.value.data) ? resClient.value.data : []))
         : (resClient.status === 'fulfilled' && Array.isArray(resClient.value.data) ? resClient.value.data : []);
-        
+
       const combined = [...adminItems, ...clientItems];
       const seen = new Set();
       const rawData = combined.filter((itm) => {
@@ -2688,7 +2800,7 @@ export const GlobalDataProvider = ({ children }) => {
         seen.add(String(id));
         return true;
       });
-      
+
       const mapped = (rawData || []).map((item) => {
         const metadata = item.metadata && typeof item.metadata === 'object' ? item.metadata : {};
         const clientId = item.clientId ?? item.client_id ?? metadata.clientId ?? metadata.client_id ?? null;
@@ -2902,10 +3014,10 @@ export const GlobalDataProvider = ({ children }) => {
         canAccessUsers ? fetchStaff() : Promise.resolve(),
         (canAccessRoles || canAccessUsers)
           ? api.get('/roles?limit=100').then(res => {
-              const rawData = res.data?.data;
-              const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
-              setRoles(rolesArray);
-            }).catch(() => {})
+            const rawData = res.data?.data;
+            const rolesArray = Array.isArray(rawData) ? rawData : (rawData?.roles || []);
+            setRoles(rolesArray);
+          }).catch(() => { })
           : Promise.resolve(),
       ]);
     } catch (err) {
@@ -3934,7 +4046,7 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       const res = await api.post(`/orders/convert/${orderId}`, projectData);
       if (res.data?.success) {
-        try { await api.put(`/orders/${orderId}/status`, { status: 'logistics' }); } catch (_) {}
+        try { await api.put(`/orders/${orderId}/status`, { status: 'logistics' }); } catch (_) { }
         await fetchOrders();
         await fetchProjects();
         window.dispatchEvent(new CustomEvent('app:state-changed'));
@@ -3960,7 +4072,7 @@ export const GlobalDataProvider = ({ children }) => {
         const prj = (projects || []).find(p => String(p.id) === String(projectId));
         const orderRef = prj?.orderRef || prj?.order_ref || prj?.orderId || prj?.order_id;
         if (orderRef) {
-          try { await api.put(`/orders/${orderRef}/status`, { status: 'logistics' }); } catch (_) {}
+          try { await api.put(`/orders/${orderRef}/status`, { status: 'logistics' }); } catch (_) { }
         }
         await fetchProjects();
         await fetchMissions();
@@ -4011,7 +4123,7 @@ export const GlobalDataProvider = ({ children }) => {
               await api.put(`/orders/${targetId}/status`, { status: targetOrderStatus }).catch(() =>
                 api.patch(`/orders/${targetId}/status`, { status: targetOrderStatus })
               );
-            } catch (_) {}
+            } catch (_) { }
           }
         }
       }
@@ -4052,7 +4164,7 @@ export const GlobalDataProvider = ({ children }) => {
             await api.put(`/orders/${targetId}/status`, { status: 'completed' }).catch(() =>
               api.patch(`/orders/${targetId}/status`, { status: 'completed' })
             );
-          } catch (_) {}
+          } catch (_) { }
         }
       }
 
@@ -6113,15 +6225,15 @@ export const GlobalDataProvider = ({ children }) => {
           prev.map((i) =>
             i.id === tempId || i.itemId === tempId
               ? {
-                  ...i,
-                  id: realId,
-                  itemId: realId,
-                  ...created,
-                  clientId: newItem.clientId,
-                  client_id: newItem.clientId,
-                  clientName: newItem.clientName,
-                  client_name: newItem.clientName,
-                }
+                ...i,
+                id: realId,
+                itemId: realId,
+                ...created,
+                clientId: newItem.clientId,
+                client_id: newItem.clientId,
+                clientName: newItem.clientName,
+                client_name: newItem.clientName,
+              }
               : i
           )
         );
@@ -6249,10 +6361,10 @@ export const GlobalDataProvider = ({ children }) => {
 
           const compId = order.companyId || order.company_id || order.clientId || order.client_id || detail?.companyId || detail?.company_id || detail?.clientId || null;
           const usrId = order.createdById || order.created_by || order.userId || order.user_id || detail?.userId || detail?.created_by || null;
-          
+
           // Cross-reference with deliveries array to get live assigned driver and pickup status
-          const matchingDelivery = (deliveries || []).find(d => 
-            String(d.orderId || '').includes(String(order.id)) || 
+          const matchingDelivery = (deliveries || []).find(d =>
+            String(d.orderId || '').includes(String(order.id)) ||
             String(d.order_id_raw) === String(order.id) ||
             String(d.db_id) === String(order.id)
           );
@@ -6967,7 +7079,7 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       addDeletedChauffeurId(id);
       setChauffeurRequests((prev) => prev.filter((r) => String(r.id) !== String(id) && String(r.db_id) !== String(id)));
-      try { await api.delete(`/orders/${id}`); } catch (_) {}
+      try { await api.delete(`/orders/${id}`); } catch (_) { }
       await syncGlobalState();
     } catch (error) {
       console.error("Failed to delete chauffeur request:", error);
@@ -7530,7 +7642,7 @@ export const GlobalDataProvider = ({ children }) => {
         const tId = t.ticketId || t.id;
         const tDb = t.db_id || t.id;
         return (ticketId && tId && String(ticketId) === String(tId)) ||
-               (numId && tDb && String(numId) === String(tDb));
+          (numId && tDb && String(numId) === String(tDb));
       };
 
       // Optimistic state update
@@ -7805,7 +7917,7 @@ export const GlobalDataProvider = ({ children }) => {
         await fetchLeaveRequests();
         if (fetchStaff) await fetchStaff();
         if (fetchCustomerUsers) await fetchCustomerUsers({ include_all: 1, include_client_role: 1 });
-        
+
         // Refresh current user state if current logged in user was the leave recipient
         if (currentUser && Number(reqData.userId || reqData.user_id) === Number(currentUser.id)) {
           try {

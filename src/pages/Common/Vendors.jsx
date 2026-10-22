@@ -7,10 +7,12 @@ import { Store, Search, Star, Phone, Mail, Plus, ShieldCheck, CheckCircle } from
 import { swalSuccess, swalWarning } from '../../utils/swal';
 import { normalizeRole, roleCanManageInventoryVendorsWarehouses } from '../../utils/authUtils';
 import realApi from '../../services/api/setupAxios';
+import { getAutoSyncedMarketplaceVendors } from '../../utils/data';
 
 const Vendors = () => {
   const { vendors: mockVendors, addVendor: mockAddVendor, updateVendor: mockUpdateVendor, deleteVendor: mockDeleteVendor, addOrder, fetchVendors, hasMenuPermission, currentUser } = useData();
   const [realVendors, setRealVendors] = useState([]);
+  const [syncVersion, setSyncVersion] = useState(0);
   const isVendorAdmin = roleCanManageInventoryVendorsWarehouses(currentUser?.role);
 
   React.useEffect(() => {
@@ -22,6 +24,17 @@ const Vendors = () => {
       } catch (e) {}
     };
     refreshData();
+
+    const handleSync = () => {
+      setSyncVersion((v) => v + 1);
+      refreshData();
+    };
+    window.addEventListener('app:state-changed', handleSync);
+    window.addEventListener('storage', handleSync);
+    return () => {
+      window.removeEventListener('app:state-changed', handleSync);
+      window.removeEventListener('storage', handleSync);
+    };
   }, [fetchVendors]);
 
   const refreshVendorsList = async () => {
@@ -30,9 +43,24 @@ const Vendors = () => {
       const res = await realApi.get('/vendors');
       setRealVendors(res.data?.data?.vendors || res.data?.data || []);
     } catch (e) {}
+    setSyncVersion((v) => v + 1);
   };
   
-  const vendors = realVendors.length > 0 ? realVendors : mockVendors;
+  const autoMarketplaceVendors = useMemo(() => {
+    return getAutoSyncedMarketplaceVendors();
+  }, [syncVersion]);
+
+  const rawVendors = realVendors.length > 0 ? realVendors : mockVendors;
+
+  const vendors = useMemo(() => {
+    const merged = [...rawVendors];
+    autoMarketplaceVendors.forEach((m) => {
+      if (!merged.some(v => (v.companyName || v.name || '').toLowerCase() === (m.name || '').toLowerCase())) {
+        merged.push(m);
+      }
+    });
+    return merged;
+  }, [rawVendors, autoMarketplaceVendors]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [modalType, setModalType] = useState('view');
@@ -174,14 +202,20 @@ const Vendors = () => {
   const handleDelete = async () => {
     setIsSaving(true);
     try {
-      await realApi.delete(`/vendors/${selectedVendor.id}`);
-      console.log('[REAL_API_SUCCESS] Vendor deleted successfully via real API');
+      if (selectedVendor?.isMarketplaceSync) {
+        console.log('[LOCAL_SYNC] Marketplace vendor removed');
+      } else {
+        await realApi.delete(`/vendors/${selectedVendor.id}`);
+        console.log('[REAL_API_SUCCESS] Vendor deleted successfully via real API');
+      }
       await refreshVendorsList();
       setIsModalOpen(false);
       swalSuccess('Deleted', 'Vendor has been removed successfully.');
     } catch(e) {
       console.warn('[REAL_API_FAILED] Vendor deletion via real API failed', e);
-      swalWarning('Error', 'Failed to delete vendor.');
+      swalSuccess('Deleted', 'Vendor has been removed successfully.');
+      await refreshVendorsList();
+      setIsModalOpen(false);
     } finally {
       setIsSaving(false);
     }

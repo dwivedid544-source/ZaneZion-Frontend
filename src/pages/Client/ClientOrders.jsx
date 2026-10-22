@@ -324,7 +324,7 @@ const ClientOrders = () => {
                 status: effectiveStatus,
                 location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || o.dropLocation || 'Client Address',
                 pickupLocation: linkedDelivery?.pickupLocation || o.pickupLocation || o.pickup_location || null,
-                deliveryType: o.deliveryType || o.mode || o.delivery_mode || o.metadata?.deliveryType || 'Road',
+                deliveryType: (o.deliveryType && o.deliveryType !== 'Road') ? o.deliveryType : (o.delivery_mode || o.mode || meta?.delivery_mode || meta?.deliveryType || o.deliveryType || 'Road'),
                 transport_asset: o.transport_asset || o.transportAsset || o.metadata?.transport_asset || o.metadata?.transportAsset || null,
                 transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || o.charterDetails || o.metadata?.transport_asset_custom || o.metadata?.charter_details || null,
                 island_location: o.island_location || o.islandLocation || o.metadata?.island_location || null,
@@ -1063,7 +1063,7 @@ const ClientOrders = () => {
                                     {(() => {
                                         const orig = selectedTransaction.originalRecord || {};
                                         const origMeta = typeof orig.metadata === 'string' ? JSON.parse(orig.metadata) : (orig.metadata || {});
-                                        const delType = selectedTransaction.deliveryType || orig.deliveryType || orig.delivery_mode || origMeta.deliveryType || origMeta.delivery_mode;
+                                        const delType = (selectedTransaction.deliveryType && selectedTransaction.deliveryType !== 'Road') ? selectedTransaction.deliveryType : (orig.delivery_mode || origMeta.delivery_mode || orig.deliveryType || origMeta.deliveryType || selectedTransaction.deliveryType || 'Road');
                                         const tAsset = selectedTransaction.transport_asset || orig.transport_asset || orig.transportAsset || origMeta.transport_asset || origMeta.transportAsset;
                                         const tAssetCustom = selectedTransaction.transport_asset_custom || orig.transport_asset_custom || orig.transportAssetCustom || orig.charterDetails || origMeta.transport_asset_custom || origMeta.charter_details;
                                         const islLoc = selectedTransaction.island_location || orig.island_location || orig.islandLocation || origMeta.island_location || origMeta.islandLocation;

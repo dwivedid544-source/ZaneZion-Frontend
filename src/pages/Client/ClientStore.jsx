@@ -221,26 +221,21 @@ const ClientStore = () => {
     const isRetailPersonal = userPortalRole === 'customer';
     const roleKey = normalizeRole(currentUser?.role);
     const canDirectManageMarketplaceInventory = ['client', 'saas_client', 'admin', 'superadmin', 'inventory', 'procurement'].includes(roleKey);
+    const isCustomRequestRoute = location.pathname.includes('custom-request');
 
     React.useEffect(() => {
-        if (!isRetailPersonal && activeTab === 'sheet') {
-            setActiveTab('catalog');
-        }
-    }, [isRetailPersonal, activeTab]);
-
-    React.useEffect(() => {
-        const params = new URLSearchParams(location.search);
-        const tab = params.get('tab');
-        if (!isRetailPersonal && (tab === 'sheet' || tab === 'custom')) {
-            setActiveTab('catalog');
+        if (isCustomRequestRoute) {
+            setActiveTab('sheet');
             return;
         }
+        const params = new URLSearchParams(location.search);
+        const tab = params.get('tab');
         if (tab === 'sheet' || tab === 'custom') {
-            setActiveTab('sheet');
-        } else if (tab === 'catalog') {
-            setActiveTab('catalog');
+            navigate('/dashboard/custom-request', { replace: true });
+            return;
         }
-    }, [location, isRetailPersonal]);
+        setActiveTab('catalog');
+    }, [location, isCustomRequestRoute, navigate]);
 
     const marketplaceInventory = inventory.filter(item => {
         const isCustomAdHoc = Boolean(
@@ -686,13 +681,24 @@ const ClientStore = () => {
             {/* Header section... */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
                 <div>
-                    <h1 className="text-3xl sm:text-5xl font-black tracking-tighter text-white italic uppercase leading-none">
-                        ZaneZion <span className="text-accent underline decoration-white/10 underline-offset-8">Concierge</span> Portal
-                    </h1>
-                    <p className="text-secondary text-[10px] sm:text-xs mt-4 font-black uppercase tracking-[0.4em] opacity-80 italic">Global Logistics & Bespoke Procurement Network</p>
+                    {isCustomRequestRoute ? (
+                        <>
+                            <h1 className="text-3xl sm:text-5xl font-black tracking-tighter text-white italic uppercase leading-none">
+                                Bespoke <span className="text-accent underline decoration-white/10 underline-offset-8">Custom</span> Request
+                            </h1>
+                            <p className="text-secondary text-[10px] sm:text-xs mt-4 font-black uppercase tracking-[0.4em] opacity-80 italic">Personal Concierge, Courier & Document Pickup Service</p>
+                        </>
+                    ) : (
+                        <>
+                            <h1 className="text-3xl sm:text-5xl font-black tracking-tighter text-white italic uppercase leading-none">
+                                ZaneZion <span className="text-accent underline decoration-white/10 underline-offset-8">Concierge</span> Portal
+                            </h1>
+                            <p className="text-secondary text-[10px] sm:text-xs mt-4 font-black uppercase tracking-[0.4em] opacity-80 italic">Global Logistics & Bespoke Procurement Network</p>
+                        </>
+                    )}
                 </div>
                 <div className="flex items-center gap-4">
-                    {canDirectManageMarketplaceInventory && (
+                    {canDirectManageMarketplaceInventory && !isCustomRequestRoute && (
                         <button
                             type="button"
                             onClick={() => navigate('/dashboard/inventory?action=entry&type=Marketplace')}
@@ -705,37 +711,20 @@ const ClientStore = () => {
                         <span className="text-[10px] font-black text-muted uppercase tracking-widest">Client Identity</span>
                         <span className="text-sm font-bold text-accent uppercase italic">{currentUser?.name || 'Client'}</span>
                     </div>
-                    <button
-                        onClick={() => setIsCartOpen(true)}
-                        className="relative p-5 sm:p-6 bg-accent/10 border border-accent/30 rounded-[2rem] text-accent hover:bg-accent hover:text-black transition-all shadow-2xl shadow-accent/5 group"
-                    >
-                        <ShoppingCart size={24} className="group-hover:scale-110 transition-transform" />
-                        {cart.length > 0 && (
-                            <span className="absolute top-2 right-2 w-6 h-6 bg-white text-black border-2 border-accent text-[10px] font-black rounded-full flex items-center justify-center animate-bounce">
-                                {cart.length}
-                            </span>
-                        )}
-                    </button>
+                    {!isCustomRequestRoute && (
+                        <button
+                            onClick={() => setIsCartOpen(true)}
+                            className="relative p-5 sm:p-6 bg-accent/10 border border-accent/30 rounded-[2rem] text-accent hover:bg-accent hover:text-black transition-all shadow-2xl shadow-accent/5 group"
+                        >
+                            <ShoppingCart size={24} className="group-hover:scale-110 transition-transform" />
+                            {cart.length > 0 && (
+                                <span className="absolute top-2 right-2 w-6 h-6 bg-white text-black border-2 border-accent text-[10px] font-black rounded-full flex items-center justify-center animate-bounce">
+                                    {cart.length}
+                                </span>
+                            )}
+                        </button>
+                    )}
                 </div>
-            </div>
-
-            {/* Tabs */}
-            <div className="flex items-center gap-4 bg-white/5 p-2 rounded-[2.5rem] border border-white/5 w-fit">
-                <button
-                    onClick={() => setActiveTab('catalog')}
-                    className={`px-8 py-3.5 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.2em] transition-all ${activeTab === 'catalog' ? 'bg-accent text-black shadow-xl shadow-accent/20' : 'text-muted hover:text-white'}`}
-                >
-                    Elite Catalog
-                </button>
-                {isRetailPersonal && (
-                    <button
-                        type="button"
-                        onClick={() => setActiveTab('sheet')}
-                        className={`px-8 py-3.5 rounded-[2rem] text-[10px] font-black uppercase tracking-[0.2em] transition-all ${activeTab === 'sheet' ? 'bg-accent text-black shadow-xl shadow-accent/20' : 'text-muted hover:text-white border border-white/10 hover:border-accent/40 hover:bg-white/5'}`}
-                    >
-                        Custom Request
-                    </button>
-                )}
             </div>
 
             {activeTab === 'catalog' ? (

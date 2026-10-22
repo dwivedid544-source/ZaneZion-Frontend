@@ -681,8 +681,28 @@ function extractTransportModeFromOrder(row) {
     meta = row.metadata;
   }
 
+  // Prioritize non-road transport mode if explicitly set anywhere
+  const candidates = [
+    meta.delivery_mode,
+    meta.deliveryMode,
+    meta.deliveryType,
+    meta.transportMode,
+    meta.transport_mode,
+    meta.mode,
+    row.transportMode,
+    row.transport_mode,
+    row.delivery_mode,
+    row.deliveryMode,
+    row.deliveryType,
+    row.mode
+  ];
+  for (const c of candidates) {
+    const norm = normalizeTransportMode(c);
+    if (norm && norm !== "Road") return norm;
+  }
+
   const direct = normalizeTransportMode(
-    row.delivery_mode ?? row.deliveryMode ?? row.deliveryType ?? row.mode ?? meta.deliveryType ?? meta.delivery_mode ?? meta.mode,
+    row.transportMode ?? row.transport_mode ?? row.delivery_mode ?? row.deliveryMode ?? row.deliveryType ?? row.mode ?? meta.transportMode ?? meta.transport_mode ?? meta.deliveryType ?? meta.delivery_mode ?? meta.mode,
   );
   if (direct) return direct;
 
@@ -2384,6 +2404,12 @@ export const GlobalDataProvider = ({ children }) => {
           deliveryMode: transportMode,
           delivery_mode: transportMode,
           mode: transportMode,
+          transportAsset: o.transportAsset || o.transport_asset || meta.transportAsset || meta.transport_asset || null,
+          transport_asset: o.transport_asset || o.transportAsset || meta.transport_asset || meta.transportAsset || null,
+          transportAssetCustom: o.transportAssetCustom || o.transport_asset_custom || meta.transportAssetCustom || meta.transport_asset_custom || null,
+          transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || meta.transport_asset_custom || meta.transportAssetCustom || null,
+          islandLocation: o.islandLocation || o.island_location || meta.islandLocation || meta.island_location || null,
+          island_location: o.island_location || o.islandLocation || meta.island_location || meta.islandLocation || null,
         };
       });
       mappedOrders.sort((a, b) => {
@@ -4356,7 +4382,25 @@ export const GlobalDataProvider = ({ children }) => {
         due_date: dueVal || null,
         order_kind: order.order_kind || order.orderKind || "marketplace",
         delivery_mode:
-          order.deliveryType || order.delivery_mode || order.deliveryMode,
+          order.deliveryType || order.delivery_mode || order.deliveryMode || "Road",
+        deliveryType:
+          order.deliveryType || order.delivery_mode || order.deliveryMode || "Road",
+        delivery_type:
+          order.deliveryType || order.delivery_mode || order.deliveryMode || "Road",
+        transportAsset:
+          order.transportAsset || order.transport_asset || null,
+        transport_asset:
+          order.transport_asset || order.transportAsset || null,
+        transportAssetCustom:
+          order.transportAssetCustom || order.transport_asset_custom || null,
+        transport_asset_custom:
+          order.transport_asset_custom || order.transportAssetCustom || null,
+        islandLocation:
+          order.islandLocation || order.island_location || null,
+        island_location:
+          order.island_location || order.islandLocation || null,
+        transport_fee:
+          order.transport_fee || null,
         currentDepartment: routedDepartment,
         current_department: routedDepartment,
         routed_department: routedDepartment,

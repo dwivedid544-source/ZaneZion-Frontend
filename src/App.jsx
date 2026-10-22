@@ -518,6 +518,11 @@ function App() {
                   <ClientStore />
                 </RoleProtectedRoute>
               } />
+              <Route path="custom-request" element={
+                <RoleProtectedRoute role={auth.role} allowedRoles={['customer', 'client', 'saas_client', 'admin']}>
+                  <ClientStore />
+                </RoleProtectedRoute>
+              } />
               <Route path="marketplace" element={<Navigate to="/dashboard/store" replace />} />
             </Route>
 

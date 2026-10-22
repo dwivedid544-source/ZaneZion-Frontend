@@ -416,8 +416,11 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             const matchedType = validOrderTypes.find(opt => opt.toLowerCase() === String(rawSavedType).toLowerCase());
             const resolvedType = matchedType || (isChauffeur ? 'Chauffeur Service' : (rawSavedType || 'Delivery'));
 
-            const loadedDeliveryType = effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || meta?.deliveryType || meta?.delivery_mode || 'Road';
-            const loadedTransportAsset = effectiveOrder.transportAsset || effectiveOrder.transport_asset || meta?.transportAsset || meta?.transport_asset || (loadedDeliveryType === 'Air' ? 'Charter Jet' : (loadedDeliveryType === 'Sea' ? 'Boat' : ''));
+            const directMode = (effectiveOrder.deliveryType && effectiveOrder.deliveryType !== 'Road')
+                ? effectiveOrder.deliveryType
+                : (effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || meta?.delivery_mode || meta?.deliveryType || effectiveOrder.mode || effectiveOrder.deliveryType || 'Road');
+            const loadedDeliveryType = directMode;
+            const loadedTransportAsset = effectiveOrder.transportAsset || effectiveOrder.transport_asset || meta?.transportAsset || meta?.transport_asset || (loadedDeliveryType === 'Air' ? (effectiveOrder.transportAsset || meta?.transportAsset || 'Airplane') : (loadedDeliveryType === 'Sea' ? (effectiveOrder.transportAsset || meta?.transportAsset || 'Boat') : ''));
             const loadedTransportAssetCustom = effectiveOrder.transportAssetCustom || effectiveOrder.transport_asset_custom || effectiveOrder.charterDetails || effectiveOrder.charter_details || meta?.transportAssetCustom || meta?.transport_asset_custom || meta?.charter_details || meta?.charterDetails || '';
             const loadedIslandLocation = effectiveOrder.islandLocation || effectiveOrder.island_location || meta?.islandLocation || meta?.island_location || '';
 

@@ -174,6 +174,7 @@ const menuItems = {
   customer: [
     { icon: LayoutDashboard, label: 'Dashboard', path: '/dashboard' },
     { icon: ShoppingBag, label: 'Marketplace', path: '/dashboard/store' },
+    { icon: ClipboardList, label: 'Custom Request', path: '/dashboard/custom-request' },
     { icon: ShoppingCart, label: 'My Orders', path: '/dashboard/client-orders' },
     { icon: Truck, label: 'Track Delivery', path: '/dashboard/track-delivery' },
     { icon: Car, label: 'Chauffeur', path: '/dashboard/chauffeur' },
@@ -283,13 +284,13 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
   const userPlan = (currentUser?.plan || 'Free').toLowerCase();
   // Personal (customer) users: no Events, no Concierge, no Invoices — pay at checkout; chauffeur + membership
   const planMenuAccess = {
-    free: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    basic: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    standard: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    executive: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    platinum: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
-    premium: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support', 'Purchase Requests', 'Audit Protocol'],
-    enterprise: ['Dashboard', 'Marketplace', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support', 'Purchase Requests', 'Audit Protocol'],
+    free: ['Dashboard', 'Marketplace', 'Custom Request', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    basic: ['Dashboard', 'Marketplace', 'Custom Request', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    standard: ['Dashboard', 'Marketplace', 'Custom Request', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    executive: ['Dashboard', 'Marketplace', 'Custom Request', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    platinum: ['Dashboard', 'Marketplace', 'Custom Request', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support'],
+    premium: ['Dashboard', 'Marketplace', 'Custom Request', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support', 'Purchase Requests', 'Audit Protocol'],
+    enterprise: ['Dashboard', 'Marketplace', 'Custom Request', 'My Orders', 'Track Delivery', 'Chauffeur', 'Membership', 'Support', 'Purchase Requests', 'Audit Protocol'],
   };
 
   const currentMenu = (() => {

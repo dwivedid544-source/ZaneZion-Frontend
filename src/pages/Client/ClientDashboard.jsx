@@ -537,32 +537,32 @@ const ClientDashboard = () => {
                   </button>
                 ))}
               </div>
-              <div className="space-y-3">
+              <div className="space-y-3 overflow-x-auto pb-2 custom-scrollbar">
                 {clientInvoices.filter(inv => invoiceTab === 'paid' ? inv.status === 'Paid' : inv.status !== 'Paid').map((inv, idx) => (
-                  <motion.div layout key={idx} className="group bg-white/[0.02] border border-white/5 rounded-2xl p-5 hover:border-accent/30 hover:bg-white/[0.04] transition-all duration-300">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                      <div className="flex items-center gap-4 flex-1">
-                        <div className="w-12 h-12 bg-background border border-white/10 rounded-xl flex items-center justify-center text-muted/40 group-hover:text-accent transition-colors">
+                  <motion.div layout key={idx} className="group bg-white/[0.02] border border-white/5 rounded-2xl p-5 hover:border-accent/30 hover:bg-white/[0.04] transition-all duration-300 min-w-[440px]">
+                    <div className="flex items-center justify-between gap-6">
+                      <div className="flex items-center gap-4 flex-1 min-w-0">
+                        <div className="w-12 h-12 bg-background border border-white/10 rounded-xl flex items-center justify-center text-muted/40 group-hover:text-accent transition-colors flex-shrink-0">
                           <FileText size={22} />
                         </div>
-                        <div>
-                          <p className="font-black text-white text-sm group-hover:text-accent transition-colors italic">{inv.id}</p>
-                          <p className="text-[10px] font-black text-muted uppercase tracking-widest mt-1 italic">{inv.date}</p>
+                        <div className="min-w-0">
+                          <p className="font-black text-white text-sm group-hover:text-accent transition-colors italic truncate">{inv.id}</p>
+                          <p className="text-[10px] font-black text-muted uppercase tracking-widest mt-1 italic truncate">{inv.date}</p>
                         </div>
                       </div>
-                      <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto">
+                      <div className="flex items-center justify-end gap-6 flex-shrink-0">
                         <div className="text-right">
                           <p className="text-lg font-black text-white font-heading italic tracking-tighter">${parseFloat(inv.totalAmount || 0).toLocaleString()}</p>
                           <StatusBadge status={inv.status} />
                         </div>
-                        <div className="flex gap-2">
+                        <div className="flex items-center gap-2">
                           <button onClick={() => { setViewingInvoice(inv); setIsInvoiceModalOpen(true); }}
-                            className="w-10 h-10 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center hover:bg-accent/10 hover:text-accent transition-all">
+                            className="w-10 h-10 bg-white/5 border border-white/10 rounded-xl flex items-center justify-center hover:bg-accent/10 hover:text-accent transition-all flex-shrink-0">
                             <Eye size={18} />
                           </button>
                           {inv.status !== 'Paid' && (
                             <button onClick={() => handlePayment(inv)}
-                              className="px-6 h-10 bg-accent text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98]">
+                              className="px-5 h-10 bg-accent text-black rounded-xl text-[10px] font-black uppercase tracking-widest hover:shadow-lg transition-all hover:scale-[1.02] active:scale-[0.98] flex-shrink-0">
                               Settle
                             </button>
                           )}

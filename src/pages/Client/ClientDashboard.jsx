@@ -169,11 +169,42 @@ const ClientDashboard = () => {
     inv.clientId === clientData.id || inv.company_id === clientData.id || inv.client === clientData.name ||
     (inv.userId && String(inv.userId) === String(currentUser?.id))
   );
-  const clientChauffeurRequests = (chauffeurRequests || []).filter(req =>
-    (clientData?.id && (String(req.clientId) === String(clientData.id) || String(req.company_id) === String(clientData.id))) ||
-    (clientData?.name && String(req.clientName).toLowerCase() === String(clientData.name).toLowerCase()) ||
-    (req.created_by && String(req.created_by) === String(currentUser?.id))
-  );
+  const clientChauffeurRequests = (chauffeurRequests || []).filter(req => {
+    if (!req) return false;
+
+    // Strict cross-tenant boundary: reject if tenantId mismatch is present
+    const currentTenantId = currentUser?.tenantId != null ? String(currentUser.tenantId) : null;
+    const reqTenantId = req.tenantId != null ? String(req.tenantId) : null;
+    if (currentTenantId && reqTenantId && currentTenantId !== reqTenantId) {
+      return false;
+    }
+
+    const myUserId = currentUser?.id != null ? String(currentUser.id) : null;
+    const myClientId = (clientData?.id && clientData.id !== 'GUEST') ? String(clientData.id) : (currentUser?.clientId ? String(currentUser.clientId) : null);
+    const myEmail = currentUser?.email ? String(currentUser.email).toLowerCase().trim() : null;
+
+    // 1. Exact match on verified customer user ID
+    const reqCustId = (req.customer_id != null && req.customer_id !== '') ? String(req.customer_id) :
+      (req.user_id != null && req.user_id !== '') ? String(req.user_id) :
+      (req.userId != null && req.userId !== '') ? String(req.userId) :
+      (req.created_by != null && req.created_by !== '') ? String(req.created_by) : null;
+
+    if (myUserId && reqCustId && reqCustId === myUserId) return true;
+
+    // 2. Exact match on verified corporate Client ID
+    const reqClientId = (req.clientId && req.clientId !== 'CLT-GUEST') ? String(req.clientId) :
+      (req.company_id != null && req.company_id !== '') ? String(req.company_id) : null;
+
+    if (myClientId && reqClientId && reqClientId === myClientId) return true;
+
+    // 3. Exact match on verified customer email (exact equality only, no partial match)
+    const reqEmail = req.customer_email ? String(req.customer_email).toLowerCase().trim() :
+      (req.email ? String(req.email).toLowerCase().trim() : null);
+
+    if (myEmail && reqEmail && reqEmail === myEmail) return true;
+
+    return false;
+  });
 
   const DONE_STATUSES = ['delivered', 'cancelled', 'completed', 'done'];
   const isDoneOrder = (s) => DONE_STATUSES.includes(String(s || '').toLowerCase().replace(/\s+/g, '_'));
@@ -608,7 +639,11 @@ const ClientDashboard = () => {
                     <div className="flex justify-between items-start">
                       <div>
                         <p className="text-sm font-black text-white italic">{req.serviceType || 'Chauffeur Protocol'}</p>
-                        <p className="text-[10px] text-muted font-bold mt-1 truncate max-w-[200px]">{req.pickupLocation}</p>
+                        <div className="flex items-center gap-1.5 mt-1 text-[10px] text-muted font-bold truncate max-w-[240px]">
+                          <span className="text-accent shrink-0">{req.pickupLocation || 'Pickup'}</span>
+                          <span className="shrink-0">→</span>
+                          <span className="truncate">{req.dropLocation || 'Destination'}</span>
+                        </div>
                       </div>
                       <StatusBadge status={req.status} />
                     </div>

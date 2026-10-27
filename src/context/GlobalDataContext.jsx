@@ -6404,14 +6404,72 @@ export const GlobalDataProvider = ({ children }) => {
           const detail = { ...orderItem, ...meta, ...customItem };
 
           const compId = order.companyId || order.company_id || order.clientId || order.client_id || detail?.companyId || detail?.company_id || detail?.clientId || null;
-          const usrId = order.createdById || order.created_by || order.userId || order.user_id || detail?.userId || detail?.created_by || null;
 
-          // Cross-reference with deliveries array to get live assigned driver and pickup status
-          const matchingDelivery = (deliveries || []).find(d =>
-            String(d.orderId || '').includes(String(order.id)) ||
-            String(d.order_id_raw) === String(order.id) ||
-            String(d.db_id) === String(order.id)
-          );
+          // Resolve verified customer owner identity from trusted metadata or direct order customer fields
+          // Note: order.createdById is a database foreign key to Employee.id (often 1 as fallback),
+          // so it must never be treated as the customer's ownership identity.
+          const customerOwnerId =
+            (meta.customer_id != null && !isNaN(Number(meta.customer_id))) ? Number(meta.customer_id) :
+            (meta.customer_user_id != null && !isNaN(Number(meta.customer_user_id))) ? Number(meta.customer_user_id) :
+            (meta.user_id != null && !isNaN(Number(meta.user_id))) ? Number(meta.user_id) :
+            (meta.userId != null && !isNaN(Number(meta.userId))) ? Number(meta.userId) :
+            (customItem?.customer_id != null && !isNaN(Number(customItem.customer_id))) ? Number(customItem.customer_id) :
+            (customItem?.user_id != null && !isNaN(Number(customItem.user_id))) ? Number(customItem.user_id) :
+            (customItem?.userId != null && !isNaN(Number(customItem.userId))) ? Number(customItem.userId) :
+            (detail?.customer_id != null && !isNaN(Number(detail.customer_id))) ? Number(detail.customer_id) :
+            (detail?.user_id != null && !isNaN(Number(detail.user_id))) ? Number(detail.user_id) :
+            (order.customer_id != null && !isNaN(Number(order.customer_id))) ? Number(order.customer_id) :
+            (order.userId != null && !isNaN(Number(order.userId))) ? Number(order.userId) :
+            (order.user_id != null && !isNaN(Number(order.user_id))) ? Number(order.user_id) :
+            null;
+
+          const customerEmail =
+            meta.customer_email ||
+            meta.email ||
+            customItem?.customer_email ||
+            customItem?.email ||
+            order.client?.email ||
+            order.customer_email ||
+            order.email ||
+            null;
+
+          // Cross-reference with deliveries array using unambiguous, exact relational matching only
+          // Never use substring matching (.includes) or compare delivery table PK (d.db_id) with order PK (order.id)
+          const targetOrderId = order?.id != null && !isNaN(Number(order.id)) ? Number(order.id) : null;
+          const targetOrderNum = order?.orderNumber ? String(order.orderNumber).trim() : null;
+          const cleanTargetNum = targetOrderNum ? targetOrderNum.replace(/^#|^ORD-/i, '').trim() : null;
+
+          const matchingDelivery = (deliveries || []).find(d => {
+            if (!d) return false;
+
+            // 1. Direct numeric match on foreign key delivery.order_id_raw -> order.id
+            if (targetOrderId !== null && d.order_id_raw != null) {
+              const rawIdNum = Number(d.order_id_raw);
+              if (!isNaN(rawIdNum) && rawIdNum > 0 && rawIdNum === targetOrderId) {
+                return true;
+              }
+            }
+
+            // 2. Exact match against formatted delivery.orderId reference string
+            if (d.orderId) {
+              const delOrderStr = String(d.orderId).trim();
+              if (targetOrderNum && delOrderStr.toLowerCase() === targetOrderNum.toLowerCase()) {
+                return true;
+              }
+              const cleanDelStr = delOrderStr.replace(/^#|^ORD-/i, '').trim();
+              if (targetOrderId !== null) {
+                const parsedClean = Number(cleanDelStr);
+                if (!isNaN(parsedClean) && parsedClean > 0 && parsedClean === targetOrderId) {
+                  return true;
+                }
+              }
+              if (cleanTargetNum && cleanDelStr.toLowerCase() === cleanTargetNum.toLowerCase()) {
+                return true;
+              }
+            }
+
+            return false;
+          });
 
           const isOrderCancelled = ['cancelled', 'rejected', 'canceled'].includes(String(order.status || '').toLowerCase());
           const isDeliveryCancelled = ['cancelled', 'rejected', 'canceled'].includes(String(matchingDelivery?.status || '').toLowerCase());
@@ -6487,6 +6545,8 @@ export const GlobalDataProvider = ({ children }) => {
           const baseMapped = {
             id: order.id,
             db_id: order.id,
+            orderNumber: order.orderNumber,
+            tenantId: order.tenantId || meta.tenantId || null,
             createdAt: order.createdAt || order.created_at || order.order_date || order.date || null,
             created_at: order.createdAt || order.created_at || order.order_date || order.date || null,
             order_date: order.order_date || order.createdAt || order.created_at || order.date || null,
@@ -6495,9 +6555,14 @@ export const GlobalDataProvider = ({ children }) => {
             clientId: order.clientId || order.client_id || detail?.clientId || 'CLT-GUEST',
             company_id: compId,
             companyId: compId,
-            created_by: usrId,
-            user_id: usrId,
-            userId: usrId,
+            customer_id: customerOwnerId,
+            customerId: customerOwnerId,
+            user_id: customerOwnerId,
+            userId: customerOwnerId,
+            created_by: customerOwnerId,
+            employee_created_by: order.createdById,
+            customer_email: customerEmail,
+            email: customerEmail,
             clientName: formatClientDisplayName(order, clients, [...(users || []), ...(customerUsers || [])]),
             driverName: liveDriver,
             plateNumber: liveVehicle,

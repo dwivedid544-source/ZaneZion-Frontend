@@ -14,6 +14,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { displayOrderStatus, isoDateSlice, formatDateDisplayDMY } from '../../utils/orderWorkflow';
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
 import { useUpdateOrder } from '../../hooks/api/useOrders';
+import { compareOrdersNewestFirst } from '../../utils/apiHelpers';
 
 const CATEGORY_CONFIG = {
     'Marketplace Order': { label: 'Marketplace Order', icon: ShoppingBag, color: 'bg-info/10 text-info border-info/20' },
@@ -95,32 +96,36 @@ const ClientOrders = () => {
     const myClient = useMemo(() => {
         return (clients || []).find(c => {
             const cId = String(c.id).replace('CLT-', '');
-            const uId = String(currentUser?.clientId || currentUser?.company_id || currentUser?.id).replace('CLT-', '');
-            return (currentUser?.email && c.email?.toLowerCase() === currentUser?.email?.toLowerCase()) ||
-                (currentUser?.clientId && cId === uId) ||
-                String(c.id) === String(currentUser?.company_id) ||
-                (currentUser?.name && c.name?.toLowerCase() === currentUser?.name?.toLowerCase());
+            const uClientId = currentUser?.clientId ? String(currentUser.clientId).replace('CLT-', '') : null;
+            if (currentUser?.email && c.email?.toLowerCase() === currentUser?.email?.toLowerCase()) return true;
+            if (uClientId && uClientId !== '1' && cId === uClientId) return true;
+            if (currentUser?.name && c.name?.toLowerCase() === currentUser?.name?.toLowerCase() && c.name?.toLowerCase() !== 'zanezion') return true;
+            return false;
         });
     }, [clients, currentUser]);
 
-    const myClientId = myClient?.id || currentUser?.clientId || currentUser?.company_id || currentUser?.id;
-    const myName = (myClient?.name || currentUser?.name || '').toLowerCase();
-    const myEmail = (currentUser?.email || myClient?.email || '').toLowerCase();
+    const myClientId = (myClient?.id && String(myClient.id) !== '1')
+        ? String(myClient.id)
+        : (currentUser?.clientId && String(currentUser.clientId) !== '1' ? String(currentUser.clientId) : null);
+    const myName = (currentUser?.name || myClient?.name || '').toLowerCase().trim();
+    const myEmail = (currentUser?.email || myClient?.email || '').toLowerCase().trim();
+    const myUserId = String(currentUser?.id || '').trim();
 
-    // Helper to check ownership of any record strictly by ID or email
+    // Helper to check ownership of any record strictly by ID, email, or client association (NEVER generic companyId 1)
     const isMyRecord = (item) => {
         if (!item) return false;
-        const itemClientId = String(item.clientId || item.client_id || item.companyId || item.company_id || '');
-        const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || item.metadata?.customer_id || item.metadata?.user_id || item.metadata?.userId || '');
-        const itemEmail = String(item.email || item.client_email || item.customer_email || item.metadata?.email || item.metadata?.customer_email || item.client?.email || '').toLowerCase();
-
-        const myUserId = String(currentUser?.id || '');
-        const myClientIdStr = String(myClientId || '');
-        const myEmailStr = String(myEmail || '').toLowerCase();
+        const itemClientId = String(item.clientId || item.client_id || item.metadata?.clientId || item.metadata?.client_id || '').trim();
+        const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || item.metadata?.customer_id || item.metadata?.user_id || item.metadata?.userId || '').trim();
+        const itemEmail = String(item.email || item.client_email || item.customer_email || item.metadata?.email || item.metadata?.customer_email || item.metadata?.client_email || item.client?.email || '').toLowerCase().trim();
 
         if (myUserId && itemCustId && itemCustId === myUserId) return true;
-        if (myClientIdStr && itemClientId && itemClientId === myClientIdStr) return true;
-        if (myEmailStr && itemEmail && itemEmail === myEmailStr) return true;
+        if (myClientId && myClientId !== '1' && itemClientId && myClientId === itemClientId) return true;
+        if (myEmail && itemEmail && (itemEmail === myEmail || itemEmail.includes(myEmail) || myEmail.includes(itemEmail))) return true;
+
+        if (myName && myName !== 'zanezion') {
+            const itemOwner = String(item.owner || item.owner_name || item.clientName || item.client_name || item.customer_name || item.client?.name || item.client?.companyName || item.metadata?.clientName || item.metadata?.client_name || '').toLowerCase().trim();
+            if (itemOwner && (itemOwner === myName || itemOwner.includes(myName) || myName.includes(itemOwner))) return true;
+        }
 
         return false;
     };
@@ -427,28 +432,6 @@ const ClientOrders = () => {
             });
         });
 
-        // Deduplicate and sort newest first (strictly by order placement / creation date, then ID descending)
-        const getTimeScore = (tx) => {
-            const raw = tx.createdAt || tx.created_at || tx.originalRecord?.createdAt || tx.originalRecord?.created_at || tx.requestDate || tx.date;
-            if (raw) {
-                const t = new Date(raw).getTime();
-                if (!isNaN(t) && t > 0) return t;
-
-                if (typeof raw === 'string' && /^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(raw.trim())) {
-                    const [d, m, y] = raw.trim().split(/[-/]/).map(n => parseInt(n, 10));
-                    const parsed = new Date(y, m - 1, d).getTime();
-                    if (!isNaN(parsed)) return parsed;
-                }
-            }
-            return 0;
-        };
-
-        const getIdScore = (tx) => {
-            const rawId = tx.rawId || tx.id;
-            const num = parseInt(String(rawId).replace(/\D/g, ''), 10);
-            return !isNaN(num) ? num : 0;
-        };
-
         const seen = new Set();
         return unified.filter(tx => {
             const numId = tx.rawId ? String(tx.rawId).replace(/\D/g, '') : '';
@@ -456,26 +439,7 @@ const ClientOrders = () => {
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
-        }).sort((a, b) => {
-            // 1. Primary sort: actual order placement / creation timestamp descending (newest order ALWAYS at the top)
-            const timeA = getTimeScore(a);
-            const timeB = getTimeScore(b);
-            if (timeA > 0 && timeB > 0 && timeB !== timeA) {
-                return timeB - timeA;
-            }
-
-            // 2. If timestamps are equal or from the same source, compare database autoincrement ID descending
-            if (a.source === b.source) {
-                const idA = getIdScore(a);
-                const idB = getIdScore(b);
-                if (idA > 0 && idB > 0 && idA !== idB) {
-                    return idB - idA;
-                }
-            }
-
-            // 3. Fallback to ID score descending
-            return getIdScore(b) - getIdScore(a);
-        });
+        }).sort(compareOrdersNewestFirst);
     }, [orders, chauffeurRequests, events, guestRequests, luxuryItems, myClientId, myName, myEmail, portalRole]);
 
     // Filter transactions based on category, status, and search query

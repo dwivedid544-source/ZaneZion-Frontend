@@ -23,7 +23,7 @@ import {
 import { INVENTORY, VENDORS, ACCESS_PLANS, DEFAULT_MARKETPLACE_TEST_ITEMS, getAutoSyncedMarketplaceVendors } from "../utils/data";
 
 import { notifyStateChanged, getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from "../utils/stateSyncHelper";
-import { formatClientDisplayName, BACKEND_ORIGIN } from "../utils/apiHelpers";
+import { formatClientDisplayName, BACKEND_ORIGIN, compareOrdersNewestFirst } from "../utils/apiHelpers";
 
 const GlobalDataContext = createContext();
 
@@ -2433,14 +2433,7 @@ export const GlobalDataProvider = ({ children }) => {
           island_location: o.island_location || o.islandLocation || meta.island_location || meta.islandLocation || null,
         };
       });
-      mappedOrders.sort((a, b) => {
-        const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
-        const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
-        if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
-        const numA = parseInt(String(a.id || a.rawId || 0).replace(/\D/g, ''), 10) || 0;
-        const numB = parseInt(String(b.id || b.rawId || 0).replace(/\D/g, ''), 10) || 0;
-        return numB - numA;
-      });
+      mappedOrders.sort(compareOrdersNewestFirst);
       setOrders(mappedOrders);
       return mappedOrders;
     } catch (e) {

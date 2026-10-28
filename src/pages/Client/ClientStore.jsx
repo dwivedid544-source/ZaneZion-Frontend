@@ -60,10 +60,9 @@ const ClientStore = () => {
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [customItems, setCustomItems] = useState([{ name: '', qty: 1, price: 0 }]);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [destination, setDestination] = useState(currentUser?.location || 'Port Hercule');
+    const [destination, setDestination] = useState(currentUser?.location || currentUser?.deliveryAddress || currentUser?.address || '');
     const [deliveryMode, setDeliveryMode] = useState('Road');
-    const [catalogDeliveryAddress, setCatalogDeliveryAddress] = useState(currentUser?.location || '');
+    const [catalogDeliveryAddress, setCatalogDeliveryAddress] = useState(currentUser?.location || currentUser?.deliveryAddress || currentUser?.address || '');
     const [checkoutVendorId, setCheckoutVendorId] = useState('');
     const [bookChauffeur, setBookChauffeur] = useState(false);
     const [transportAsset, setTransportAsset] = useState('');
@@ -88,6 +87,14 @@ const ClientStore = () => {
     const [customDistanceKm, setCustomDistanceKm] = useState('');
     const [personalPickupAddress, setPersonalPickupAddress] = useState('');
     const [personalDropAddress, setPersonalDropAddress] = useState('');
+
+    React.useEffect(() => {
+        const clientLoc = currentUser?.location || currentUser?.deliveryAddress || currentUser?.address || '';
+        if (clientLoc) {
+            setDestination(prev => prev || clientLoc);
+            setCatalogDeliveryAddress(prev => prev || clientLoc);
+        }
+    }, [currentUser]);
 
     const handleAddItemToOrder = (item, group, openDrawer = false) => {
         const itemId = item?.itemId ?? item?.item_id ?? item?.id ?? item?._id;

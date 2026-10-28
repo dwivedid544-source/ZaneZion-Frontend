@@ -15,8 +15,8 @@ import { motion } from 'framer-motion';
 
 import { useNavigate } from 'react-router-dom';
 import { useData } from '../../context/GlobalDataContext';
-import { normalizeRole } from '../../utils/authUtils';
 import { useUpdateOrder, useCreateOrder } from '../../hooks/api/useOrders';
+import { compareOrdersNewestFirst } from '../../utils/apiHelpers';
 
 const StatCard = ({ label, value, icon: Icon, color = 'text-accent', bg = 'bg-accent/10', onClick }) => (
   <motion.div
@@ -142,29 +142,29 @@ const ClientDashboard = () => {
     if (typeStr === 'PROJECT' || typeStr === 'CHAUFFEUR' || typeStr.includes('CHAUFFEUR')) return false; 
     const itemsNames = (o.items || []).map(i => String(i.name || '').toUpperCase());
     if (itemsNames.some(n => n.includes('CHAUFFEUR'))) return false;
-    const orderClientId = String(o.clientId || o.client_id || o.companyId || o.company_id || '');
-    const orderCustId = String(o.customer_id || o.customerId || o.created_by || o.createdById || o.userId || o.user_id || '');
-    const orderEmail = String(o.email || o.client_email || o.customer_email || '').toLowerCase();
 
-    const myUserId = String(currentUser?.id || '');
-    const myClientId = String(clientData?.id || currentUser?.clientId || '');
-    const myEmail = String(currentUser?.email || clientData?.email || '').toLowerCase();
+    const orderClientId = String(o.clientId || o.client_id || o.metadata?.clientId || o.metadata?.client_id || '').trim();
+    const orderCustId = String(o.customer_id || o.customerId || o.created_by || o.createdById || o.userId || o.user_id || o.metadata?.customer_id || o.metadata?.user_id || '').trim();
+    const orderEmail = String(o.email || o.client_email || o.customer_email || o.metadata?.email || o.metadata?.customer_email || o.metadata?.client_email || '').toLowerCase().trim();
+
+    const myUserId = String(currentUser?.id || '').trim();
+    const myClientId = String(clientData?.id || currentUser?.clientId || '').trim();
+    const myEmail = String(currentUser?.email || clientData?.email || '').toLowerCase().trim();
+    const myName = String(clientData?.name || clientData?.companyName || currentUser?.name || '').toLowerCase().trim();
 
     if (myUserId && orderCustId && orderCustId === myUserId) return true;
-    if (myClientId && orderClientId && orderClientId === myClientId) return true;
-    if (myEmail && orderEmail && orderEmail === myEmail) return true;
+    if (myClientId && myClientId !== '1' && orderClientId && orderClientId === myClientId) return true;
+    if (myEmail && orderEmail && (orderEmail === myEmail || orderEmail.includes(myEmail) || myEmail.includes(orderEmail))) return true;
+
+    if (myName) {
+      const orderClientName = String(o.client || o.clientName || o.client_name || o.customer_name || o.metadata?.clientName || o.metadata?.client_name || '').toLowerCase().trim();
+      if (orderClientName && (orderClientName === myName || orderClientName.includes(myName) || myName.includes(orderClientName))) return true;
+    }
 
     return false;
   };
 
-  const clientOrders = (orders || []).filter(isMyOrder).sort((a, b) => {
-    const timeA = new Date(a.createdAt || a.created_at || a.updatedAt || a.updated_at || a.order_date || a.date || 0).getTime();
-    const timeB = new Date(b.createdAt || b.created_at || b.updatedAt || b.updated_at || b.order_date || b.date || 0).getTime();
-    if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
-    const numA = parseInt(String(a.rawId || a.id || 0).replace(/\D/g, ''), 10) || 0;
-    const numB = parseInt(String(b.rawId || b.id || 0).replace(/\D/g, ''), 10) || 0;
-    return numB - numA;
-  });
+  const clientOrders = (orders || []).filter(isMyOrder).sort(compareOrdersNewestFirst);
   const clientInvoices = (invoices || []).filter(inv =>
     inv.clientId === clientData.id || inv.company_id === clientData.id || inv.client === clientData.name ||
     (inv.userId && String(inv.userId) === String(currentUser?.id))

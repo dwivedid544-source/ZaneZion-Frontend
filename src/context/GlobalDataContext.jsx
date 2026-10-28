@@ -167,11 +167,20 @@ function normalizeUserForUi(user) {
   const rawBanking = (user.bankingInfo && typeof user.bankingInfo === 'object') ? user.bankingInfo : {};
   let rawBalance = user.vacation_balance ?? user.vacationBalance;
   const storedDedicated = user.id ? localStorage.getItem(`dedicated_vacation_${user.id}`) : null;
-  const vacationQuota = rawBanking.vacationQuota !== undefined
-    ? Number(rawBanking.vacationQuota)
-    : (storedDedicated ? Number(storedDedicated) : (rawBalance !== undefined && Number(rawBalance) !== 10000 ? Number(rawBalance) : 80));
 
-  let finalBalance = rawBalance !== undefined && Number(rawBalance) !== 10000 ? Number(rawBalance) : vacationQuota;
+  // Filter out any 10,000-based artifacts (e.g. 10000, 9928, 9856)
+  const isCorruptVal = (v) => v === undefined || v === null || isNaN(Number(v)) || Number(v) >= 5000 || Number(v) <= 0;
+
+  let vacationQuota = 80;
+  if (!isCorruptVal(rawBanking.vacationQuota)) {
+    vacationQuota = Number(rawBanking.vacationQuota);
+  } else if (!isCorruptVal(storedDedicated)) {
+    vacationQuota = Number(storedDedicated);
+  } else if (!isCorruptVal(rawBalance)) {
+    vacationQuota = Number(rawBalance);
+  }
+
+  let finalBalance = !isCorruptVal(rawBalance) ? Number(rawBalance) : vacationQuota;
   if (finalBalance === undefined || isNaN(finalBalance)) finalBalance = vacationQuota || 0;
 
   return {
@@ -8091,6 +8100,7 @@ export const GlobalDataProvider = ({ children }) => {
       const res = await api.delete(`/staff/leave/${id}`);
       if (res.data?.success) {
         await fetchLeaveRequests();
+        if (fetchStaff) await fetchStaff();
         addLog({
           action: "Leave Request Deleted",
           detail: `Deleted leave request ${id}.`,

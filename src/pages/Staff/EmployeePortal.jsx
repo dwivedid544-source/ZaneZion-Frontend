@@ -382,37 +382,48 @@ const EmployeePortal = () => {
 
     // Dedicated vacation quota assigned to this specific staff member
     const dedicatedVacationHours = React.useMemo(() => {
+        const isCorrupt = (v) => v === undefined || v === null || isNaN(Number(v)) || Number(v) >= 5000 || Number(v) <= 0;
+
         // 1. Check user from users directory in GlobalDataContext
         const matched = (users || []).find(u =>
             (u.id && currentUser?.id && String(u.id) === String(currentUser.id)) ||
             (u.email && currentUser?.email && String(u.email).toLowerCase() === String(currentUser.email).toLowerCase())
         );
 
-        const listQuota = matched?.bankingInfo?.vacationQuota ?? matched?.vacationQuota ?? matched?.vacation_balance ?? matched?.vacationBalance;
-        if (listQuota !== undefined && Number(listQuota) !== 10000 && Number(listQuota) >= 0) {
+        let matchedBank = matched?.bankingInfo;
+        if (typeof matchedBank === 'string') {
+            try { matchedBank = JSON.parse(matchedBank); } catch (_) { matchedBank = {}; }
+        }
+        const listQuota = matchedBank?.vacationQuota ?? matched?.vacationQuota;
+        if (!isCorrupt(listQuota)) {
             return Number(listQuota);
         }
 
         // 2. Check bankingInfo on currentUser
-        const currentQuota = currentUser?.bankingInfo?.vacationQuota ?? currentUser?.vacationQuota;
-        if (currentQuota !== undefined && Number(currentQuota) !== 10000 && Number(currentQuota) >= 0) {
+        let curBank = currentUser?.bankingInfo;
+        if (typeof curBank === 'string') {
+            try { curBank = JSON.parse(curBank); } catch (_) { curBank = {}; }
+        }
+        const currentQuota = curBank?.vacationQuota ?? currentUser?.vacationQuota;
+        if (!isCorrupt(currentQuota)) {
             return Number(currentQuota);
         }
 
-        // 3. Check currentUser.vacationBalance if not 10000
-        if (currentUser?.vacationBalance !== undefined && Number(currentUser.vacationBalance) !== 10000 && Number(currentUser.vacationBalance) >= 0) {
-            return Number(currentUser.vacationBalance);
-        }
-
-        // 4. Check cached localStorage setting
-        const cached = localStorage.getItem(`dedicated_vacation_${currentUser?.id}`) || 
+        // 3. Check cached localStorage setting
+        const cached = (currentUser?.id ? localStorage.getItem(`dedicated_vacation_${currentUser.id}`) : null) || 
                        (currentUser?.email ? localStorage.getItem(`dedicated_vacation_${String(currentUser.email).toLowerCase()}`) : null);
-        if (cached && Number(cached) >= 0 && Number(cached) !== 10000) {
+        if (!isCorrupt(cached)) {
             return Number(cached);
         }
 
+        // 4. If vacationBalance is clean, quota is balance + already approved leave deductions
+        const rawBal = matched?.vacationBalance ?? currentUser?.vacationBalance;
+        if (!isCorrupt(rawBal)) {
+            return Number(rawBal) + (myApprovedLeaveHours > 0 ? myApprovedLeaveHours : 0);
+        }
+
         return 80;
-    }, [currentUser, users]);
+    }, [currentUser, users, myApprovedLeaveHours]);
 
     // Remaining vacation hours: Dedicated Quota - Approved Deductions
     const remainingVacationHours = Math.max(0, dedicatedVacationHours - myApprovedLeaveHours);

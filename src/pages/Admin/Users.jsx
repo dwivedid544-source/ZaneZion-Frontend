@@ -239,22 +239,66 @@ const Users = () => {
     return resolved;
   };
 
-  const resolveDedicatedVacationBalance = (u) => {
+  const resolveDedicatedQuota = (u) => {
     if (!u) return 80;
+    const isCorrupt = (v) => v === undefined || v === null || isNaN(Number(v)) || Number(v) >= 5000 || Number(v) <= 0;
     const cached = (u.id ? localStorage.getItem(`dedicated_vacation_${u.id}`) : null) ||
                    (u.email ? localStorage.getItem(`dedicated_vacation_${String(u.email).toLowerCase()}`) : null);
-    if (cached !== null && cached !== undefined && Number(cached) >= 0 && Number(cached) !== 10000) {
-      return Number(cached);
+    let bankObj = u.bankingInfo;
+    if (typeof bankObj === 'string') {
+      try { bankObj = JSON.parse(bankObj); } catch (_) { bankObj = {}; }
     }
-    const quota = u.vacationQuota ?? u.bankingInfo?.vacationQuota;
-    if (quota !== undefined && Number(quota) !== 10000 && Number(quota) >= 0) {
-      return Number(quota);
+    if (!isCorrupt(bankObj?.vacationQuota)) return Number(bankObj.vacationQuota);
+    if (!isCorrupt(u.vacationQuota)) return Number(u.vacationQuota);
+    if (!isCorrupt(cached)) return Number(cached);
+    if (!isCorrupt(u.vacationBalance)) return Number(u.vacationBalance);
+    return 80;
+  };
+
+  const resolveDedicatedVacationBalance = (u) => {
+    if (!u) return 80;
+    const isCorrupt = (v) => v === undefined || v === null || isNaN(Number(v)) || Number(v) >= 5000 || Number(v) < 0;
+
+    // Calculate approved deductions for this user
+    const userLeaves = (leaveRequests || []).filter(r =>
+      ((r.userId && String(r.userId) === String(u.id)) || (r.name && u.name && String(r.name).toLowerCase() === String(u.name).toLowerCase())) &&
+      String(r.status).toLowerCase() === 'approved'
+    );
+    let totalDeducted = 0;
+    userLeaves.forEach(r => {
+      let h = r.hours;
+      if (r.start && r.end) {
+        const s = new Date(r.start);
+        const e = new Date(r.end);
+        const diffDays = Math.max(1, Math.floor(Math.abs(e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24)) + 1);
+        h = diffDays * 24;
+      }
+      totalDeducted += (Number(h) || 24);
+    });
+
+    const cached = (u.id ? localStorage.getItem(`dedicated_vacation_${u.id}`) : null) ||
+                   (u.email ? localStorage.getItem(`dedicated_vacation_${String(u.email).toLowerCase()}`) : null);
+
+    let quota = null;
+    let bankObj = u.bankingInfo;
+    if (typeof bankObj === 'string') {
+      try { bankObj = JSON.parse(bankObj); } catch (_) { bankObj = {}; }
     }
-    const bal = u.vacationBalance ?? u.vacation_balance;
-    if (bal !== undefined && Number(bal) !== 10000 && Number(bal) >= 0) {
-      return Number(bal);
+    if (!isCorrupt(bankObj?.vacationQuota)) quota = Number(bankObj.vacationQuota);
+    else if (!isCorrupt(u.vacationQuota)) quota = Number(u.vacationQuota);
+    else if (!isCorrupt(cached)) quota = Number(cached);
+
+    const rawBal = u.vacationBalance ?? u.vacation_balance;
+    // If backend already has accurate remaining deducted balance (e.g. 428 when quota is 500)
+    if (!isCorrupt(rawBal) && (quota === null || Number(rawBal) <= quota)) {
+      return Number(rawBal);
     }
-    return cached ? Number(cached) : 100;
+
+    if (quota !== null) {
+      return Math.max(0, quota - totalDeducted);
+    }
+
+    return 80;
   };
 
   const handleAction = async (type, user) => {
@@ -284,7 +328,7 @@ const Users = () => {
           status: fullUser.status || 'Active',
           birthday: fullUser.birthday ? String(fullUser.birthday).split('T')[0] : '',
           nibNumber: fullUser.nibNumber || fullUser.nib_number || '',
-          vacationBalance: resolveDedicatedVacationBalance(fullUser),
+          vacationBalance: resolveDedicatedQuota(fullUser),
           employmentStatus: fullUser.employmentStatus || fullUser.employment_status || 'Full Time',
           hasPassport: fullUser.hasPassport ?? fullUser.has_passport ?? !!fullUser.passportUrl,
           passportUrl: fullUser.passportUrl || fullUser.passport_url || '',
@@ -325,7 +369,7 @@ const Users = () => {
           status: user.status || 'Active',
           birthday: user.birthday ? String(user.birthday).split('T')[0] : '',
           nibNumber: user.nibNumber || user.nib_number || '',
-          vacationBalance: resolveDedicatedVacationBalance(user),
+          vacationBalance: resolveDedicatedQuota(user),
           employmentStatus: user.employmentStatus || user.employment_status || 'Full Time',
           hasPassport: user.hasPassport ?? user.has_passport ?? !!user.passportUrl,
           passportUrl: user.passportUrl || user.passport_url || '',

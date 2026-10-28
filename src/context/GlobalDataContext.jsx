@@ -1931,7 +1931,16 @@ export const GlobalDataProvider = ({ children }) => {
           const rawOrderId = d.orderId ?? d.order_id ?? null;
           const orderRef = rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null;
           const rawClientId = d.clientId ?? d.client_id ?? d.customer_id ?? null;
-          const rawMissionType = d.missionType ?? d.mission_type ?? null;
+          const rawMissionType = d.missionType ?? d.mission_type ?? (
+            String(d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
+            String(d.order?.orderType || '').toLowerCase() === 'service'
+              ? 'Chauffeur'
+              : null
+          );
+          const isChauffeur = String(rawMissionType || '').toLowerCase() === 'chauffeur' ||
+            String(d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
+            String(d.order?.orderType || '').toLowerCase() === 'service';
+          const normalizedMissionType = isChauffeur ? 'Chauffeur' : (rawMissionType || 'Delivery');
           const rawDriverName = d.driverName ?? d.driver_name ?? (d.assignee ? `${d.assignee.firstName || ''} ${d.assignee.lastName || ''}`.trim() : null) ?? d.driver ?? null;
           const rawPlate = d.plateNumber ?? d.plate_number ?? d.vehicleRef ?? d.vehicle_ref ?? null;
           const rawPickup = d.pickupLocation ?? d.pickup_location ?? null;
@@ -1953,10 +1962,13 @@ export const GlobalDataProvider = ({ children }) => {
             clientId: rawClientId,
             client: formatClientDisplayName(d, clients, [...(users || []), ...(customerUsers || [])]),
             clientName: formatClientDisplayName(d, clients, [...(users || []), ...(customerUsers || [])]),
-            mission_type: rawMissionType,
+            mission_type: normalizedMissionType,
+            missionType: normalizedMissionType,
+            orderType: isChauffeur ? 'CHAUFFEUR' : (d.order?.orderType || 'Delivery'),
+            isChauffeur: isChauffeur,
             item: items.length > 0
               ? items[0].name
-              : rawMissionType === "Chauffeur"
+              : isChauffeur
                 ? "VIP Chauffeur Service"
                 : orderRef
                   ? `Order ${orderRef}`

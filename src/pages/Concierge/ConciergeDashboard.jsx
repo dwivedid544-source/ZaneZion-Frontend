@@ -79,10 +79,13 @@ const ConciergeDashboard = () => {
     return ['assigned', 'en_route', 'in_transit'].includes(s);
   });
   // Chauffeur deliveries from the deliveries array (for the status monitor)
-  const chauffeurDeliveries = (deliveries || []).filter(d =>
-    String(d.mission_type || '').toLowerCase() === 'chauffeur' &&
-    !['delivered', 'completed', 'cancelled'].includes(String(d.status || '').toLowerCase().replace(/\s+/g, '_'))
-  );
+  const chauffeurDeliveries = (deliveries || []).filter(d => {
+    const isChauffeur = String(d.mission_type || d.missionType || '').toLowerCase() === 'chauffeur' ||
+      String(d.orderType || d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
+      String(d.orderType || d.order?.orderType || '').toLowerCase() === 'service';
+    const s = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
+    return isChauffeur && !['delivered', 'completed', 'cancelled'].includes(s);
+  });
 
   return (
     <div className="space-y-8 px-0 sm:px-2">

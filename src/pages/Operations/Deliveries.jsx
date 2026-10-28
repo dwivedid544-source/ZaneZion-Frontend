@@ -598,7 +598,10 @@ const Deliveries = () => {
   }, [locationState]);
 
   const logisticsOnlyDeliveries = deliveries.filter((d) => {
-    const isNotChauffeur = String(d.mission_type || '').toLowerCase() !== 'chauffeur';
+    const isChauffeur = String(d.mission_type || d.missionType || '').toLowerCase() === 'chauffeur' ||
+      String(d.orderType || d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
+      String(d.orderType || d.order?.orderType || '').toLowerCase() === 'service';
+    const isNotChauffeur = !isChauffeur;
     if (portalRole === 'concierge') {
       return isNotChauffeur && isOrderVisibleToConcierge(d, clients);
     }

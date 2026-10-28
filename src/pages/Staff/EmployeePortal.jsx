@@ -433,22 +433,86 @@ const EmployeePortal = () => {
         }
     };
 
+    const resolveOrderId = (del) => {
+        if (!del) return null;
+        // 1. Direct numeric order relationship or order_id field
+        const directNum = del.order?.id ?? del.order_id;
+        if (directNum !== undefined && directNum !== null && !isNaN(Number(directNum)) && Number(directNum) > 0) {
+            return Number(directNum);
+        }
+
+        // 2. Direct order object: id / db_id is the order's primary key
+        const isDirectOrder = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || !del.deliveryNumber;
+        if (isDirectOrder) {
+            const candidate = del.db_id ?? del.id;
+            if (candidate !== undefined && candidate !== null && !isNaN(Number(candidate)) && Number(candidate) > 0) {
+                return Number(candidate);
+            }
+        }
+
+        // 3. Check orderId / orderNumber strings or numbers
+        const candidateOrderId = del.orderId ?? del.orderNumber ?? del.order?.orderNumber;
+        if (candidateOrderId !== undefined && candidateOrderId !== null) {
+            const str = String(candidateOrderId).trim();
+            if (!isNaN(Number(str)) && Number(str) > 0) {
+                return Number(str);
+            }
+            if (/^ORD-/i.test(str)) {
+                return str.toUpperCase();
+            }
+            if (str.startsWith('#')) {
+                const clean = str.slice(1).trim();
+                if (!isNaN(Number(clean)) && Number(clean) > 0) return Number(clean);
+                if (/^ORD-/i.test(clean)) return clean.toUpperCase();
+            }
+            if (str && !str.startsWith('DEL-')) {
+                return str;
+            }
+        }
+
+        // 4. Fallback: db_id, order_id_raw, rawId, id
+        const fallback = del.db_id ?? del.order_id_raw ?? del.rawId ?? del.id;
+        if (fallback !== undefined && fallback !== null) {
+            const str = String(fallback).trim();
+            if (!isNaN(Number(str)) && Number(str) > 0) {
+                return Number(str);
+            }
+            if (/^ORD-/i.test(str)) {
+                return str.toUpperCase();
+            }
+            return str;
+        }
+
+        return null;
+    };
+
     const handleRejectMission = async (del) => {
         try {
             swalLoading('Rejecting Mission...', 'The mission is rejecting, please wait...');
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
-            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+            const orderTargetId = resolveOrderId(del);
 
             if (isChauffeur) {
-                await api.put(`/orders/${targetId}/status`, { status: 'pending' }).catch(() =>
-                    api.patch(`/orders/${targetId}/status`, { status: 'pending' })
-                );
-                setUpdatedChauffeurItem(targetId, { status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null });
+                if (orderTargetId) {
+                    await api.put(`/orders/${orderTargetId}/status`, { status: 'pending' }).catch(() =>
+                        api.patch(`/orders/${orderTargetId}/status`, { status: 'pending' })
+                    );
+                    setUpdatedChauffeurItem(orderTargetId, { status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null });
+                }
                 notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
-                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId } }));
+                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: orderTargetId } }));
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null }).catch(() => {});
+                }
+                if (del.deliveryNumber || del.delivery_fee !== undefined || del.driverId !== undefined) {
+                    await updateDelivery({
+                        ...del,
+                        status: 'pending',
+                        assigned_driver: null,
+                        assignedTo: null,
+                        driverId: null,
+                        driver: null
+                    }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
@@ -471,32 +535,38 @@ const EmployeePortal = () => {
     const handleStartTrip = async (del) => {
         try {
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
-            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+            const orderTargetId = resolveOrderId(del);
 
             if (isChauffeur) {
-                await api.put(`/orders/${targetId}/status`, { status: 'en_route' }).catch(() =>
-                    api.patch(`/orders/${targetId}/status`, { status: 'en_route' })
-                );
-                setUpdatedChauffeurItem(targetId, { status: 'en_route', chauffeur_status: 'en_route' });
+                if (orderTargetId) {
+                    await api.put(`/orders/${orderTargetId}/status`, { status: 'en_route' }).catch(() =>
+                        api.patch(`/orders/${orderTargetId}/status`, { status: 'en_route' })
+                    );
+                    setUpdatedChauffeurItem(orderTargetId, { status: 'en_route', chauffeur_status: 'en_route' });
+                }
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'en_route', chauffeur_status: 'en_route' }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'en_route', chauffeur_status: 'en_route' }).catch(() => {});
+                }
+                if (del.deliveryNumber || del.delivery_fee !== undefined || del.driverId !== undefined) {
+                    await updateDelivery({
+                        ...del,
+                        status: 'en_route'
+                    }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
                     ...del,
                     status: 'en_route'
                 });
-                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
-                if (cleanOrderId) {
-                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'in_transit' }).catch(() =>
-                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'in_transit' }).catch(() => {})
+                if (orderTargetId && !String(orderTargetId).startsWith('DEL-')) {
+                    await api.put(`/orders/${orderTargetId}/status`, { status: 'en_route' }).catch(() =>
+                        api.patch(`/orders/${orderTargetId}/status`, { status: 'en_route' }).catch(() => {})
                     );
                 }
             }
 
-            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
-            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'en_route' } }));
+            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats', 'missions']);
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: orderTargetId, status: 'en_route' } }));
             if (syncGlobalState) await syncGlobalState();
 
             swalSuccess('Trip Started', 'Mission status updated to En Route.');
@@ -508,32 +578,38 @@ const EmployeePortal = () => {
     const handleArriveTrip = async (del) => {
         try {
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
-            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+            const orderTargetId = resolveOrderId(del);
 
             if (isChauffeur) {
-                await api.put(`/orders/${targetId}/status`, { status: 'arrived' }).catch(() =>
-                    api.patch(`/orders/${targetId}/status`, { status: 'arrived' })
-                );
-                setUpdatedChauffeurItem(targetId, { status: 'arrived', chauffeur_status: 'arrived' });
+                if (orderTargetId) {
+                    await api.put(`/orders/${orderTargetId}/status`, { status: 'arrived' }).catch(() =>
+                        api.patch(`/orders/${orderTargetId}/status`, { status: 'arrived' })
+                    );
+                    setUpdatedChauffeurItem(orderTargetId, { status: 'arrived', chauffeur_status: 'arrived' });
+                }
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'arrived', chauffeur_status: 'arrived' }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'arrived', chauffeur_status: 'arrived' }).catch(() => {});
+                }
+                if (del.deliveryNumber || del.delivery_fee !== undefined || del.driverId !== undefined) {
+                    await updateDelivery({
+                        ...del,
+                        status: 'arrived'
+                    }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
                     ...del,
                     status: 'arrived'
                 });
-                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
-                if (cleanOrderId) {
-                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'arrived' }).catch(() =>
-                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'arrived' }).catch(() => {})
+                if (orderTargetId && !String(orderTargetId).startsWith('DEL-')) {
+                    await api.put(`/orders/${orderTargetId}/status`, { status: 'arrived' }).catch(() =>
+                        api.patch(`/orders/${orderTargetId}/status`, { status: 'arrived' }).catch(() => {})
                     );
                 }
             }
 
-            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
-            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'arrived' } }));
+            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats', 'missions']);
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: orderTargetId, status: 'arrived' } }));
             if (syncGlobalState) await syncGlobalState();
 
             swalSuccess('Arrived at Destination', 'Trip status updated to Arrived. Passengers may now disembark.');
@@ -555,16 +631,24 @@ const EmployeePortal = () => {
     const handleCompleteMission = async (del, proofData = null) => {
         try {
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
-            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+            const orderTargetId = resolveOrderId(del);
 
             if (isChauffeur) {
-                await api.put(`/orders/${targetId}/status`, { status: 'completed' }).catch(() =>
-                    api.patch(`/orders/${targetId}/status`, { status: 'completed' })
-                );
-                setUpdatedChauffeurItem(targetId, { status: 'completed', chauffeur_status: 'completed' });
+                if (orderTargetId) {
+                    await api.put(`/orders/${orderTargetId}/status`, { status: 'completed' }).catch(() =>
+                        api.patch(`/orders/${orderTargetId}/status`, { status: 'completed' })
+                    );
+                    setUpdatedChauffeurItem(orderTargetId, { status: 'completed', chauffeur_status: 'completed' });
+                }
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'completed', chauffeur_status: 'completed' }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'completed', chauffeur_status: 'completed' }).catch(() => {});
+                }
+                if (del.deliveryNumber || del.delivery_fee !== undefined || del.driverId !== undefined) {
+                    await updateDelivery({
+                        ...del,
+                        status: 'delivered',
+                        deliveredAt: new Date().toISOString()
+                    }).catch(() => {});
                 }
             } else {
                 // If non-chauffeur (marketplace delivery) and no proof was provided yet, open POD modal
@@ -581,7 +665,7 @@ const EmployeePortal = () => {
 
                 // If proof was provided, submit POD to backend
                 try {
-                    const missionId = del.mission_id || del.missionId || targetId;
+                    const missionId = del.mission_id || del.missionId || del.id;
                     await api.post(`/missions/${missionId}/pod`, {
                         receiverName: proofData.receiverName || 'Verified Client',
                         signature: proofData.signature || 'Electronic Driver Handover',
@@ -589,7 +673,7 @@ const EmployeePortal = () => {
                         photo: proofData.photo,
                         notes: proofData.notes || 'Delivered via Driver Portal'
                     }).catch(() => 
-                        api.post(`/deliveries/${targetId}/pod`, {
+                        api.post(`/deliveries/${del.id}/pod`, {
                             receiverName: proofData.receiverName || 'Verified Client',
                             signature: proofData.signature || 'Electronic Driver Handover',
                             photoUrl: proofData.photo,
@@ -601,21 +685,20 @@ const EmployeePortal = () => {
 
                 await updateDelivery({
                     ...del,
-                    status: 'Delivered',
+                    status: 'delivered',
                     deliveredAt: new Date().toISOString(),
                     pod: proofData
                 });
 
-                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
-                if (cleanOrderId && !cleanOrderId.startsWith('DEL-')) {
-                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() =>
-                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() => {})
+                if (orderTargetId && !String(orderTargetId).startsWith('DEL-')) {
+                    await api.put(`/orders/${orderTargetId}/status`, { status: 'completed' }).catch(() =>
+                        api.patch(`/orders/${orderTargetId}/status`, { status: 'completed' }).catch(() => {})
                     );
                 }
             }
 
             notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats', 'missions']);
-            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'completed' } }));
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: orderTargetId, status: 'completed' } }));
             if (syncGlobalState) await syncGlobalState();
 
             swalSuccess('Mission Completed', 'Proof of delivery submitted and order marked as completed.');
@@ -1199,7 +1282,7 @@ const EmployeePortal = () => {
                                                         </>
                                                     );
                                                 }
-                                                if ((s === 'en_route' || s === 'in_transit') && mine) {
+                                                if ((s === 'en_route' || s === 'in_transit' || s === 'arrived') && mine) {
                                                     return (
                                                         <button
                                                             type="button"

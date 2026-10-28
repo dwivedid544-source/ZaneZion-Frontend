@@ -62,7 +62,12 @@ const LogisticsDashboard = () => {
 
   // Merge deliveries + project-missions into a single unified dispatch list
   const allDispatchItems = useMemo(() => {
-    const deliveryItems = deliveries.map(d => ({ ...d, _source: 'delivery' }));
+    const deliveryItems = deliveries.map(d => ({
+      ...d,
+      missionType: d.missionType || d.mission_type || 'LOGISTICS',
+      mission_type: d.mission_type || d.missionType || 'LOGISTICS',
+      _source: 'delivery'
+    }));
     // Only include missions that have no linked delivery (i.e. project-converted missions)
     const missionItems = missions
       .filter(m => !m.deliveryId && !m.delivery_id)
@@ -81,7 +86,8 @@ const LogisticsDashboard = () => {
         })(),
         assignedStaff: m.driverName || '',
         missionNumber: m.missionNumber || m.id,
-        missionType: m.missionType || 'LOGISTICS',
+        missionType: m.missionType || m.mission_type || 'LOGISTICS',
+        mission_type: m.mission_type || m.missionType || 'LOGISTICS',
         _source: 'mission',
       }));
     return [...deliveryItems, ...missionItems];

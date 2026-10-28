@@ -310,7 +310,7 @@ const Missions = () => {
       accessor: "missionType",
       render: (row) => (
         <span className="px-2 py-1 bg-white/5 border border-white/10 rounded-lg text-[10px] font-black uppercase tracking-widest text-accent">
-          {row.missionType}
+          {row.missionType || row.mission_type || 'Standard'}
         </span>
       )
     },

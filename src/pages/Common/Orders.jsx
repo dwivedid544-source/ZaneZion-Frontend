@@ -387,7 +387,7 @@ const Orders = () => {
               </div>
             ) : (
               <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 w-fit">
-                Personal • Auto-Routed
+                Personal Client
               </span>
             )}
           </div>

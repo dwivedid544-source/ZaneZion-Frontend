@@ -228,7 +228,7 @@ const EmployeePortal = () => {
         const isMine = isUserDriverMatch(d);
         const isLogisticsMission = String(d.mission_type || d.missionType || '').toLowerCase() !== 'chauffeur';
         const st = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
-        const isActiveOrAccepted = ['assigned', 'accepted', 'en_route', 'in_transit', 'dispatched', 'planned'].includes(st);
+        const isActiveOrAccepted = ['assigned', 'accepted', 'en_route', 'in_transit', 'arrived', 'dispatched', 'planned', 'confirmed', 'approved', 'ready_for_delivery'].includes(st);
         return isMine && isLogisticsMission && isActiveOrAccepted;
     });
 
@@ -326,7 +326,7 @@ const EmployeePortal = () => {
 
         const merged = [...fromChauffeur];
         fromDeliveries.forEach(dItem => {
-            const dId = String(dItem.db_id || dItem.order_id_raw || dItem.id || '').replace(/\D/g, '');
+            const dId = String(dItem.order_id_raw || dItem.order?.id || (dItem.isDirectChauffeurOrder ? dItem.db_id : '') || dItem.id || '').replace(/\D/g, '');
             const exists = merged.some(m => {
                 const mId = String(m.db_id || m.rawId || m.id || '').replace(/\D/g, '');
                 return (mId && dId && mId === dId) ||
@@ -403,8 +403,8 @@ const EmployeePortal = () => {
         try {
             swalLoading('Accepting Mission...', 'The mission is accepting, please wait...');
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
-            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
+            const rawId = del.order_id_raw || del.order?.id || (del.isDirectChauffeurOrder ? del.db_id : null) || del.rawId || del.db_id || del.id;
+            const targetId = resolveOrderId(del) || String(rawId).replace(/\D/g, '') || String(rawId);
 
             if (isChauffeur) {
                 await api.put(`/orders/${targetId}/status`, { status: 'assigned' }).catch(() =>
@@ -436,13 +436,13 @@ const EmployeePortal = () => {
     const resolveOrderId = (del) => {
         if (!del) return null;
         // 1. Direct numeric order relationship or order_id field
-        const directNum = del.order?.id ?? del.order_id;
+        const directNum = del.order?.id ?? del.order_id_raw ?? del.order_id;
         if (directNum !== undefined && directNum !== null && !isNaN(Number(directNum)) && Number(directNum) > 0) {
             return Number(directNum);
         }
 
         // 2. Direct order object: id / db_id is the order's primary key
-        const isDirectOrder = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || !del.deliveryNumber;
+        const isDirectOrder = del.isDirectChauffeurOrder || (!del.deliveryNumber && !String(del.id || '').startsWith('DEL-'));
         if (isDirectOrder) {
             const candidate = del.db_id ?? del.id;
             if (candidate !== undefined && candidate !== null && !isNaN(Number(candidate)) && Number(candidate) > 0) {
@@ -451,12 +451,14 @@ const EmployeePortal = () => {
         }
 
         // 3. Check orderId / orderNumber strings or numbers
-        const candidateOrderId = del.orderId ?? del.orderNumber ?? del.order?.orderNumber;
+        const candidateOrderId = del.order?.orderNumber ?? del.orderNumber ?? del.orderId;
         if (candidateOrderId !== undefined && candidateOrderId !== null) {
             const str = String(candidateOrderId).trim();
             if (!isNaN(Number(str)) && Number(str) > 0) {
                 return Number(str);
             }
+            const shortOrdMatch = str.match(/^ORD-0*(\d+)$/i);
+            if (shortOrdMatch && Number(shortOrdMatch[1]) > 0) return Number(shortOrdMatch[1]);
             if (/^ORD-/i.test(str)) {
                 return str.toUpperCase();
             }
@@ -471,12 +473,14 @@ const EmployeePortal = () => {
         }
 
         // 4. Fallback: db_id, order_id_raw, rawId, id
-        const fallback = del.db_id ?? del.order_id_raw ?? del.rawId ?? del.id;
+        const fallback = del.order_id_raw ?? del.rawId ?? (!String(del.id || '').startsWith('DEL-') ? del.db_id : null) ?? del.id;
         if (fallback !== undefined && fallback !== null) {
             const str = String(fallback).trim();
             if (!isNaN(Number(str)) && Number(str) > 0) {
                 return Number(str);
             }
+            const shortOrdMatch = str.match(/^ORD-0*(\d+)$/i);
+            if (shortOrdMatch && Number(shortOrdMatch[1]) > 0) return Number(shortOrdMatch[1]);
             if (/^ORD-/i.test(str)) {
                 return str.toUpperCase();
             }
@@ -504,7 +508,7 @@ const EmployeePortal = () => {
                 if (updateChauffeurRequest) {
                     await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null }).catch(() => {});
                 }
-                if (del.deliveryNumber || del.delivery_fee !== undefined || del.driverId !== undefined) {
+                if (!del.isDirectChauffeurOrder && (del.deliveryNumber || String(del.id || '').startsWith('DEL-'))) {
                     await updateDelivery({
                         ...del,
                         status: 'pending',
@@ -547,7 +551,7 @@ const EmployeePortal = () => {
                 if (updateChauffeurRequest) {
                     await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'en_route', chauffeur_status: 'en_route' }).catch(() => {});
                 }
-                if (del.deliveryNumber || del.delivery_fee !== undefined || del.driverId !== undefined) {
+                if (!del.isDirectChauffeurOrder && (del.deliveryNumber || String(del.id || '').startsWith('DEL-'))) {
                     await updateDelivery({
                         ...del,
                         status: 'en_route'
@@ -590,7 +594,7 @@ const EmployeePortal = () => {
                 if (updateChauffeurRequest) {
                     await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'arrived', chauffeur_status: 'arrived' }).catch(() => {});
                 }
-                if (del.deliveryNumber || del.delivery_fee !== undefined || del.driverId !== undefined) {
+                if (!del.isDirectChauffeurOrder && (del.deliveryNumber || String(del.id || '').startsWith('DEL-'))) {
                     await updateDelivery({
                         ...del,
                         status: 'arrived'
@@ -643,7 +647,7 @@ const EmployeePortal = () => {
                 if (updateChauffeurRequest) {
                     await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'completed', chauffeur_status: 'completed' }).catch(() => {});
                 }
-                if (del.deliveryNumber || del.delivery_fee !== undefined || del.driverId !== undefined) {
+                if (!del.isDirectChauffeurOrder && (del.deliveryNumber || String(del.id || '').startsWith('DEL-'))) {
                     await updateDelivery({
                         ...del,
                         status: 'delivered',
@@ -665,7 +669,8 @@ const EmployeePortal = () => {
 
                 // If proof was provided, submit POD to backend
                 try {
-                    const missionId = del.mission_id || del.missionId || del.id;
+                    const deliveryTargetId = del.delivery_db_id || del.db_id || String(del.id || '').replace(/\D/g, '') || del.id;
+                    const missionId = del.mission_id || del.missionId || deliveryTargetId;
                     await api.post(`/missions/${missionId}/pod`, {
                         receiverName: proofData.receiverName || 'Verified Client',
                         signature: proofData.signature || 'Electronic Driver Handover',
@@ -673,7 +678,7 @@ const EmployeePortal = () => {
                         photo: proofData.photo,
                         notes: proofData.notes || 'Delivered via Driver Portal'
                     }).catch(() => 
-                        api.post(`/deliveries/${del.id}/pod`, {
+                        api.post(`/deliveries/${deliveryTargetId}/pod`, {
                             receiverName: proofData.receiverName || 'Verified Client',
                             signature: proofData.signature || 'Electronic Driver Handover',
                             photoUrl: proofData.photo,
@@ -1064,7 +1069,7 @@ const EmployeePortal = () => {
                                     const isCompleted = ['delivered', 'completed'].includes(s);
                                     const isEnRoute = ['en_route', 'in_transit'].includes(s);
                                     const isArrived = s === 'arrived';
-                                    const canStart = ['assigned', 'accepted', 'pending', 'pending_review', 'approved'].includes(s);
+                                    const canStart = ['assigned', 'accepted', 'pending', 'pending_review', 'approved', 'dispatched', 'planned', 'confirmed', 'ready_for_delivery', 'created', 'logistics'].includes(s);
                                     return (
                                         <div key={del.id} className={`p-5 border rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isCompleted ? 'bg-success/5 border-success/20' : 'bg-accent/5 border-accent/20 hover:border-accent/40'}`}>
                                             <div className="flex items-center gap-4">
@@ -1262,7 +1267,7 @@ const EmployeePortal = () => {
                                                         </>
                                                     );
                                                 }
-                                                if (s === 'assigned' && mine) {
+                                                if (['assigned', 'accepted', 'dispatched', 'planned', 'confirmed', 'approved', 'ready_for_delivery'].includes(s) && mine) {
                                                     return (
                                                         <>
                                                             <button

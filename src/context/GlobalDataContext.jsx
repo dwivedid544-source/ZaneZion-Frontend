@@ -1928,8 +1928,8 @@ export const GlobalDataProvider = ({ children }) => {
 
           const transportMode = extractTransportModeFromOrder(d);
           // Support both real DB (orderId) and mock (order_id)
-          const rawOrderId = d.orderId ?? d.order_id ?? null;
-          const orderRef = rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null;
+          const rawOrderId = d.orderId ?? d.order_id ?? d.order?.id ?? null;
+          const orderRef = d.order?.orderNumber || d.orderNumber || (rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null);
           const rawClientId = d.clientId ?? d.client_id ?? d.customer_id ?? null;
           const rawMissionType = d.missionType ?? d.mission_type ?? (
             String(d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
@@ -2009,9 +2009,19 @@ export const GlobalDataProvider = ({ children }) => {
       }
 
       if (resChauffeur.data && resChauffeur.data.success) {
-        const chauffeurOrders = Array.isArray(resChauffeur.data.data)
+        const chauffeurOrdersRaw = Array.isArray(resChauffeur.data.data)
           ? resChauffeur.data.data
           : (resChauffeur.data.data?.orders || []);
+
+        const existingOrderIds = new Set(
+          combined.map(d => String(d.order_id_raw || d.orderId || '')).filter(Boolean)
+        );
+
+        const chauffeurOrders = chauffeurOrdersRaw.filter(order => {
+          const idStr = String(order.id);
+          const numStr = String(order.orderNumber || '');
+          return !existingOrderIds.has(idStr) && (!numStr || !existingOrderIds.has(numStr));
+        });
 
         combined.push(...chauffeurOrders.map((order) => {
           let meta = order.metadata;
@@ -2124,6 +2134,8 @@ export const GlobalDataProvider = ({ children }) => {
             mission_type: "Chauffeur",
             missionType: "Chauffeur",
             orderType: "CHAUFFEUR",
+        missionType: "Chauffeur",
+        mission_type: "Chauffeur",
             isDirectChauffeurOrder: true,
             item: "VIP Chauffeur Service",
             items: [{ name: "VIP Chauffeur Service", qty: 1 }],
@@ -2386,6 +2398,10 @@ export const GlobalDataProvider = ({ children }) => {
         const displayDate = orderDay || createdDay;
         const statusForUi = o.status;
         const transportMode = extractTransportModeFromOrder(o);
+        const isChaufOrder = String(o.orderType || o.order_type || meta.orderType || meta.order_type || '').toUpperCase() === 'CHAUFFEUR' ||
+          String(o.orderType || o.order_type || '').toLowerCase() === 'service' ||
+          String(o.missionType || o.mission_type || meta.missionType || meta.mission_type || '').toLowerCase() === 'chauffeur' ||
+          Boolean(o.isChauffeur || meta.isChauffeur);
 
         return {
           ...meta,
@@ -2422,6 +2438,11 @@ export const GlobalDataProvider = ({ children }) => {
           transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || meta.transport_asset_custom || meta.transportAssetCustom || null,
           islandLocation: o.islandLocation || o.island_location || meta.islandLocation || meta.island_location || null,
           island_location: o.island_location || o.islandLocation || meta.island_location || meta.islandLocation || null,
+          orderType: isChaufOrder ? 'CHAUFFEUR' : (o.orderType || o.order_type || 'Delivery'),
+          order_type: isChaufOrder ? 'CHAUFFEUR' : (o.order_type || o.orderType || 'Delivery'),
+          missionType: isChaufOrder ? 'Chauffeur' : (o.missionType || o.mission_type || meta.missionType || meta.mission_type || null),
+          mission_type: isChaufOrder ? 'Chauffeur' : (o.mission_type || o.missionType || meta.mission_type || meta.missionType || null),
+          isChauffeur: isChaufOrder,
         };
       });
       mappedOrders.sort((a, b) => {
@@ -2492,7 +2513,9 @@ export const GlobalDataProvider = ({ children }) => {
             driverName: driverNameResolved,
             vehicleId: plateResolved,
             plateNumber: plateResolved,
-            missionType: m.mission_type || m.missionType || meta.missionType || 'LOGISTICS',
+            missionType: (String(m.mission_type || m.missionType || meta.mission_type || meta.missionType || '').toLowerCase() === 'chauffeur' || String(m.order?.orderType || meta.orderType || '').toUpperCase() === 'CHAUFFEUR' || String(m.order?.orderType || meta.orderType || '').toLowerCase() === 'service') ? 'Chauffeur' : (m.mission_type || m.missionType || meta.missionType || 'LOGISTICS'),
+            mission_type: (String(m.mission_type || m.missionType || meta.mission_type || meta.missionType || '').toLowerCase() === 'chauffeur' || String(m.order?.orderType || meta.orderType || '').toUpperCase() === 'CHAUFFEUR' || String(m.order?.orderType || meta.orderType || '').toLowerCase() === 'service') ? 'Chauffeur' : (m.mission_type || m.missionType || meta.missionType || 'LOGISTICS'),
+            isChauffeur: String(m.mission_type || m.missionType || meta.mission_type || meta.missionType || '').toLowerCase() === 'chauffeur' || String(m.order?.orderType || meta.orderType || '').toUpperCase() === 'CHAUFFEUR' || String(m.order?.orderType || meta.orderType || '').toLowerCase() === 'service',
             destinationType: dropResolved,
             date: m.event_date
               ? m.event_date.split("T")[0]
@@ -4696,6 +4719,8 @@ export const GlobalDataProvider = ({ children }) => {
         pending_pickup: "pending",
         pending_review: "pending",
         in_transit: "en_route",
+      en_route: "en_route",
+      arrived: "arrived",
         completed: "delivered",
       };
       const apiCreateStatus = createStatusMap[rawStatus] || rawStatus;
@@ -4705,6 +4730,11 @@ export const GlobalDataProvider = ({ children }) => {
         companyId: del.companyId || del.company_id || null,
         clientId: del.customerId || del.customer_id || del.client_id || null,
         missionType: ["Delivery", "Pickup", "Transfer", "Chauffeur"].includes(
+          del.missionType || del.mission_type,
+        )
+          ? del.missionType || del.mission_type
+          : "Delivery",
+        mission_type: ["Delivery", "Pickup", "Transfer", "Chauffeur"].includes(
           del.missionType || del.mission_type,
         )
           ? del.missionType || del.mission_type
@@ -4757,6 +4787,8 @@ export const GlobalDataProvider = ({ children }) => {
       .replace(/\s+/g, "_");
     const map = {
       in_transit: "en_route",
+      en_route: "en_route",
+      arrived: "arrived",
       pending_pickup: "pending",
       pending_review: "pending",
       /** Admin approved — still awaiting driver on logistics row */
@@ -4774,7 +4806,7 @@ export const GlobalDataProvider = ({ children }) => {
     const patchId = normalizeDeliveryDbId(updated);
     const apiStatus = toApiDeliveryStatus(updated.status);
 
-    const isChauffeurOrder = updated.mission_type === "Chauffeur" || String(updated.id).startsWith("CH-ORD-");
+    const isChauffeurOrder = updated.isDirectChauffeurOrder || String(updated.id || "").startsWith("CH-ORD-");
     if (isChauffeurOrder) {
       try {
         let detail = {};
@@ -4868,9 +4900,9 @@ export const GlobalDataProvider = ({ children }) => {
         console.log('PUT response:', res.data);
       } catch (delErr) {
         console.warn('PUT /deliveries failed, trying order status fallback:', delErr?.response?.data?.message || delErr.message);
-        const numericOrderId = updated.order_id_raw || (updated.orderId ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10) : patchId);
-        if (numericOrderId && !isNaN(numericOrderId)) {
-          await api.patch(`/orders/${numericOrderId}/status`, { status: updated.status === 'assigned' ? 'logistics' : updated.status });
+        const numericOrderId = updated.order?.id || updated.order_id_raw || (updated.orderId && /^ORD-0*(\d+)$/i.test(String(updated.orderId)) ? parseInt(String(updated.orderId).match(/^ORD-0*(\d+)$/i)[1], 10) : (updated.orderId || patchId));
+        if (numericOrderId && (!isNaN(Number(numericOrderId)) || /^ORD-/i.test(String(numericOrderId)))) {
+          await api.patch(`/orders/${numericOrderId}/status`, { status: updated.status === 'assigned' ? 'assigned' : updated.status });
         } else {
           throw delErr;
         }
@@ -4880,15 +4912,19 @@ export const GlobalDataProvider = ({ children }) => {
       const numericOrderId =
         updated.order_id_raw ||
         (updated.orderId
-          ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10)
+          ? (/^ORD-0*(\d+)$/i.test(String(updated.orderId)) ? parseInt(String(updated.orderId).match(/^ORD-0*(\d+)$/i)[1], 10) : (!isNaN(Number(updated.orderId)) ? Number(updated.orderId) : String(updated.orderId).trim()))
           : null);
-      if (numericOrderId && !isNaN(numericOrderId)) {
+      if (numericOrderId && (!isNaN(Number(numericOrderId)) || /^ORD-/i.test(String(numericOrderId)))) {
         let newOrderStatus = null;
         const delSt = String(updated.status || '').toLowerCase();
         if (['delivered', 'completed'].includes(delSt)) {
           newOrderStatus = 'completed';
-        } else if (['assigned', 'en_route', 'in_transit', 'dispatched', 'shipped', 'picked_up', 'accepted'].includes(delSt)) {
-          newOrderStatus = 'logistics';
+        } else if (delSt === 'arrived') {
+          newOrderStatus = 'arrived';
+        } else if (['en_route', 'in_transit', 'dispatched', 'shipped', 'picked_up'].includes(delSt)) {
+          newOrderStatus = 'en_route';
+        } else if (['assigned', 'accepted'].includes(delSt)) {
+          newOrderStatus = 'assigned';
         }
 
         if (newOrderStatus) {
@@ -4906,7 +4942,7 @@ export const GlobalDataProvider = ({ children }) => {
         const rawId =
           updated.order_id_raw ||
           (updated.orderId
-            ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10)
+            ? (/^ORD-0*(\d+)$/i.test(String(updated.orderId)) ? parseInt(String(updated.orderId).match(/^ORD-0*(\d+)$/i)[1], 10) : (!isNaN(Number(updated.orderId)) ? Number(updated.orderId) : String(updated.orderId).trim()))
             : null);
         if (rawId) {
           const matchingOrder = orders.find(
@@ -7056,6 +7092,8 @@ export const GlobalDataProvider = ({ children }) => {
         clientId: request.clientId || compId || null,
         companyId: compId,
         orderType: "CHAUFFEUR",
+        missionType: "Chauffeur",
+        mission_type: "Chauffeur",
         status: reqData.status,
         totalAmount: fee,
         total_amount: fee,
@@ -7072,6 +7110,9 @@ export const GlobalDataProvider = ({ children }) => {
       const newChauffeurObj = {
         id: newId,
         db_id: newId,
+        orderType: "CHAUFFEUR",
+        missionType: "Chauffeur",
+        mission_type: "Chauffeur",
         clientId: request.clientId || 'CLT-GUEST',
         company_id: compId,
         companyId: compId,
@@ -7139,7 +7180,7 @@ export const GlobalDataProvider = ({ children }) => {
       }
       let piObj = {};
       try {
-        const rawPi = updated.passenger_info ?? updated._passengerInfo;
+        const rawPi = updated.passenger_info ?? updated._passengerInfo ?? (Array.isArray(updated.customItems) && updated.customItems[0] ? updated.customItems[0] : (updated.remarks || updated.package_details));
         if (typeof rawPi === "string") {
           piObj = JSON.parse(rawPi || "{}");
         } else if (rawPi && typeof rawPi === "object") {
@@ -7172,6 +7213,9 @@ export const GlobalDataProvider = ({ children }) => {
       try {
         const payload = {
           clientId: updated.clientId || updated.client_id || '',
+          orderType: 'CHAUFFEUR',
+          missionType: 'Chauffeur',
+          mission_type: 'Chauffeur',
           status: updated.status,
           items: [{
             ...piObj,

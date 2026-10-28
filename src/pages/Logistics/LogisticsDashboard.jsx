@@ -62,12 +62,26 @@ const LogisticsDashboard = () => {
 
   // Merge deliveries + project-missions into a single unified dispatch list
   const allDispatchItems = useMemo(() => {
-    const deliveryItems = deliveries.map(d => ({
-      ...d,
-      missionType: d.missionType || d.mission_type || 'LOGISTICS',
-      mission_type: d.mission_type || d.missionType || 'LOGISTICS',
-      _source: 'delivery'
-    }));
+    const deliveryItems = deliveries.map(d => {
+      const isChauf = String(d.missionType || d.mission_type || '').toLowerCase() === 'chauffeur' ||
+        String(d.orderType || d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
+        String(d.orderType || d.order?.orderType || '').toLowerCase() === 'service' ||
+        Boolean(d.isChauffeur);
+      const normalizedType = isChauf ? 'Chauffeur' : (d.missionType || d.mission_type || 'LOGISTICS');
+      return {
+  
+        ...d,
+        missionType: normalizedType,
+        mission_type: normalizedType,
+        _source: 'delivery',
+  
+      };
+    });
+
+
+
+
+
     // Only include missions that have no linked delivery (i.e. project-converted missions)
     const missionItems = missions
       .filter(m => !m.deliveryId && !m.delivery_id)
@@ -90,6 +104,7 @@ const LogisticsDashboard = () => {
         mission_type: m.mission_type || m.missionType || 'LOGISTICS',
         _source: 'mission',
       }));
+  
     return [...deliveryItems, ...missionItems];
   }, [deliveries, missions]);
   const [dispatchForm, setDispatchForm] = useState({
@@ -263,7 +278,13 @@ const LogisticsDashboard = () => {
               <User className="text-accent" size={22} /> Deployment Monitor
             </h3>
             <div className="space-y-4 max-h-[450px] overflow-y-auto pr-2 custom-scrollbar">
-              {deliveries.filter(d => ['in transit', 'dispatched', 'in_progress', 'en_route'].includes(String(d.status).toLowerCase())).map((del, i) => (
+              {allDispatchItems.filter(d => {
+                const isChauf = String(d.missionType || d.mission_type || '').toLowerCase() === 'chauffeur' ||
+                  String(d.orderType || d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
+                  String(d.orderType || d.order?.orderType || '').toLowerCase() === 'service' ||
+                  Boolean(d.isChauffeur);
+                return isChauf && ['in transit', 'in_transit', 'dispatched', 'in_progress', 'en_route', 'assigned'].includes(String(d.status).toLowerCase());
+              }).map((del, i) => (
                 <div key={i} className="p-4 bg-white/[0.01] border border-white/5 rounded-2xl flex flex-col sm:flex-row gap-5 items-start sm:items-center justify-between group hover:border-accent/40 transition-all">
                   <div className="flex items-center gap-4">
                     <div className="w-14 h-14 bg-accent/5 border border-accent/20 rounded-xl flex items-center justify-center text-accent group-hover:scale-105 transition-transform shrink-0">
@@ -283,7 +304,13 @@ const LogisticsDashboard = () => {
                   </div>
                 </div>
               ))}
-              {deliveries.filter(d => d.status === 'In Transit' || d.status === 'Dispatched').length === 0 && (
+              {allDispatchItems.filter(d => {
+                const isChauf = String(d.missionType || d.mission_type || '').toLowerCase() === 'chauffeur' ||
+                  String(d.orderType || d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
+                  String(d.orderType || d.order?.orderType || '').toLowerCase() === 'service' ||
+                  Boolean(d.isChauffeur);
+                return isChauf && ['in transit', 'in_transit', 'dispatched', 'in_progress', 'en_route', 'assigned'].includes(String(d.status).toLowerCase());
+              }).length === 0 && (
                 <div className="py-20 text-center space-y-4 bg-white/[0.01] rounded-3xl border border-dashed border-white/5">
                   <Activity className="text-muted/20 mx-auto" size={48} strokeWidth={1} />
                   <p className="text-muted italic text-xs font-medium tracking-widest uppercase">No active chauffeur missions detected.</p>

@@ -96,6 +96,7 @@ const DriverEtaDisplay = ({ pickupLocation, status, driverName }) => {
 const EmployeePortal = () => {
     const {
         currentUser,
+        users = [],
         staffAssignments, updateAssignment, updateMission, fetchStaff, fetchSupportingDocs,
         payHistory, addLog, recordWorkSession, fetchPayHistory,
         leaveRequests, addLeaveRequest, updateLeaveRequest, deleteLeaveRequest, fetchLeaveRequests,
@@ -228,7 +229,7 @@ const EmployeePortal = () => {
         const isMine = isUserDriverMatch(d);
         const isLogisticsMission = String(d.mission_type || d.missionType || '').toLowerCase() !== 'chauffeur';
         const st = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
-        const isActiveOrAccepted = ['assigned', 'accepted', 'en_route', 'in_transit', 'arrived', 'dispatched', 'planned', 'confirmed', 'approved', 'ready_for_delivery'].includes(st);
+        const isActiveOrAccepted = ['assigned', 'accepted', 'en_route', 'in_transit', 'dispatched', 'planned'].includes(st);
         return isMine && isLogisticsMission && isActiveOrAccepted;
     });
 
@@ -326,7 +327,7 @@ const EmployeePortal = () => {
 
         const merged = [...fromChauffeur];
         fromDeliveries.forEach(dItem => {
-            const dId = String(dItem.order_id_raw || dItem.order?.id || (dItem.isDirectChauffeurOrder ? dItem.db_id : '') || dItem.id || '').replace(/\D/g, '');
+            const dId = String(dItem.db_id || dItem.order_id_raw || dItem.id || '').replace(/\D/g, '');
             const exists = merged.some(m => {
                 const mId = String(m.db_id || m.rawId || m.id || '').replace(/\D/g, '');
                 return (mId && dId && mId === dId) ||
@@ -355,9 +356,18 @@ const EmployeePortal = () => {
 
     const pendingAssignments = staffAssignments.filter(a => a.status === 'Pending' && !a.assigneeId);
 
+    const isMatchingUserLeave = React.useCallback((r) => {
+        if (!currentUser || !r) return false;
+        const matchId = (r.userId && String(r.userId) === String(currentUser.id)) ||
+                        (r.user_id && String(r.user_id) === String(currentUser.id));
+        const matchName = r.name && currentUser.name && String(r.name).trim().toLowerCase() === String(currentUser.name).trim().toLowerCase();
+        const matchEmail = r.email && currentUser.email && String(r.email).trim().toLowerCase() === String(currentUser.email).trim().toLowerCase();
+        return Boolean(matchId || matchName || matchEmail);
+    }, [currentUser]);
+
     const myApprovedLeaveHours = React.useMemo(() => {
         return (leaveRequests || [])
-            .filter(r => ((r.userId && String(r.userId) === String(currentUser?.id)) || r.name === currentUser?.name) && String(r.status).toLowerCase() === 'approved')
+            .filter(r => isMatchingUserLeave(r) && String(r.status).toLowerCase() === 'approved')
             .reduce((sum, r) => {
                 let calcH = r.hours;
                 if (r.start && r.end) {
@@ -368,7 +378,44 @@ const EmployeePortal = () => {
                 }
                 return sum + (Number(calcH) || 24);
             }, 0);
-    }, [leaveRequests, currentUser]);
+    }, [leaveRequests, isMatchingUserLeave]);
+
+    // Dedicated vacation quota assigned to this specific staff member
+    const dedicatedVacationHours = React.useMemo(() => {
+        // 1. Check user from users directory in GlobalDataContext
+        const matched = (users || []).find(u =>
+            (u.id && currentUser?.id && String(u.id) === String(currentUser.id)) ||
+            (u.email && currentUser?.email && String(u.email).toLowerCase() === String(currentUser.email).toLowerCase())
+        );
+
+        const listQuota = matched?.bankingInfo?.vacationQuota ?? matched?.vacationQuota ?? matched?.vacation_balance ?? matched?.vacationBalance;
+        if (listQuota !== undefined && Number(listQuota) !== 10000 && Number(listQuota) >= 0) {
+            return Number(listQuota);
+        }
+
+        // 2. Check bankingInfo on currentUser
+        const currentQuota = currentUser?.bankingInfo?.vacationQuota ?? currentUser?.vacationQuota;
+        if (currentQuota !== undefined && Number(currentQuota) !== 10000 && Number(currentQuota) >= 0) {
+            return Number(currentQuota);
+        }
+
+        // 3. Check currentUser.vacationBalance if not 10000
+        if (currentUser?.vacationBalance !== undefined && Number(currentUser.vacationBalance) !== 10000 && Number(currentUser.vacationBalance) >= 0) {
+            return Number(currentUser.vacationBalance);
+        }
+
+        // 4. Check cached localStorage setting
+        const cached = localStorage.getItem(`dedicated_vacation_${currentUser?.id}`) || 
+                       (currentUser?.email ? localStorage.getItem(`dedicated_vacation_${String(currentUser.email).toLowerCase()}`) : null);
+        if (cached && Number(cached) >= 0 && Number(cached) !== 10000) {
+            return Number(cached);
+        }
+
+        return 80;
+    }, [currentUser, users]);
+
+    // Remaining vacation hours: Dedicated Quota - Approved Deductions
+    const remainingVacationHours = Math.max(0, dedicatedVacationHours - myApprovedLeaveHours);
 
     // Filtered assignments based on search
     const filteredMyAssignments = myAssignments.filter(asg =>
@@ -403,8 +450,8 @@ const EmployeePortal = () => {
         try {
             swalLoading('Accepting Mission...', 'The mission is accepting, please wait...');
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const rawId = del.order_id_raw || del.order?.id || (del.isDirectChauffeurOrder ? del.db_id : null) || del.rawId || del.db_id || del.id;
-            const targetId = resolveOrderId(del) || String(rawId).replace(/\D/g, '') || String(rawId);
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
 
             if (isChauffeur) {
                 await api.put(`/orders/${targetId}/status`, { status: 'assigned' }).catch(() =>
@@ -433,90 +480,22 @@ const EmployeePortal = () => {
         }
     };
 
-    const resolveOrderId = (del) => {
-        if (!del) return null;
-        // 1. Direct numeric order relationship or order_id field
-        const directNum = del.order?.id ?? del.order_id_raw ?? del.order_id;
-        if (directNum !== undefined && directNum !== null && !isNaN(Number(directNum)) && Number(directNum) > 0) {
-            return Number(directNum);
-        }
-
-        // 2. Direct order object: id / db_id is the order's primary key
-        const isDirectOrder = del.isDirectChauffeurOrder || (!del.deliveryNumber && !String(del.id || '').startsWith('DEL-'));
-        if (isDirectOrder) {
-            const candidate = del.db_id ?? del.id;
-            if (candidate !== undefined && candidate !== null && !isNaN(Number(candidate)) && Number(candidate) > 0) {
-                return Number(candidate);
-            }
-        }
-
-        // 3. Check orderId / orderNumber strings or numbers
-        const candidateOrderId = del.order?.orderNumber ?? del.orderNumber ?? del.orderId;
-        if (candidateOrderId !== undefined && candidateOrderId !== null) {
-            const str = String(candidateOrderId).trim();
-            if (!isNaN(Number(str)) && Number(str) > 0) {
-                return Number(str);
-            }
-            const shortOrdMatch = str.match(/^ORD-0*(\d+)$/i);
-            if (shortOrdMatch && Number(shortOrdMatch[1]) > 0) return Number(shortOrdMatch[1]);
-            if (/^ORD-/i.test(str)) {
-                return str.toUpperCase();
-            }
-            if (str.startsWith('#')) {
-                const clean = str.slice(1).trim();
-                if (!isNaN(Number(clean)) && Number(clean) > 0) return Number(clean);
-                if (/^ORD-/i.test(clean)) return clean.toUpperCase();
-            }
-            if (str && !str.startsWith('DEL-')) {
-                return str;
-            }
-        }
-
-        // 4. Fallback: db_id, order_id_raw, rawId, id
-        const fallback = del.order_id_raw ?? del.rawId ?? (!String(del.id || '').startsWith('DEL-') ? del.db_id : null) ?? del.id;
-        if (fallback !== undefined && fallback !== null) {
-            const str = String(fallback).trim();
-            if (!isNaN(Number(str)) && Number(str) > 0) {
-                return Number(str);
-            }
-            const shortOrdMatch = str.match(/^ORD-0*(\d+)$/i);
-            if (shortOrdMatch && Number(shortOrdMatch[1]) > 0) return Number(shortOrdMatch[1]);
-            if (/^ORD-/i.test(str)) {
-                return str.toUpperCase();
-            }
-            return str;
-        }
-
-        return null;
-    };
-
     const handleRejectMission = async (del) => {
         try {
             swalLoading('Rejecting Mission...', 'The mission is rejecting, please wait...');
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const orderTargetId = resolveOrderId(del);
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
 
             if (isChauffeur) {
-                if (orderTargetId) {
-                    await api.put(`/orders/${orderTargetId}/status`, { status: 'pending' }).catch(() =>
-                        api.patch(`/orders/${orderTargetId}/status`, { status: 'pending' })
-                    );
-                    setUpdatedChauffeurItem(orderTargetId, { status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null });
-                }
+                await api.put(`/orders/${targetId}/status`, { status: 'pending' }).catch(() =>
+                    api.patch(`/orders/${targetId}/status`, { status: 'pending' })
+                );
+                setUpdatedChauffeurItem(targetId, { status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null });
                 notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
-                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: orderTargetId } }));
+                window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId } }));
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null }).catch(() => {});
-                }
-                if (!del.isDirectChauffeurOrder && (del.deliveryNumber || String(del.id || '').startsWith('DEL-'))) {
-                    await updateDelivery({
-                        ...del,
-                        status: 'pending',
-                        assigned_driver: null,
-                        assignedTo: null,
-                        driverId: null,
-                        driver: null
-                    }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'pending', chauffeur_status: 'pending', driverName: null, driver_user_id: null, driverId: null }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
@@ -539,38 +518,32 @@ const EmployeePortal = () => {
     const handleStartTrip = async (del) => {
         try {
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const orderTargetId = resolveOrderId(del);
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
 
             if (isChauffeur) {
-                if (orderTargetId) {
-                    await api.put(`/orders/${orderTargetId}/status`, { status: 'en_route' }).catch(() =>
-                        api.patch(`/orders/${orderTargetId}/status`, { status: 'en_route' })
-                    );
-                    setUpdatedChauffeurItem(orderTargetId, { status: 'en_route', chauffeur_status: 'en_route' });
-                }
+                await api.put(`/orders/${targetId}/status`, { status: 'en_route' }).catch(() =>
+                    api.patch(`/orders/${targetId}/status`, { status: 'en_route' })
+                );
+                setUpdatedChauffeurItem(targetId, { status: 'en_route', chauffeur_status: 'en_route' });
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'en_route', chauffeur_status: 'en_route' }).catch(() => {});
-                }
-                if (!del.isDirectChauffeurOrder && (del.deliveryNumber || String(del.id || '').startsWith('DEL-'))) {
-                    await updateDelivery({
-                        ...del,
-                        status: 'en_route'
-                    }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'en_route', chauffeur_status: 'en_route' }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
                     ...del,
                     status: 'en_route'
                 });
-                if (orderTargetId && !String(orderTargetId).startsWith('DEL-')) {
-                    await api.put(`/orders/${orderTargetId}/status`, { status: 'en_route' }).catch(() =>
-                        api.patch(`/orders/${orderTargetId}/status`, { status: 'en_route' }).catch(() => {})
+                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
+                if (cleanOrderId) {
+                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'in_transit' }).catch(() =>
+                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'in_transit' }).catch(() => {})
                     );
                 }
             }
 
-            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats', 'missions']);
-            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: orderTargetId, status: 'en_route' } }));
+            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'en_route' } }));
             if (syncGlobalState) await syncGlobalState();
 
             swalSuccess('Trip Started', 'Mission status updated to En Route.');
@@ -582,38 +555,32 @@ const EmployeePortal = () => {
     const handleArriveTrip = async (del) => {
         try {
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const orderTargetId = resolveOrderId(del);
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
 
             if (isChauffeur) {
-                if (orderTargetId) {
-                    await api.put(`/orders/${orderTargetId}/status`, { status: 'arrived' }).catch(() =>
-                        api.patch(`/orders/${orderTargetId}/status`, { status: 'arrived' })
-                    );
-                    setUpdatedChauffeurItem(orderTargetId, { status: 'arrived', chauffeur_status: 'arrived' });
-                }
+                await api.put(`/orders/${targetId}/status`, { status: 'arrived' }).catch(() =>
+                    api.patch(`/orders/${targetId}/status`, { status: 'arrived' })
+                );
+                setUpdatedChauffeurItem(targetId, { status: 'arrived', chauffeur_status: 'arrived' });
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'arrived', chauffeur_status: 'arrived' }).catch(() => {});
-                }
-                if (!del.isDirectChauffeurOrder && (del.deliveryNumber || String(del.id || '').startsWith('DEL-'))) {
-                    await updateDelivery({
-                        ...del,
-                        status: 'arrived'
-                    }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'arrived', chauffeur_status: 'arrived' }).catch(() => {});
                 }
             } else {
                 await updateDelivery({
                     ...del,
                     status: 'arrived'
                 });
-                if (orderTargetId && !String(orderTargetId).startsWith('DEL-')) {
-                    await api.put(`/orders/${orderTargetId}/status`, { status: 'arrived' }).catch(() =>
-                        api.patch(`/orders/${orderTargetId}/status`, { status: 'arrived' }).catch(() => {})
+                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
+                if (cleanOrderId) {
+                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'arrived' }).catch(() =>
+                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'arrived' }).catch(() => {})
                     );
                 }
             }
 
-            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats', 'missions']);
-            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: orderTargetId, status: 'arrived' } }));
+            notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats']);
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'arrived' } }));
             if (syncGlobalState) await syncGlobalState();
 
             swalSuccess('Arrived at Destination', 'Trip status updated to Arrived. Passengers may now disembark.');
@@ -635,24 +602,16 @@ const EmployeePortal = () => {
     const handleCompleteMission = async (del, proofData = null) => {
         try {
             const isChauffeur = del.isDirectChauffeurOrder || del.orderType === 'CHAUFFEUR' || String(del.mission_type || del.missionType || '').toLowerCase() === 'chauffeur';
-            const orderTargetId = resolveOrderId(del);
+            const rawId = del.db_id || del.order_id_raw || del.rawId || del.id;
+            const targetId = String(rawId).replace(/\D/g, '') || String(rawId);
 
             if (isChauffeur) {
-                if (orderTargetId) {
-                    await api.put(`/orders/${orderTargetId}/status`, { status: 'completed' }).catch(() =>
-                        api.patch(`/orders/${orderTargetId}/status`, { status: 'completed' })
-                    );
-                    setUpdatedChauffeurItem(orderTargetId, { status: 'completed', chauffeur_status: 'completed' });
-                }
+                await api.put(`/orders/${targetId}/status`, { status: 'completed' }).catch(() =>
+                    api.patch(`/orders/${targetId}/status`, { status: 'completed' })
+                );
+                setUpdatedChauffeurItem(targetId, { status: 'completed', chauffeur_status: 'completed' });
                 if (updateChauffeurRequest) {
-                    await updateChauffeurRequest({ ...del, id: orderTargetId || del.id, db_id: orderTargetId || del.db_id, status: 'completed', chauffeur_status: 'completed' }).catch(() => {});
-                }
-                if (!del.isDirectChauffeurOrder && (del.deliveryNumber || String(del.id || '').startsWith('DEL-'))) {
-                    await updateDelivery({
-                        ...del,
-                        status: 'delivered',
-                        deliveredAt: new Date().toISOString()
-                    }).catch(() => {});
+                    await updateChauffeurRequest({ ...del, id: targetId, db_id: targetId, status: 'completed', chauffeur_status: 'completed' }).catch(() => {});
                 }
             } else {
                 // If non-chauffeur (marketplace delivery) and no proof was provided yet, open POD modal
@@ -669,8 +628,7 @@ const EmployeePortal = () => {
 
                 // If proof was provided, submit POD to backend
                 try {
-                    const deliveryTargetId = del.delivery_db_id || del.db_id || String(del.id || '').replace(/\D/g, '') || del.id;
-                    const missionId = del.mission_id || del.missionId || deliveryTargetId;
+                    const missionId = del.mission_id || del.missionId || targetId;
                     await api.post(`/missions/${missionId}/pod`, {
                         receiverName: proofData.receiverName || 'Verified Client',
                         signature: proofData.signature || 'Electronic Driver Handover',
@@ -678,7 +636,7 @@ const EmployeePortal = () => {
                         photo: proofData.photo,
                         notes: proofData.notes || 'Delivered via Driver Portal'
                     }).catch(() => 
-                        api.post(`/deliveries/${deliveryTargetId}/pod`, {
+                        api.post(`/deliveries/${targetId}/pod`, {
                             receiverName: proofData.receiverName || 'Verified Client',
                             signature: proofData.signature || 'Electronic Driver Handover',
                             photoUrl: proofData.photo,
@@ -690,20 +648,21 @@ const EmployeePortal = () => {
 
                 await updateDelivery({
                     ...del,
-                    status: 'delivered',
+                    status: 'Delivered',
                     deliveredAt: new Date().toISOString(),
                     pod: proofData
                 });
 
-                if (orderTargetId && !String(orderTargetId).startsWith('DEL-')) {
-                    await api.put(`/orders/${orderTargetId}/status`, { status: 'completed' }).catch(() =>
-                        api.patch(`/orders/${orderTargetId}/status`, { status: 'completed' }).catch(() => {})
+                const cleanOrderId = String(del.orderId || del.order?.id || del.order_id || '').replace(/^#|^ORD-/i, '');
+                if (cleanOrderId && !cleanOrderId.startsWith('DEL-')) {
+                    await api.put(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() =>
+                        api.patch(`/orders/${cleanOrderId}/status`, { status: 'completed' }).catch(() => {})
                     );
                 }
             }
 
             notifyStateChanged(queryClient, ['chauffeurMissions', 'orders', 'deliveries', 'dashboardStats', 'missions']);
-            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: orderTargetId, status: 'completed' } }));
+            window.dispatchEvent(new CustomEvent('app:state-changed', { detail: { source: 'staff-portal', orderId: targetId, status: 'completed' } }));
             if (syncGlobalState) await syncGlobalState();
 
             swalSuccess('Mission Completed', 'Proof of delivery submitted and order marked as completed.');
@@ -931,7 +890,7 @@ const EmployeePortal = () => {
                         <div className="px-4 py-1.5 flex flex-col items-center min-w-[100px]">
                             <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1 opacity-70">Remaining Hours</p>
                             <p className="text-base font-black text-success italic tracking-tighter tabular-nums flex items-center gap-1.5">
-                                <Calendar size={13} className="opacity-70" /> {currentUser?.vacationBalance ?? (10000 - myApprovedLeaveHours)}<span className="text-[10px] uppercase opacity-70 not-italic ml-0.5">h</span>
+                                <Calendar size={13} className="opacity-70" /> {remainingVacationHours}<span className="text-[10px] uppercase opacity-70 not-italic ml-0.5">h</span>
                             </p>
                         </div>
                     </div>
@@ -1069,7 +1028,7 @@ const EmployeePortal = () => {
                                     const isCompleted = ['delivered', 'completed'].includes(s);
                                     const isEnRoute = ['en_route', 'in_transit'].includes(s);
                                     const isArrived = s === 'arrived';
-                                    const canStart = ['assigned', 'accepted', 'pending', 'pending_review', 'approved', 'dispatched', 'planned', 'confirmed', 'ready_for_delivery', 'created', 'logistics'].includes(s);
+                                    const canStart = ['assigned', 'accepted', 'pending', 'pending_review', 'approved'].includes(s);
                                     return (
                                         <div key={del.id} className={`p-5 border rounded-2xl flex flex-col md:flex-row justify-between items-start md:items-center gap-4 transition-all ${isCompleted ? 'bg-success/5 border-success/20' : 'bg-accent/5 border-accent/20 hover:border-accent/40'}`}>
                                             <div className="flex items-center gap-4">
@@ -1267,7 +1226,7 @@ const EmployeePortal = () => {
                                                         </>
                                                     );
                                                 }
-                                                if (['assigned', 'accepted', 'dispatched', 'planned', 'confirmed', 'approved', 'ready_for_delivery'].includes(s) && mine) {
+                                                if (s === 'assigned' && mine) {
                                                     return (
                                                         <>
                                                             <button
@@ -1287,7 +1246,7 @@ const EmployeePortal = () => {
                                                         </>
                                                     );
                                                 }
-                                                if ((s === 'en_route' || s === 'in_transit' || s === 'arrived') && mine) {
+                                                if ((s === 'en_route' || s === 'in_transit') && mine) {
                                                     return (
                                                         <button
                                                             type="button"
@@ -1763,10 +1722,32 @@ const EmployeePortal = () => {
                             )}
                         </div>
 
+                        {/* Dedicated Quota & Balance Overview Bar */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                            <div className="p-4 bg-white/[0.03] border border-white/10 rounded-2xl flex flex-col items-center text-center">
+                                <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Dedicated Quota</p>
+                                <p className="text-2xl font-black text-white italic font-heading tracking-tight flex items-center gap-1">
+                                    {dedicatedVacationHours} <span className="text-xs not-italic text-secondary font-bold">hrs</span>
+                                </p>
+                            </div>
+                            <div className="p-4 bg-white/[0.03] border border-white/10 rounded-2xl flex flex-col items-center text-center">
+                                <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Approved Deductions</p>
+                                <p className="text-2xl font-black text-danger italic font-heading tracking-tight flex items-center gap-1">
+                                    <Clock size={16} className="opacity-70" /> {myApprovedLeaveHours} <span className="text-xs not-italic opacity-70 font-bold">hrs</span>
+                                </p>
+                            </div>
+                            <div className="p-4 bg-white/[0.03] border border-white/10 rounded-2xl flex flex-col items-center text-center">
+                                <p className="text-[9px] font-black text-muted uppercase tracking-widest mb-1">Available Remaining</p>
+                                <p className="text-2xl font-black text-success italic font-heading tracking-tight flex items-center gap-1">
+                                    <Calendar size={16} className="opacity-70" /> {remainingVacationHours} <span className="text-xs not-italic opacity-70 font-bold">hrs</span>
+                                </p>
+                            </div>
+                        </div>
+
                         <div className="glass-card p-6">
                             <h4 className="text-sm font-black uppercase tracking-widest text-muted mb-6">My Request History</h4>
                             <div className="space-y-4">
-                                {leaveRequests.filter(r => (r.userId && String(r.userId) === String(currentUser?.id)) || r.name === currentUser?.name).map(req => (
+                                {leaveRequests.filter(isMatchingUserLeave).map(req => (
                                     <div key={req.id} className="p-4 bg-white/[0.02] border border-border rounded-2xl flex justify-between items-center group hover:border-accent/30 transition-all">
                                         <div className="flex items-center gap-4">
                                             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${req.status === 'Approved' ? 'bg-success/10 text-success' :
@@ -1849,7 +1830,7 @@ const EmployeePortal = () => {
                                         </div>
                                     </div>
                                 ))}
-                                {leaveRequests.filter(r => (r.userId && String(r.userId) === String(currentUser?.id)) || r.name === currentUser?.name).length === 0 && (
+                                {leaveRequests.filter(isMatchingUserLeave).length === 0 && (
                                     <p className="text-center py-8 text-secondary italic">No absence records found in the portal.</p>
                                 )}
                             </div>
@@ -1918,18 +1899,30 @@ const EmployeePortal = () => {
                         <button onClick={() => setIsLeaveModalOpen(false)} className="btn-secondary">Cancel</button>
                         <button
                             onClick={async () => {
+                                if (!leaveFormData.start || !leaveFormData.end) {
+                                    swalWarning('Missing Dates', 'Please select both commencement and conclusion dates before submitting.');
+                                    return;
+                                }
                                 if (editingLeaveRequest) {
-                                    await updateLeaveRequest({
+                                    const res = await updateLeaveRequest({
                                         id: editingLeaveRequest.id,
                                         ...leaveFormData
                                     });
+                                    if (res && res.success === false) {
+                                        swalError('Update Failed', res.message || 'Could not update leave request.');
+                                        return;
+                                    }
                                     swalSuccess('Updated', 'Absence request has been successfully updated.');
                                 } else {
-                                    await addLeaveRequest({
+                                    const res = await addLeaveRequest({
                                         ...leaveFormData,
-                                        name: currentUser.name,
-                                        userId: currentUser.id
+                                        name: currentUser?.name,
+                                        userId: currentUser?.id
                                     });
+                                    if (res && res.success === false) {
+                                        swalError('Submission Failed', res.message || 'Could not submit leave request.');
+                                        return;
+                                    }
                                     swalSuccess('Submitted', 'Absence request has been successfully submitted.');
                                 }
                                 setIsLeaveModalOpen(false);

@@ -77,7 +77,35 @@ export const useUsers = (page = 1, limit = 10, search = '', status = '') => {
       const response = await api.get('/users', {
         params: { page, limit, search, status }
       });
-      return response.data;
+      const resData = response.data;
+      const list = Array.isArray(resData?.data) 
+        ? resData.data 
+        : (Array.isArray(resData?.data?.users) ? resData.data.users : (Array.isArray(resData) ? resData : []));
+
+      const sanitizedList = list.map(u => {
+        const cached = (u.id ? localStorage.getItem(`dedicated_vacation_${u.id}`) : null) ||
+                       (u.email ? localStorage.getItem(`dedicated_vacation_${String(u.email).toLowerCase()}`) : null);
+        let bal = u.vacationBalance ?? u.vacation_balance;
+        if (cached && Number(cached) !== 10000 && Number(cached) >= 0) {
+          bal = Number(cached);
+        } else if (bal === 10000) {
+          bal = 100;
+        }
+        return {
+          ...u,
+          vacationBalance: bal,
+          vacation_balance: bal,
+          vacationQuota: bal,
+        };
+      });
+
+      if (Array.isArray(resData?.data)) {
+        resData.data = sanitizedList;
+      } else if (resData?.data?.users) {
+        resData.data.users = sanitizedList;
+      }
+
+      return resData;
     }
   });
 };

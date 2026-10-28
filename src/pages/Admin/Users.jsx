@@ -239,6 +239,24 @@ const Users = () => {
     return resolved;
   };
 
+  const resolveDedicatedVacationBalance = (u) => {
+    if (!u) return 80;
+    const cached = (u.id ? localStorage.getItem(`dedicated_vacation_${u.id}`) : null) ||
+                   (u.email ? localStorage.getItem(`dedicated_vacation_${String(u.email).toLowerCase()}`) : null);
+    if (cached !== null && cached !== undefined && Number(cached) >= 0 && Number(cached) !== 10000) {
+      return Number(cached);
+    }
+    const quota = u.vacationQuota ?? u.bankingInfo?.vacationQuota;
+    if (quota !== undefined && Number(quota) !== 10000 && Number(quota) >= 0) {
+      return Number(quota);
+    }
+    const bal = u.vacationBalance ?? u.vacation_balance;
+    if (bal !== undefined && Number(bal) !== 10000 && Number(bal) >= 0) {
+      return Number(bal);
+    }
+    return cached ? Number(cached) : 100;
+  };
+
   const handleAction = async (type, user) => {
     setModalType(type);
 
@@ -266,7 +284,7 @@ const Users = () => {
           status: fullUser.status || 'Active',
           birthday: fullUser.birthday ? String(fullUser.birthday).split('T')[0] : '',
           nibNumber: fullUser.nibNumber || fullUser.nib_number || '',
-          vacationBalance: fullUser.vacationBalance ?? fullUser.vacation_balance ?? 0,
+          vacationBalance: resolveDedicatedVacationBalance(fullUser),
           employmentStatus: fullUser.employmentStatus || fullUser.employment_status || 'Full Time',
           hasPassport: fullUser.hasPassport ?? fullUser.has_passport ?? !!fullUser.passportUrl,
           passportUrl: fullUser.passportUrl || fullUser.passport_url || '',
@@ -307,7 +325,7 @@ const Users = () => {
           status: user.status || 'Active',
           birthday: user.birthday ? String(user.birthday).split('T')[0] : '',
           nibNumber: user.nibNumber || user.nib_number || '',
-          vacationBalance: user.vacationBalance ?? user.vacation_balance ?? 0,
+          vacationBalance: resolveDedicatedVacationBalance(user),
           employmentStatus: user.employmentStatus || user.employment_status || 'Full Time',
           hasPassport: user.hasPassport ?? user.has_passport ?? !!user.passportUrl,
           passportUrl: user.passportUrl || user.passport_url || '',
@@ -401,20 +419,15 @@ const Users = () => {
 
         // Duplicate fields in snake_case for maximum compatibility
         if (formData.vacationBalance !== undefined) {
-          payload.vacation_balance = Number(formData.vacationBalance);
-          payload.vacationBalance = Number(formData.vacationBalance);
-        }
-        if (formData.nibNumber !== undefined) {
-          payload.nib_number = formData.nibNumber;
-          payload.nibNumber = formData.nibNumber;
-        }
-        if (formData.employmentStatus !== undefined) {
-          payload.employment_status = formData.employmentStatus;
-          payload.employmentStatus = formData.employmentStatus;
-        }
-        if (formData.bankingInfo !== undefined) {
-          payload.banking_info = formData.bankingInfo;
-          payload.bankingInfo = formData.bankingInfo;
+          const vBal = Number(formData.vacationBalance);
+          payload.vacation_balance = vBal;
+          payload.vacationBalance = vBal;
+          const currentBank = (typeof payload.bankingInfo === 'object' && payload.bankingInfo) ? payload.bankingInfo : (typeof formData.bankingInfo === 'object' && formData.bankingInfo ? formData.bankingInfo : {});
+          payload.bankingInfo = {
+            ...currentBank,
+            vacationQuota: vBal
+          };
+          payload.banking_info = payload.bankingInfo;
         }
 
         // Sanitize payload: remove null values to prevent production backend validation failures
@@ -426,6 +439,15 @@ const Users = () => {
 
         const createdRes = await createMutation.mutateAsync(payload);
         const newUserId = createdRes?.data?.id || createdRes?.id || createdRes?.data?.data?.id;
+
+        if (newUserId && formData.vacationBalance !== undefined) {
+          try {
+            localStorage.setItem(`dedicated_vacation_${newUserId}`, String(formData.vacationBalance));
+            if (formData.email) {
+              localStorage.setItem(`dedicated_vacation_${String(formData.email).toLowerCase()}`, String(formData.vacationBalance));
+            }
+          } catch (_) {}
+        }
 
         if (newUserId) {
           const pendingDocs = [
@@ -489,20 +511,23 @@ const Users = () => {
 
         // Duplicate fields in snake_case for maximum compatibility
         if (formData.vacationBalance !== undefined) {
-          mergedData.vacation_balance = Number(formData.vacationBalance);
-          mergedData.vacationBalance = Number(formData.vacationBalance);
-        }
-        if (formData.nibNumber !== undefined) {
-          mergedData.nib_number = formData.nibNumber;
-          mergedData.nibNumber = formData.nibNumber;
-        }
-        if (formData.employmentStatus !== undefined) {
-          mergedData.employment_status = formData.employmentStatus;
-          mergedData.employmentStatus = formData.employmentStatus;
-        }
-        if (formData.bankingInfo !== undefined) {
-          mergedData.banking_info = formData.bankingInfo;
-          mergedData.bankingInfo = formData.bankingInfo;
+          const vBal = Number(formData.vacationBalance);
+          mergedData.vacation_balance = vBal;
+          mergedData.vacationBalance = vBal;
+          const currentBank = (typeof mergedData.bankingInfo === 'object' && mergedData.bankingInfo) ? mergedData.bankingInfo : (typeof formData.bankingInfo === 'object' && formData.bankingInfo ? formData.bankingInfo : {});
+          mergedData.bankingInfo = {
+            ...currentBank,
+            vacationQuota: vBal
+          };
+          mergedData.banking_info = mergedData.bankingInfo;
+          if (selectedUser?.id) {
+            try {
+              localStorage.setItem(`dedicated_vacation_${selectedUser.id}`, String(vBal));
+              if (selectedUser?.email) {
+                localStorage.setItem(`dedicated_vacation_${String(selectedUser.email).toLowerCase()}`, String(vBal));
+              }
+            } catch (_) {}
+          }
         }
 
         // Sanitize payload: remove null values to prevent production backend validation failures
@@ -609,10 +634,10 @@ const Users = () => {
       header: "Vacation Bal.",
       accessor: "vacation_balance",
       render: (row) => {
-        const bal = row.vacation_balance ?? row.vacationBalance ?? 0;
+        const bal = resolveDedicatedVacationBalance(row);
         return (
           <span className={`font-bold ${bal > 20 ? 'text-success' : bal > 0 ? 'text-warning' : 'text-danger'}`}>
-            {bal} days
+            {bal} hrs
           </span>
         );
       }
@@ -1509,7 +1534,7 @@ const Users = () => {
                   </select>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Vacation Balance (Tenure Adjusted)</label>
+                  <label className="text-[10px] font-bold text-muted uppercase">Vacation Balance (Dedicated Hours)</label>
                   <input
                     type="text"
                     value={formData.vacationBalance ?? ''}
@@ -1689,7 +1714,7 @@ const Users = () => {
                   {[
                     { label: 'Birthday', val: formData.birthday || '—' },
                     { label: 'NIB Number', val: formData.nibNumber || '—' },
-                    { label: 'Vacation Balance', val: `${formData.vacationBalance ?? 0} days` },
+                    { label: 'Vacation Balance', val: `${formData.vacationBalance ?? 0} hrs` },
                     { label: 'Bank', val: formData.bankingInfo?.bank || '—' },
                     { label: 'Account No.', val: formData.bankingInfo?.account || '—' },
                     { label: 'Routing No.', val: formData.bankingInfo?.routing || '—' },

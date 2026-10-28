@@ -85,17 +85,27 @@ export const useUsers = (page = 1, limit = 10, search = '', status = '') => {
       const sanitizedList = list.map(u => {
         const cached = (u.id ? localStorage.getItem(`dedicated_vacation_${u.id}`) : null) ||
                        (u.email ? localStorage.getItem(`dedicated_vacation_${String(u.email).toLowerCase()}`) : null);
-        let bal = u.vacationBalance ?? u.vacation_balance;
-        if (cached && Number(cached) !== 10000 && Number(cached) >= 0) {
-          bal = Number(cached);
-        } else if (bal === 10000) {
-          bal = 100;
+        let quota = 80;
+        if (cached && Number(cached) >= 0 && Number(cached) < 5000) {
+          quota = Number(cached);
+        } else if (u.bankingInfo?.vacationQuota && Number(u.bankingInfo.vacationQuota) < 5000) {
+          quota = Number(u.bankingInfo.vacationQuota);
+        } else if (u.vacationQuota && Number(u.vacationQuota) < 5000) {
+          quota = Number(u.vacationQuota);
         }
+
+        let bal = u.vacationBalance ?? u.vacation_balance;
+        if (bal === undefined || bal === null || isNaN(Number(bal)) || Number(bal) >= 5000 || Number(bal) <= 0) {
+          bal = quota;
+        } else {
+          bal = Number(bal);
+        }
+
         return {
           ...u,
           vacationBalance: bal,
           vacation_balance: bal,
-          vacationQuota: bal,
+          vacationQuota: quota,
         };
       });
 

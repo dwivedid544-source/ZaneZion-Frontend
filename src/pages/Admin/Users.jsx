@@ -260,10 +260,15 @@ const Users = () => {
     const isCorrupt = (v) => v === undefined || v === null || isNaN(Number(v)) || Number(v) >= 5000 || Number(v) < 0;
 
     // Calculate approved deductions for this user
-    const userLeaves = (leaveRequests || []).filter(r =>
-      ((r.userId && String(r.userId) === String(u.id)) || (r.name && u.name && String(r.name).toLowerCase() === String(u.name).toLowerCase())) &&
-      String(r.status).toLowerCase() === 'approved'
-    );
+    const userLeaves = (leaveRequests || []).filter(r => {
+      const matchId = (r.userId && String(r.userId) === String(u.id)) ||
+                      (r.user_id && String(r.user_id) === String(u.id));
+      const matchName = r.name && u.name && String(r.name).trim().toLowerCase() === String(u.name).trim().toLowerCase();
+      const matchEmail = r.email && u.email && String(r.email).trim().toLowerCase() === String(u.email).trim().toLowerCase();
+      const isApproved = String(r.status || '').trim().toLowerCase() === 'approved';
+      return (matchId || matchName || matchEmail) && isApproved;
+    });
+
     let totalDeducted = 0;
     userLeaves.forEach(r => {
       let h = r.hours;
@@ -276,29 +281,25 @@ const Users = () => {
       totalDeducted += (Number(h) || 24);
     });
 
-    const cached = (u.id ? localStorage.getItem(`dedicated_vacation_${u.id}`) : null) ||
-                   (u.email ? localStorage.getItem(`dedicated_vacation_${String(u.email).toLowerCase()}`) : null);
+    const quota = resolveDedicatedQuota(u);
 
-    let quota = null;
-    let bankObj = u.bankingInfo;
-    if (typeof bankObj === 'string') {
-      try { bankObj = JSON.parse(bankObj); } catch (_) { bankObj = {}; }
-    }
-    if (!isCorrupt(bankObj?.vacationQuota)) quota = Number(bankObj.vacationQuota);
-    else if (!isCorrupt(u.vacationQuota)) quota = Number(u.vacationQuota);
-    else if (!isCorrupt(cached)) quota = Number(cached);
-
-    const rawBal = u.vacationBalance ?? u.vacation_balance;
-    // If backend already has accurate remaining deducted balance (e.g. 428 when quota is 500)
-    if (!isCorrupt(rawBal) && (quota === null || Number(rawBal) <= quota)) {
-      return Number(rawBal);
-    }
-
-    if (quota !== null) {
+    // If approved deductions exist, remaining balance is strictly quota - totalDeducted
+    if (totalDeducted > 0 && quota !== null && !isCorrupt(quota)) {
       return Math.max(0, quota - totalDeducted);
     }
 
-    return 80;
+    const rawBal = u.vacationBalance ?? u.vacation_balance;
+    if (!isCorrupt(rawBal)) {
+      if (quota !== null && Number(rawBal) < quota) {
+        return Number(rawBal);
+      }
+      if (totalDeducted > 0) {
+        return Math.max(0, Number(rawBal) - totalDeducted);
+      }
+      return Number(rawBal);
+    }
+
+    return quota ? Math.max(0, quota - totalDeducted) : 80;
   };
 
   const handleAction = async (type, user) => {

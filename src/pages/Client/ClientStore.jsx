@@ -69,6 +69,7 @@ const ClientStore = () => {
     const [islandLocation, setIslandLocation] = useState('');
     const [orderPlacementDate, setOrderPlacementDate] = useState(() => localDateISO());
     const [customRequestSubtype, setCustomRequestSubtype] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
     /** 'all' | store group key from inventoryByStore */
     const [catalogStoreFilter, setCatalogStoreFilter] = useState('all');
     const [productCategoryFilter, setProductCategoryFilter] = useState('all');

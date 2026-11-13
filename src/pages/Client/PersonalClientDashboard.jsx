@@ -9,6 +9,21 @@ import { useNavigate } from 'react-router-dom';
 import { useData } from '../../context/GlobalDataContext';
 import { useUpdateOrder, useCreateOrder } from '../../hooks/api/useOrders';
 import { compareOrdersNewestFirst } from '../../utils/apiHelpers';
+import {
+  ArrowUpRight,
+  Car,
+  ChevronRight,
+  CreditCard,
+  Eye,
+  FileText,
+  Gift,
+  HelpCircle,
+  History,
+  Package,
+  ShoppingBag,
+  ShoppingCart,
+  Truck
+} from 'lucide-react';
 
 // Re‑used UI components (StatCard, SectionCard, EmptyState) are defined inline for clarity
 const StatCard = ({ label, value, icon: Icon, color = 'text-accent', bg = 'bg-accent/10', onClick }) => (
@@ -284,8 +299,8 @@ const PersonalClientDashboard = () => {
     // 1. Exact match on verified customer user ID
     const reqCustId = (req.customer_id != null && req.customer_id !== '') ? String(req.customer_id) :
       (req.user_id != null && req.user_id !== '') ? String(req.user_id) :
-      (req.userId != null && req.userId !== '') ? String(req.userId) :
-      (req.created_by != null && req.created_by !== '') ? String(req.created_by) : null;
+        (req.userId != null && req.userId !== '') ? String(req.userId) :
+          (req.created_by != null && req.created_by !== '') ? String(req.created_by) : null;
 
     if (myUserId && reqCustId && reqCustId === myUserId) return true;
 

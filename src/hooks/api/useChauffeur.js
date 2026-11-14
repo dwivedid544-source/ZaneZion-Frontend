@@ -19,7 +19,7 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
   const rawRole = currentUser?.role;
   const roleStr = typeof rawRole === 'object' && rawRole !== null ? rawRole.name : rawRole;
   const normalizedRole = normalizeRole(roleStr);
-  const isCustomerRole = ['customer', 'client', 'saas_client'].includes(normalizedRole);
+  const isCustomerRole = ['customer', 'client'].includes(normalizedRole);
 
   return useQuery({
     queryKey: ['chauffeurMissions', currentUserId, currentUserTenant, page, limit, search],
@@ -31,8 +31,9 @@ export const useChauffeurMissions = (page = 1, limit = 10, search = '') => {
           limit,
           search,
           orderType: 'CHAUFFEUR',
+          ...(currentUserTenant ? { tenantId: currentUserTenant } : {}),
           // Only scope to this user's data if they're a customer/client role.
-          // Admins, operations, staff etc. see all bookings in their tenant.
+          // Admins (including SaaS Admin), operations, staff etc. see all bookings in their tenant.
           ...(isCustomerRole && currentUserId && { user_id: currentUserId }),
           ...(isCustomerRole && currentUserEmail && { customer_email: currentUserEmail }),
           ...(isCustomerRole && currentClientId && { clientId: currentClientId }),
@@ -279,6 +280,7 @@ export const useCreateChauffeurMission = () => {
 
       const payload = {
         ...missionData,
+        tenantId: missionData.tenantId || currentUserTenant || currentUser?.tenantId || 1,
         clientId: missionData.clientId,
         orderType: 'CHAUFFEUR',
         type: 'CHAUFFEUR',

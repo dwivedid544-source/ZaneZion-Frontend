@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useData } from '../../context/GlobalDataContext';
 import { User, Mail, Phone, Lock, Save, Shield, Calendar, CreditCard, Hash, Briefcase, TrendingUp, Eye, EyeOff } from 'lucide-react';
 import { normalizeRole } from '../../utils/authUtils';
+import { ageFromBirthday, getMaxBirthdayDate } from '../../utils/dateEst';
 
 const Profile = () => {
     const { currentUser, updateUser } = useData();
@@ -53,10 +54,18 @@ const Profile = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        if (formData.birthday && new Date(formData.birthday) > new Date()) {
-            setMessage({ type: 'error', text: 'Birthday cannot be in the future.' });
-            setIsLoading(false);
-            return;
+        if (formData.birthday) {
+            if (new Date(formData.birthday) > new Date()) {
+                setMessage({ type: 'error', text: 'Birthday cannot be in the future.' });
+                setIsLoading(false);
+                return;
+            }
+            const userAge = ageFromBirthday(formData.birthday);
+            if (userAge == null || userAge < 18) {
+                setMessage({ type: 'error', text: 'You must be at least 18 years old.' });
+                setIsLoading(false);
+                return;
+            }
         }
         if (formData.phone && !/^\d+$/.test(formData.phone)) {
             setMessage({ type: 'error', text: 'Phone number must contain only numeric characters.' });
@@ -211,7 +220,7 @@ const Profile = () => {
                                         name="birthday"
                                         value={formData.birthday}
                                         onChange={handleChange}
-                                        max={new Date().toISOString().split('T')[0]}
+                                        max={getMaxBirthdayDate(18)}
                                         className="w-full bg-[#141417] border border-white/5 rounded-xl py-2.5 pl-10 pr-4 text-sm text-white focus:outline-none focus:border-accent transition-colors"
                                     />
                                 </div>

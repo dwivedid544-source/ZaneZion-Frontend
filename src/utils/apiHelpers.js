@@ -55,9 +55,25 @@ export const toAbsoluteImageUrl = (rawPath) => {
   if (typeof rawPath !== 'string') return null;
   const trimmed = rawPath.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
-  const path = trimmed.startsWith('/') ? trimmed : `/${trimmed.replace(/\\/g, '/')}`;
-  return `${BACKEND_ORIGIN}${path}`;
+  if (trimmed.startsWith('data:')) return trimmed;
+
+  let fullUrl = trimmed;
+  if (!trimmed.startsWith('http')) {
+    const path = trimmed.startsWith('/') ? trimmed : `/${trimmed.replace(/\\/g, '/')}`;
+    fullUrl = `${BACKEND_ORIGIN}${path}`;
+  }
+
+  // If accessing private uploaded files under /uploads/ and missing token, attach query token
+  if (fullUrl.includes('/uploads/') && !fullUrl.includes('token=')) {
+    try {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      if (token) {
+        fullUrl += (fullUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
+      }
+    } catch (_) {}
+  }
+
+  return fullUrl;
 };
 
 const isGenericName = (name) => {

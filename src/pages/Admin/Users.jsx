@@ -1660,6 +1660,8 @@ const Users = () => {
                             onClick={() => {
                               if (hasDoc && docUrl) {
                                 setViewingDoc({ title: `${doc.label} - ${formData.name || 'User Profile'}`, url: toAbsoluteImageUrl(docUrl), type: doc.type, userId: selectedUser?.id || formData?.id });
+                              } else if (hasDoc && !docUrl) {
+                                swalWarning('File Not Found on Server', `The ${doc.label} was marked attached, but no file link is saved on the server. Please click the edit icon (pencil) to upload the document file.`);
                               } else {
                                 document.getElementById(`doc-upload-file-${doc.type}`)?.click();
                               }

@@ -1053,8 +1053,8 @@ export const GlobalDataProvider = ({ children }) => {
       if (!currentUser) return dataArray;
 
       const role = normalizeRole(currentUser.role);
-      // Super Admin and HQ staff see everything
-      if (["super_admin", "superadmin", "admin", "concierge", "operations", "logistics"].includes(role)) {
+      // Super Admin, HQ staff, and SaaS Admin (tenant scoped by backend) see everything returned
+      if (["super_admin", "superadmin", "admin", "concierge", "operations", "logistics", "saas_client"].includes(role)) {
         return dataArray;
       }
 
@@ -2701,6 +2701,8 @@ export const GlobalDataProvider = ({ children }) => {
             id: uniqueTicketId,
             ticketId: uniqueTicketId,
             db_id: dbId,
+            tenantId: t.tenantId ?? t.tenant_id ?? null,
+            tenant_id: t.tenantId ?? t.tenant_id ?? null,
             // preserve original backend identification fields to satisfy global filters
             submitted_by: t.submitted_by ?? t.createdById ?? null,
             created_by: t.submitted_by ?? t.created_by ?? t.createdById ?? null,
@@ -3689,6 +3691,9 @@ export const GlobalDataProvider = ({ children }) => {
       const safePayload = { ...updated };
       if (!safePayload.password) {
         delete safePayload.password;
+      }
+      if (safePayload.avatar && typeof safePayload.avatar === 'string' && safePayload.avatar.length > 190 && !safePayload.avatar.startsWith('http')) {
+        delete safePayload.avatar;
       }
       const bank =
         safePayload?.bankingInfo?.bank ??
@@ -5413,16 +5418,35 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       // Map frontend naming to backend database fields
       const reqData = {
+        companyName: branding.businessName,
+        name: branding.businessName,
         business_name: branding.businessName,
         tagline: branding.tagline,
+        logoUrl: branding.logo,
+        logo: branding.logo,
         logo_url: branding.logo,
       };
 
-      const res = await api.put(`/clients/${clientId}`, reqData);
+      const numericId = String(clientId || '').replace('CLT-', '');
+      const res = await api.put(`/clients/${numericId}`, reqData);
       if (res.data?.success) {
         setClients((prev) =>
-          prev.map((c) => (c.id === clientId ? { ...c, ...reqData } : c)),
+          prev.map((c) => (String(c.id).replace('CLT-', '') === String(numericId) ? { ...c, ...reqData, companyName: branding.businessName, logoUrl: branding.logo, logo: branding.logo } : c)),
         );
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          const updatedUser = {
+            ...prev,
+            companyName: branding.businessName || prev.companyName,
+            company_name: branding.businessName || prev.company_name,
+            logoUrl: branding.logo || prev.logoUrl,
+            logo: branding.logo || prev.logo
+          };
+          try {
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+          } catch (_) {}
+          return updatedUser;
+        });
         addLog({
           action: "Branding Updated",
           detail: `Institutional identity recalibrated for ${clientId}.`,

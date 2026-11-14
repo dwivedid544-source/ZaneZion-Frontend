@@ -202,7 +202,7 @@ function App() {
       const token = localStorage.getItem('token');
       const userRole = localStorage.getItem('userRole');
       const isAuth = !!token && !!userRole;
-      
+
       setAuth(prevAuth => {
         // Only update if status actually changed
         if (prevAuth.isAuthenticated !== isAuth || prevAuth.role !== normalizeRole(userRole)) {
@@ -220,7 +220,7 @@ function App() {
 
     // Listen for storage changes (logout from another tab, etc)
     window.addEventListener('storage', checkAuthStatus);
-    
+
     return () => window.removeEventListener('storage', checkAuthStatus);
   }, []); // Empty dependency - run only once on mount
 
@@ -352,7 +352,7 @@ function App() {
               } />
               <Route path="support-tickets" element={
                 <RoleProtectedRoute role={auth.role} allowedRoles={['superadmin', 'client', 'admin', 'saas_client']}>
-                  {['client', 'saas_client', 'customer'].includes(auth.role) ? <ClientSupport /> : <SupportDashboard />}
+                  {['client', 'customer'].includes(normalizeRole(auth.role || localStorage.getItem('userRole'))) ? <ClientSupport /> : <SupportDashboard />}
                 </RoleProtectedRoute>
               } />
               <Route path="saas-clients" element={
@@ -438,7 +438,7 @@ function App() {
               {/* Concierge Role Specific */}
               <Route path="events" element={
                 <RoleProtectedRoute role={auth.role} allowedRoles={['superadmin', 'concierge', 'client', 'admin', 'saas_client', 'customer']}>
-                  {['customer', 'client', 'saas_client'].includes(normalizeRole(auth.role || localStorage.getItem('userRole'))) ? <ClientEvents /> : <Events />}
+                  {['customer', 'client'].includes(normalizeRole(auth.role || localStorage.getItem('userRole'))) ? <ClientEvents /> : <Events />}
                 </RoleProtectedRoute>
               } />
               <Route path="guest-requests" element={
@@ -505,7 +505,7 @@ function App() {
               <Route path="client-inventory" element={<Navigate to="/dashboard/inventory" replace />} />
               <Route path="support" element={
                 <RoleProtectedRoute role={auth.role} allowedRoles={['client', 'admin', 'saas_client', 'customer']}>
-                  <ClientSupport />
+                  {['customer', 'client'].includes(normalizeRole(auth.role || localStorage.getItem('userRole'))) ? <ClientSupport /> : <SupportDashboard />}
                 </RoleProtectedRoute>
               } />
               <Route path="membership" element={

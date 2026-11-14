@@ -6,6 +6,7 @@ import { Calendar, MapPin, Plus, Star, Search, Clock, Users } from 'lucide-react
 import { useData } from '../../context/GlobalDataContext';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import { BACKEND_ORIGIN, formatClientDisplayName } from '../../utils/apiHelpers.js';
+import { normalizeRole } from '../../utils/authUtils.js';
 
 const BACKEND_URL = BACKEND_ORIGIN;
 const toAbsoluteImageUrl = (rawPath) => {
@@ -29,7 +30,8 @@ const Events = () => {
     hasMenuPermission,
     currentUser
   } = useData();
-  const canAddEvent = hasMenuPermission('Events', 'can_add');
+  const isSaasClient = normalizeRole(currentUser?.role) === 'saas_client';
+  const canAddEvent = isSaasClient || hasMenuPermission('Events', 'can_add');
 
   React.useEffect(() => {
     fetchClients();
@@ -91,6 +93,21 @@ const Events = () => {
         });
       }
     });
+
+    // 3. Current User / Organization (Internal)
+    if (currentUser) {
+      const myId = currentUser.clientId || currentUser.company_id || currentUser.id;
+      const myName = currentUser.companyName || currentUser.name || 'Organization Internal';
+      const myKey = `${myId}::${(myName || currentUser.email || '').toLowerCase()}`;
+      if (!seen.has(myKey)) {
+        seen.add(myKey);
+        list.unshift({
+          id: myId,
+          label: `${myName} (Internal)`,
+          email: currentUser.email || ''
+        });
+      }
+    }
 
     return list.sort((a, b) => a.label.localeCompare(b.label));
   }, [clients, customerUsers]);
@@ -265,8 +282,8 @@ const Events = () => {
           onView={(item) => handleAction('view', item)}
           onEdit={(item) => handleAction('edit', item)}
           onDelete={(item) => handleAction('delete', item)}
-          canEdit={hasMenuPermission('Events', 'can_edit')}
-          canDelete={hasMenuPermission('Events', 'can_delete')}
+          canEdit={isSaasClient || hasMenuPermission('Events', 'can_edit')}
+          canDelete={isSaasClient || hasMenuPermission('Events', 'can_delete')}
         />
       </div>
 

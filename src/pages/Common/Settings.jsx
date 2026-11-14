@@ -5,6 +5,7 @@ import { User, Shield, Bell, Globe, CreditCard, Save, Lock, RotateCcw, Truck, Do
 import { useData } from '../../context/GlobalDataContext';
 import { normalizeRole } from '../../utils/authUtils';
 import { API_BASE_URL } from '../../utils/apiHelpers.js';
+import { uploadSupportAttachment } from '../../services/cloudinaryService';
 
 
 function pickAvatarUrl(user) {
@@ -34,7 +35,7 @@ const SETTINGS_TABS = [
 ];
 
 const Settings = () => {
-  const { currentUser, setCurrentUser, updateUser, deliveryPricing, setDeliveryPricing, updateDeliveryTiers, shippingModePricing, updateShippingModePricing, clients, updateClientBranding, systemSettings, fetchSystemSettings, setSystemSettings } = useData();
+  const { currentUser, setCurrentUser, updateUser, deliveryPricing, setDeliveryPricing, updateDeliveryTiers, shippingModePricing, updateShippingModePricing, clients, fetchClients, updateClientBranding, systemSettings, fetchSystemSettings, setSystemSettings } = useData();
   const [activeTab, setActiveTab] = useState('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [profile, setProfile] = useState(() => ({
@@ -45,13 +46,27 @@ const Settings = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   // Get current client data if it's a client
-  const clientData = ['client', 'saas_client'].includes(normalizeRole(currentUser?.role)) ? clients.find(c => c.id === (currentUser?.clientId || currentUser?.company_id)) : null;
+  const clientData = ['client', 'saas_client'].includes(normalizeRole(currentUser?.role))
+    ? (
+        (currentUser?.clientId && (clients || []).find(c => String(c.id).replace('CLT-', '') === String(currentUser.clientId).replace('CLT-', ''))) ||
+        (currentUser?.company_id && (clients || []).find(c => String(c.id).replace('CLT-', '') === String(currentUser.company_id).replace('CLT-', ''))) ||
+        (currentUser?.email && (clients || []).find(c => c.email?.toLowerCase() === currentUser.email.toLowerCase())) ||
+        (currentUser?.name && (clients || []).find(c => c.name === currentUser.name || c.contactPerson === currentUser.name)) ||
+        (currentUser?.tenantId && (clients || []).find(c => Number(c.tenantId) === Number(currentUser.tenantId) && (c.clientType === 'SaaS' || c.client_type === 'SaaS'))) ||
+        (currentUser?.tenantId && (clients || []).find(c => Number(c.tenantId) === Number(currentUser.tenantId))) ||
+        null
+      )
+    : null;
 
   const [branding, setBranding] = useState({
     businessName: '',
     tagline: '',
     logo: ''
   });
+
+  useEffect(() => {
+    if (fetchClients) fetchClients();
+  }, [fetchClients]);
 
   useEffect(() => {
     const role = normalizeRole(currentUser?.role);
@@ -66,12 +81,18 @@ const Settings = () => {
     } else if (clientData) {
       // Client: load from client record
       setBranding({
-        businessName: clientData.business_name || '',
+        businessName: clientData.companyName || clientData.business_name || clientData.name || currentUser?.companyName || currentUser?.name || '',
         tagline: clientData.tagline || '',
-        logo: clientData.logo_url || ''
+        logo: clientData.logoUrl || clientData.logo_url || clientData.logo || ''
       });
+    } else if (['client', 'saas_client'].includes(role)) {
+      setBranding(prev => ({
+        businessName: prev.businessName || currentUser?.companyName || currentUser?.name || '',
+        tagline: prev.tagline || '',
+        logo: prev.logo || ''
+      }));
     }
-  }, [clientData, systemSettings?.branding, currentUser?.role]);
+  }, [clientData, systemSettings?.branding, currentUser]);
 
   const avatarKey = pickAvatarUrl(currentUser || {});
 
@@ -136,7 +157,7 @@ const Settings = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/settings/system`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
@@ -183,7 +204,9 @@ const Settings = () => {
     });
   }, [shippingModePricing]);
 
-  const handleAvatarFile = (e) => {
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+
+  const handleAvatarFile = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith('image/')) {
@@ -196,13 +219,23 @@ const Settings = () => {
       e.target.value = '';
       return;
     }
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const dataUrl = reader.result;
-      setProfile((p) => ({ ...p, avatarUrl: dataUrl, avatar_url: dataUrl }));
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+
+    // Instant local preview
+    const localUrl = URL.createObjectURL(file);
+    setProfile((p) => ({ ...p, avatarUrl: localUrl, avatar_url: localUrl }));
+
+    try {
+      setIsUploadingAvatar(true);
+      const res = await uploadSupportAttachment(file, 'avatars');
+      if (res?.url) {
+        setProfile((p) => ({ ...p, avatarUrl: res.url, avatar_url: res.url }));
+      }
+    } catch (err) {
+      console.warn('Avatar upload failed:', err);
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = '';
+    }
   };
 
   const clearAvatar = () => {
@@ -212,7 +245,10 @@ const Settings = () => {
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      const avatarStr = String(profile.avatarUrl || profile.avatar_url || '').trim();
+      let avatarStr = String(profile.avatarUrl || profile.avatar_url || '').trim();
+      if (avatarStr.startsWith('blob:') || (avatarStr.length > 190 && !avatarStr.startsWith('http'))) {
+        avatarStr = '';
+      }
       const payload = {
         ...currentUser,
         ...profile,
@@ -244,7 +280,7 @@ const Settings = () => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
@@ -295,18 +331,18 @@ const Settings = () => {
           <div className="glass-card p-2 sm:p-3 shadow-lg shadow-black/40 min-w-0">
             <nav className="flex flex-wrap gap-2 min-w-0" aria-label="Settings sections">
               {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`shrink-0 inline-flex items-center gap-2 rounded-xl px-3 sm:px-4 py-2.5 text-sm font-bold transition-all duration-300 ${activeTab === tab.id
-                      ? 'bg-accent text-black shadow-lg shadow-accent/20'
-                      : 'text-secondary bg-white/[0.04] hover:bg-white/10 hover:text-white border border-transparent'
-                      }`}
-                  >
-                    <tab.icon size={16} className={activeTab === tab.id ? 'text-black' : 'text-accent'} />
-                    <span>{tab.label}</span>
-                  </button>
+                <button
+                  key={tab.id}
+                  type="button"
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`shrink-0 inline-flex items-center gap-2 rounded-xl px-3 sm:px-4 py-2.5 text-sm font-bold transition-all duration-300 ${activeTab === tab.id
+                    ? 'bg-accent text-black shadow-lg shadow-accent/20'
+                    : 'text-secondary bg-white/[0.04] hover:bg-white/10 hover:text-white border border-transparent'
+                    }`}
+                >
+                  <tab.icon size={16} className={activeTab === tab.id ? 'text-black' : 'text-accent'} />
+                  <span>{tab.label}</span>
+                </button>
               ))}
             </nav>
             {tabs.length === 0 && (
@@ -315,7 +351,7 @@ const Settings = () => {
           </div>
 
           <div className="w-full min-w-0">
-          {activeTab === 'profile' && (
+            {activeTab === 'profile' && (
               <div className="space-y-6 md:space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700 min-w-0">
                 <div className="grid grid-cols-1 xl:grid-cols-3 gap-6 md:gap-8 min-w-0">
                   {/* Left Column: Avatar and Quick Info */}
@@ -363,7 +399,7 @@ const Settings = () => {
                       <p className="text-accent text-[10px] font-black uppercase tracking-[0.2em] opacity-80">{String(profile.role?.name || profile.role || '')}</p>
                     </div>
                   </div>
-                  
+
                   {/* Right Column: Detailed Info Form */}
                   <div className="xl:col-span-2 min-w-0">
                     <div className="glass-card p-5 sm:p-6 md:p-8 lg:p-10 bg-gradient-to-br from-card to-background min-w-0 overflow-hidden">
@@ -645,7 +681,7 @@ const Settings = () => {
                       </div>
                     ))}
                   </div>
-                  
+
                   <div className="mt-6 flex justify-between items-center gap-4">
                     <button
                       type="button"
@@ -804,281 +840,325 @@ const Settings = () => {
             )}
 
             {activeTab === 'notifications' && (
-            <div className="glass-card p-8 md:p-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="flex items-center gap-4 mb-10">
-                <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
-                  <Bell size={24} />
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white tracking-tight">Notifications</h3>
-                  <p className="text-xs text-secondary mt-0.5 opacity-70">Choose which alerts you want.</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {[
-                  { key: 'emailAlerts', title: 'Large transaction alerts', desc: 'Email when activity exceeds high-value thresholds.', icon: DollarSign },
-                  { key: 'pushNotifications', title: 'Urgent logistics updates', desc: 'Real-time notices for critical routes.', icon: Truck },
-                  { key: 'orderUpdates', title: 'Order sync', desc: 'Confirmations when orders move stages.', icon: RotateCcw },
-                  { key: 'securityLogs', title: 'Security summaries', desc: 'Periodic summaries of security-related events.', icon: Shield },
-                ].map((item) => (
-                  <div key={item.key} className={`p-5 border rounded-2xl transition-all duration-500 flex flex-col justify-between h-full group ${notifications[item.key] ? 'bg-accent/5 border-accent/20' : 'bg-white/[0.02] border-white/5'}`}>
-                    <div className="flex items-start justify-between mb-4">
-                      <div className={`p-2.5 rounded-lg ${notifications[item.key] ? 'bg-accent/10 text-accent' : 'bg-white/5 text-secondary'}`}>
-                        <item.icon size={20} />
-                      </div>
-                      <button
-                        onClick={() => setNotifications({ ...notifications, [item.key]: !notifications[item.key] })}
-                        className={`w-12 h-6 rounded-full transition-all relative flex items-center px-1 ${notifications[item.key] ? 'bg-accent shadow-lg shadow-accent/20' : 'bg-white/10'}`}
-                      >
-                        <div className={`w-4 h-4 rounded-full transition-all duration-300 shadow-md ${notifications[item.key] ? 'translate-x-6 bg-black' : 'translate-x-0 bg-secondary'}`} />
-                      </button>
-                    </div>
-                    <div>
-                      <p className={`font-bold text-sm transition-colors ${notifications[item.key] ? 'text-white' : 'text-secondary'}`}>{item.title}</p>
-                      <p className="text-[10px] text-secondary mt-1 leading-relaxed opacity-60">{item.desc}</p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-10 pt-8 border-t border-white/5 flex justify-end">
-                <button
-                  onClick={async () => {
-                    try {
-                      await fetch(`${API_BASE_URL}/settings/user/notifications`, {
-                        method: 'PUT',
-                        headers: { 
-                          'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                          'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(notifications)
-                      });
-                      swalSuccess('Success', 'Notification preferences saved.');
-                    } catch (e) {
-                      swalError('Error', 'Failed to save notifications.');
-                    }
-                  }}
-                  className="btn-primary px-8 py-3 text-xs font-black uppercase tracking-widest shadow-xl shadow-accent/20"
-                >
-                  Save Notifications
-                </button>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'security' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="glass-card p-8 md:p-10">
+              <div className="glass-card p-8 md:p-10 animate-in fade-in slide-in-from-bottom-4 duration-700">
                 <div className="flex items-center gap-4 mb-10">
                   <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
-                    <Lock size={24} />
+                    <Bell size={24} />
                   </div>
                   <div>
-                    <h3 className="text-xl font-bold text-white tracking-tight">Password</h3>
-                    <p className="text-xs text-secondary mt-0.5 opacity-70">Change your login password.</p>
+                    <h3 className="text-xl font-bold text-white tracking-tight">Notifications</h3>
+                    <p className="text-xs text-secondary mt-0.5 opacity-70">Choose which alerts you want.</p>
                   </div>
                 </div>
 
-                <form onSubmit={handlePasswordChange} className="max-w-2xl space-y-8">
-                  <div className="space-y-2">
-                    <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Current password</label>
-                    <div className="relative">
-                      <input
-                        type={showPassword ? "text" : "password"}
-                        placeholder="••••••••••••"
-                        value={passwords.current}
-                        onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
-                        className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
-                        title={showPassword ? "Hide password" : "Show password"}
-                      >
-                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">New password</label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          placeholder="••••••••••••"
-                          value={passwords.new}
-                          onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
-                          className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
-                        />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {[
+                    { key: 'emailAlerts', title: 'Large transaction alerts', desc: 'Email when activity exceeds high-value thresholds.', icon: DollarSign },
+                    { key: 'pushNotifications', title: 'Urgent logistics updates', desc: 'Real-time notices for critical routes.', icon: Truck },
+                    { key: 'orderUpdates', title: 'Order sync', desc: 'Confirmations when orders move stages.', icon: RotateCcw },
+                    { key: 'securityLogs', title: 'Security summaries', desc: 'Periodic summaries of security-related events.', icon: Shield },
+                  ].map((item) => (
+                    <div key={item.key} className={`p-5 border rounded-2xl transition-all duration-500 flex flex-col justify-between h-full group ${notifications[item.key] ? 'bg-accent/5 border-accent/20' : 'bg-white/[0.02] border-white/5'}`}>
+                      <div className="flex items-start justify-between mb-4">
+                        <div className={`p-2.5 rounded-lg ${notifications[item.key] ? 'bg-accent/10 text-accent' : 'bg-white/5 text-secondary'}`}>
+                          <item.icon size={20} />
+                        </div>
                         <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
-                          title={showPassword ? "Hide password" : "Show password"}
+                          onClick={() => setNotifications({ ...notifications, [item.key]: !notifications[item.key] })}
+                          className={`w-12 h-6 rounded-full transition-all relative flex items-center px-1 ${notifications[item.key] ? 'bg-accent shadow-lg shadow-accent/20' : 'bg-white/10'}`}
                         >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          <div className={`w-4 h-4 rounded-full transition-all duration-300 shadow-md ${notifications[item.key] ? 'translate-x-6 bg-black' : 'translate-x-0 bg-secondary'}`} />
                         </button>
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Confirm new password</label>
-                      <div className="relative">
-                        <input
-                          type={showPassword ? "text" : "password"}
-                          placeholder="••••••••••••"
-                          value={passwords.confirm}
-                          onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
-                          className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword(!showPassword)}
-                          className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
-                          title={showPassword ? "Hide password" : "Show password"}
-                        >
-                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                        </button>
+                      <div>
+                        <p className={`font-bold text-sm transition-colors ${notifications[item.key] ? 'text-white' : 'text-secondary'}`}>{item.title}</p>
+                        <p className="text-[10px] text-secondary mt-1 leading-relaxed opacity-60">{item.desc}</p>
                       </div>
                     </div>
-                  </div>
-
-                  <div className="pt-4">
-                    <button type="submit" className="btn-primary px-8 py-3 text-xs w-full sm:w-auto shadow-xl shadow-accent/10">
-                      Update password
-                    </button>
-                  </div>
-                </form>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'branding' && (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="glass-card p-8 md:p-10">
-                <div className="flex items-center gap-4 mb-10">
-                  <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
-                    <Globe size={24} />
-                  </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white tracking-tight">Client branding</h3>
-                    <p className="text-xs text-secondary mt-0.5 opacity-70">Logo and visible name for your portal.</p>
-                  </div>
+                  ))}
                 </div>
-
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
-                  <div className="space-y-6">
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Business name</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Goldwynn Residences"
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-5 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
-                        value={branding.businessName}
-                        onChange={(e) => setBranding({ ...branding, businessName: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Tagline</label>
-                      <input
-                        type="text"
-                        placeholder="e.g. Ultra-Luxury Living"
-                        className="w-full bg-black/20 border border-white/10 rounded-xl px-5 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
-                        value={branding.tagline}
-                        onChange={(e) => setBranding({ ...branding, tagline: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-white/10 rounded-3xl bg-white/[0.01] hover:bg-white/[0.03] transition-all group">
-                    <div className="relative mb-4">
-                      <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center overflow-hidden shadow-2xl p-3 group-hover:scale-105 transition-all duration-500">
-                        {branding.logo ? <img src={branding.logo} className="w-full h-full object-contain brightness-0" alt="Logo Preview" /> : <span className="text-gray-400 text-xs">No Logo</span>}
-                      </div>
-                    </div>
-                    <input
-                      type="file"
-                      id="logo-upload"
-                      className="hidden"
-                      accept="image/*"
-                      onChange={(e) => {
-                        const file = e.target.files[0];
-                        if (file) {
-                          const reader = new FileReader();
-                          reader.onloadend = () => {
-                            setBranding({ ...branding, logo: reader.result });
-                          };
-                          reader.readAsDataURL(file);
-                        }
-                      }}
-                    />
-                    <button
-                      onClick={() => document.getElementById('logo-upload').click()}
-                      className="text-[9px] font-black uppercase tracking-[0.2em] text-accent hover:text-white transition-colors"
-                    >
-                      Upload logo
-                    </button>
-                  </div>
-                </div>
-
                 <div className="mt-10 pt-8 border-t border-white/5 flex justify-end">
                   <button
                     onClick={async () => {
-                      if (['client', 'saas_client'].includes(normalizeRole(currentUser?.role))) {
-                        await updateClientBranding(currentUser.clientId || currentUser.company_id, branding);
-                        swalSuccess('Success', 'Branding updated.');
-                      } else if (['superadmin', 'admin'].includes(normalizeRole(currentUser?.role))) {
-                        try {
-                          const resp = await fetch(`${API_BASE_URL}/settings/system`, {
-                            method: 'PUT',
-                            headers: { 
-                              'Authorization': `Bearer ${localStorage.getItem('token')}`,
-                              'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({ type: 'branding', data: branding })
-                          });
-                          const result = await resp.json();
-                          if (result.success) {
-                            // Keep systemSettings in sync so branding fields don't reset
-                            setSystemSettings(prev => ({ ...prev, branding }));
-                            swalSuccess('Saved', 'System branding updated successfully.');
-                          } else {
-                            swalError('Error', result.message || 'Failed to update branding.');
-                          }
-                        } catch (e) {
-                          swalError('Error', 'Failed to update system branding.');
-                        }
-                      } else {
-                        swalError('Access Denied', 'You do not have permission to change branding.');
+                      try {
+                        await fetch(`${API_BASE_URL}/settings/user/notifications`, {
+                          method: 'PUT',
+                          headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                            'Content-Type': 'application/json'
+                          },
+                          body: JSON.stringify(notifications)
+                        });
+                        swalSuccess('Success', 'Notification preferences saved.');
+                      } catch (e) {
+                        swalError('Error', 'Failed to save notifications.');
                       }
                     }}
-                    className="btn-primary px-10 py-3 text-xs shadow-xl shadow-accent/10"
+                    className="btn-primary px-8 py-3 text-xs font-black uppercase tracking-widest shadow-xl shadow-accent/20"
                   >
-                    Save branding
+                    Save Notifications
                   </button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {activeTab === 'billing' && (
-            <div className="glass-card p-8 md:p-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
-              <div className="max-w-md mx-auto">
-                <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4 text-accent">
-                  <CreditCard size={32} className="opacity-80" />
-                </div>
-                <h3 className="text-xl font-bold text-white">Billing</h3>
-                <p className="text-secondary text-sm mt-2 opacity-80">
-                  Billing tools will be available here when connected to your payment provider.
-                </p>
-                <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
-                  <button type="button" className="btn-primary px-6 py-3 text-xs w-full sm:w-auto opacity-60 cursor-not-allowed" disabled>Request statement</button>
-                  <button type="button" className="btn-secondary px-6 py-3 text-xs w-full sm:w-auto opacity-60 cursor-not-allowed" disabled>Payment history</button>
+            {activeTab === 'security' && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="glass-card p-8 md:p-10">
+                  <div className="flex items-center gap-4 mb-10">
+                    <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
+                      <Lock size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white tracking-tight">Password</h3>
+                      <p className="text-xs text-secondary mt-0.5 opacity-70">Change your login password.</p>
+                    </div>
+                  </div>
+
+                  <form onSubmit={handlePasswordChange} className="max-w-2xl space-y-8">
+                    <div className="space-y-2">
+                      <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Current password</label>
+                      <div className="relative">
+                        <input
+                          type={showPassword ? "text" : "password"}
+                          placeholder="••••••••••••"
+                          value={passwords.current}
+                          onChange={(e) => setPasswords({ ...passwords, current: e.target.value })}
+                          className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
+                          title={showPassword ? "Hide password" : "Show password"}
+                        >
+                          {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">New password</label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="••••••••••••"
+                            value={passwords.new}
+                            onChange={(e) => setPasswords({ ...passwords, new: e.target.value })}
+                            className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
+                            title={showPassword ? "Hide password" : "Show password"}
+                          >
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Confirm new password</label>
+                        <div className="relative">
+                          <input
+                            type={showPassword ? "text" : "password"}
+                            placeholder="••••••••••••"
+                            value={passwords.confirm}
+                            onChange={(e) => setPasswords({ ...passwords, confirm: e.target.value })}
+                            className="w-full bg-black/20 border border-white/10 rounded-xl pl-5 pr-12 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setShowPassword(!showPassword)}
+                            className="absolute right-4 top-1/2 -translate-y-1/2 text-secondary hover:text-white transition-colors"
+                            title={showPassword ? "Hide password" : "Show password"}
+                          >
+                            {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-4">
+                      <button type="submit" className="btn-primary px-8 py-3 text-xs w-full sm:w-auto shadow-xl shadow-accent/10">
+                        Update password
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
-            </div>
-          )}
+            )}
+
+            {activeTab === 'branding' && (
+              <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="glass-card p-8 md:p-10">
+                  <div className="flex items-center gap-4 mb-10">
+                    <div className="w-12 h-12 bg-accent/10 rounded-xl flex items-center justify-center text-accent">
+                      <Globe size={24} />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white tracking-tight">Client branding</h3>
+                      <p className="text-xs text-secondary mt-0.5 opacity-70">Logo and visible name for your portal.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 xl:grid-cols-2 gap-10">
+                    <div className="space-y-6">
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Business name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Goldwynn Residences"
+                          className="w-full bg-black/20 border border-white/10 rounded-xl px-5 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
+                          value={branding.businessName}
+                          onChange={(e) => setBranding({ ...branding, businessName: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">Tagline</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Ultra-Luxury Living"
+                          className="w-full bg-black/20 border border-white/10 rounded-xl px-5 py-3 text-sm focus:border-accent outline-none font-semibold transition-all text-white"
+                          value={branding.tagline}
+                          onChange={(e) => setBranding({ ...branding, tagline: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div 
+                      onClick={() => document.getElementById('logo-upload')?.click()}
+                      className="flex flex-col items-center justify-center p-8 border-2 border-dashed border-white/10 rounded-3xl bg-white/[0.01] hover:bg-white/[0.03] transition-all group cursor-pointer"
+                    >
+                      <div className="relative mb-4">
+                        <div className="w-24 h-24 bg-white rounded-2xl flex items-center justify-center overflow-hidden shadow-2xl p-3 group-hover:scale-105 transition-all duration-500">
+                          {branding.logo ? (
+                            <img src={branding.logo} className="w-full h-full object-contain" alt="Logo Preview" />
+                          ) : (
+                            <span className="text-gray-400 text-xs">No Logo</span>
+                          )}
+                        </div>
+                      </div>
+                      <input
+                        type="file"
+                        id="logo-upload"
+                        className="hidden"
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          // Show local preview immediately
+                          const localUrl = URL.createObjectURL(file);
+                          setBranding(prev => ({ ...prev, logo: localUrl }));
+                          try {
+                            const res = await uploadSupportAttachment(file, 'logos');
+                            if (res?.url) {
+                              setBranding(prev => ({ ...prev, logo: res.url }));
+                            }
+                          } catch (err) {
+                            console.warn('Logo upload to CDN failed, using local reader fallback:', err);
+                            const reader = new FileReader();
+                            reader.onloadend = () => {
+                              setBranding(prev => ({ ...prev, logo: reader.result }));
+                            };
+                            reader.readAsDataURL(file);
+                          }
+                          e.target.value = '';
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          document.getElementById('logo-upload')?.click();
+                        }}
+                        className="text-[9px] font-black uppercase tracking-[0.2em] text-accent hover:text-white transition-colors"
+                      >
+                        Upload logo
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="mt-10 pt-8 border-t border-white/5 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (['client', 'saas_client'].includes(normalizeRole(currentUser?.role))) {
+                          const matchedClient = clientData || (
+                            (currentUser?.clientId && (clients || []).find(c => String(c.id).replace('CLT-', '') === String(currentUser.clientId).replace('CLT-', ''))) ||
+                            (currentUser?.company_id && (clients || []).find(c => String(c.id).replace('CLT-', '') === String(currentUser.company_id).replace('CLT-', ''))) ||
+                            (currentUser?.email && (clients || []).find(c => c.email?.toLowerCase() === currentUser.email.toLowerCase())) ||
+                            (currentUser?.name && (clients || []).find(c => c.name === currentUser.name || c.contactPerson === currentUser.name)) ||
+                            (currentUser?.tenantId && (clients || []).find(c => Number(c.tenantId) === Number(currentUser.tenantId) && (c.clientType === 'SaaS' || c.client_type === 'SaaS'))) ||
+                            (currentUser?.tenantId && (clients || []).find(c => Number(c.tenantId) === Number(currentUser.tenantId)))
+                          );
+                          const targetClientId = currentUser?.clientId || currentUser?.company_id || matchedClient?.id;
+                          if (!targetClientId) {
+                            swalError('Error', 'Client profile not found. Please refresh the page.');
+                            return;
+                          }
+                          await updateClientBranding(targetClientId, branding);
+                          setCurrentUser(prev => ({
+                            ...prev,
+                            companyName: branding.businessName || prev?.companyName,
+                            company_name: branding.businessName || prev?.company_name,
+                            logoUrl: branding.logo || prev?.logoUrl,
+                            logo: branding.logo || prev?.logo,
+                          }));
+                          swalSuccess('Success', 'Branding updated.');
+                          if (fetchClients) fetchClients();
+                        } else if (['superadmin', 'admin'].includes(normalizeRole(currentUser?.role))) {
+                          try {
+                            const resp = await fetch(`${API_BASE_URL}/settings/system`, {
+                              method: 'PUT',
+                              headers: {
+                                'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                                'Content-Type': 'application/json'
+                              },
+                              body: JSON.stringify({ type: 'branding', data: branding })
+                            });
+                            const result = await resp.json();
+                            if (result.success) {
+                              // Keep systemSettings in sync so branding fields don't reset
+                              setSystemSettings(prev => ({ ...prev, branding }));
+                              swalSuccess('Saved', 'System branding updated successfully.');
+                            } else {
+                              swalError('Error', result.message || 'Failed to update branding.');
+                            }
+                          } catch (e) {
+                            swalError('Error', 'Failed to update system branding.');
+                          }
+                        } else {
+                          swalError('Access Denied', 'You do not have permission to change branding.');
+                        }
+                      }}
+                      className="btn-primary px-10 py-3 text-xs shadow-xl shadow-accent/10"
+                    >
+                      Save branding
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'billing' && (
+              <div className="glass-card p-8 md:p-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-700">
+                <div className="max-w-md mx-auto">
+                  <div className="w-16 h-16 bg-accent/10 rounded-full flex items-center justify-center mx-auto mb-4 text-accent">
+                    <CreditCard size={32} className="opacity-80" />
+                  </div>
+                  <h3 className="text-xl font-bold text-white">Billing</h3>
+                  <p className="text-secondary text-sm mt-2 opacity-80">
+                    Billing tools will be available here when connected to your payment provider.
+                  </p>
+                  <div className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <button type="button" className="btn-primary px-6 py-3 text-xs w-full sm:w-auto opacity-60 cursor-not-allowed" disabled>Request statement</button>
+                    <button type="button" className="btn-secondary px-6 py-3 text-xs w-full sm:w-auto opacity-60 cursor-not-allowed" disabled>Payment history</button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

@@ -155,7 +155,7 @@ const menuItems = {
     { icon: FileText, label: 'Invoices', path: '/dashboard/invoices' },
     { icon: CreditCard, label: 'Payroll', path: '/dashboard/payroll' },
     { icon: BarChart3, label: 'Reports', path: '/dashboard/reports' },
-    { icon: Headphones, label: 'Support', path: '/dashboard/support' },
+    { icon: Headphones, label: 'Support', path: '/dashboard/support-tickets' },
     { icon: Car, label: 'Chauffeur', path: '/dashboard/chauffeur' },
     { icon: Calendar, label: 'Events', path: '/dashboard/events' },
     { icon: Heart, label: 'Guest Requests', path: '/dashboard/guest-requests' },
@@ -261,7 +261,7 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
     // Clear all authentication data and local session caches
     try {
       queryClient.clear();
-    } catch (_) {}
+    } catch (_) { }
     localStorage.removeItem('token');
     localStorage.removeItem('userRole');
     localStorage.removeItem('userEmail');
@@ -329,26 +329,36 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
   })();
   // For SaaS tenant admins and business clients — show their company name as branding
   const tenantCompanyName = currentUser?.company_name || currentUser?.companyName || null;
-  const tenantType = currentUser?.tenant_type || null;
+  const isSaas = userRole === 'saas_client';
 
-  const clientBranding = (userRole === 'client' || userRole === 'admin' || userRole === 'saas_client')
-    ? (clients || []).find(c =>
-      String(c.id).replace('CLT-', '') === String(currentUser?.clientId).replace('CLT-', '') ||
-      String(c.id) === String(currentUser?.company_id) ||
-      c.name === currentUser?.name
-    )?.branding
+  const myClient = (userRole === 'client' || userRole === 'saas_client')
+    ? (
+      (currentUser?.clientId && (clients || []).find(c => String(c.id).replace('CLT-', '') === String(currentUser.clientId).replace('CLT-', ''))) ||
+      (currentUser?.company_id && (clients || []).find(c => String(c.id).replace('CLT-', '') === String(currentUser.company_id).replace('CLT-', ''))) ||
+      (currentUser?.email && (clients || []).find(c => c.email?.toLowerCase() === currentUser.email.toLowerCase())) ||
+      (currentUser?.name && (clients || []).find(c => c.name === currentUser.name || c.contactPerson === currentUser.name)) ||
+      (currentUser?.tenantId && (clients || []).find(c => Number(c.tenantId) === Number(currentUser.tenantId) && (c.clientType === 'SaaS' || c.client_type === 'SaaS'))) ||
+      (currentUser?.tenantId && (clients || []).find(c => Number(c.tenantId) === Number(currentUser.tenantId))) ||
+      null
+    )
     : null;
 
-  // Determine display name and tagline for sidebar header
-  const sidebarBrandName = clientBranding?.businessName
-    || tenantCompanyName
-    || 'ZANEZION';
+  const customLogo = myClient?.logoUrl || myClient?.logo_url || myClient?.logo || myClient?.branding?.logo || currentUser?.logoUrl || currentUser?.logo || null;
+  const customName = myClient?.companyName || myClient?.business_name || myClient?.name || myClient?.branding?.businessName || currentUser?.companyName || (isSaas ? currentUser?.name : null);
+  const customTagline = myClient?.tagline || myClient?.branding?.tagline || (isSaas ? 'Workspace' : null);
 
-  const sidebarTagline = clientBranding?.tagline
-    || (userRole === 'concierge' ? 'Concierge Services' : null)
-    || (tenantType === 'saas' ? 'Workspace' : null)
-    || (tenantType === 'business' ? 'Business Portal' : null)
-    || 'Institutional';
+  // Determine display name and tagline for sidebar header
+  const sidebarBrandName = isSaas
+    ? (customName || 'Workspace')
+    : (userRole === 'client' && customName ? customName : (tenantCompanyName || 'ZANEZION'));
+
+  const sidebarTagline = isSaas
+    ? (customTagline || 'Workspace')
+    : (userRole === 'client' ? (customTagline || 'Client Portal') : (userRole === 'concierge' ? 'Concierge Services' : 'Institutional'));
+
+  const sidebarLogo = isSaas
+    ? customLogo
+    : (userRole === 'client' && customLogo ? customLogo : '/logo.png');
 
   return (
     <>
@@ -373,11 +383,23 @@ const Sidebar = ({ isOpen, toggleSidebar, role }) => {
         <div className="p-4 md:p-6 pb-2 flex items-center justify-between">
           <div className="flex items-center gap-3 group cursor-pointer" onClick={() => navigate('/dashboard')}>
             <div className="w-10 h-10 md:w-11 md:h-11 bg-white border border-white/10 rounded-xl flex items-center justify-center shadow-2xl overflow-hidden shrink-0 transition-transform group-hover:scale-105 p-1.5">
-              <img
-                src={clientBranding?.logo || "/logo.png"}
-                alt={sidebarBrandName}
-                className={`w-full h-full object-contain ${!clientBranding?.logo ? 'scale-[2.2]' : ''} transition-all duration-300`}
-              />
+              {sidebarLogo ? (
+                <img
+                  src={sidebarLogo}
+                  alt={sidebarBrandName}
+                  className={`w-full h-full object-contain ${sidebarLogo === '/logo.png' ? 'scale-[2.2]' : ''} transition-all duration-300`}
+                />
+              ) : isSaas ? (
+                <div className="w-full h-full rounded-lg bg-accent/20 border border-accent/40 flex items-center justify-center font-black text-accent text-sm uppercase">
+                  {sidebarBrandName ? sidebarBrandName.charAt(0).toUpperCase() : 'S'}
+                </div>
+              ) : (
+                <img
+                  src="/logo.png"
+                  alt={sidebarBrandName}
+                  className="w-full h-full object-contain scale-[2.2] transition-all duration-300"
+                />
+              )}
             </div>
             <div className="flex flex-col min-w-0 pr-2 overflow-hidden">
               <span className="text-xs md:text-sm font-black tracking-tight text-white group-hover:text-accent transition-colors uppercase leading-tight truncate">

@@ -36,9 +36,26 @@ const Topbar = ({ toggleSidebar, role }) => {
   const { currentUser, clients, orders, inventory, users, notifications, unreadCount, fetchNotifications, markNotificationRead, markAllNotificationsRead } = useData();
   const userRole = normalizeRole(role || 'superadmin');
 
-  const clientBranding = userRole === 'client'
-    ? (clients || []).find(c => c.id === currentUser?.clientId || c.name === currentUser?.name)?.branding
+  const isSaas = userRole === 'saas_client';
+  const myClient = (userRole === 'client' || userRole === 'saas_client')
+    ? (
+        (currentUser?.clientId && (clients || []).find(c => String(c.id).replace('CLT-', '') === String(currentUser.clientId).replace('CLT-', ''))) ||
+        (currentUser?.company_id && (clients || []).find(c => String(c.id).replace('CLT-', '') === String(currentUser.company_id).replace('CLT-', ''))) ||
+        (currentUser?.email && (clients || []).find(c => c.email?.toLowerCase() === currentUser.email.toLowerCase())) ||
+        (currentUser?.name && (clients || []).find(c => c.name === currentUser.name || c.contactPerson === currentUser.name)) ||
+        (currentUser?.tenantId && (clients || []).find(c => Number(c.tenantId) === Number(currentUser.tenantId) && (c.clientType === 'SaaS' || c.client_type === 'SaaS'))) ||
+        (currentUser?.tenantId && (clients || []).find(c => Number(c.tenantId) === Number(currentUser.tenantId))) ||
+        null
+      )
     : null;
+
+  const topbarBrandName = isSaas
+    ? (myClient?.companyName || myClient?.business_name || myClient?.name || currentUser?.companyName || currentUser?.name || 'Workspace')
+    : (userRole === 'client' && myClient ? (myClient.companyName || myClient.name || 'Client') : 'ZaneZion');
+
+  const topbarLogo = isSaas
+    ? (myClient?.logoUrl || myClient?.logo_url || myClient?.logo || currentUser?.logoUrl || currentUser?.logo || null)
+    : (userRole === 'client' ? (myClient?.logoUrl || '/logo.png') : '/logo.png');
 
   const userInitials = currentUser?.name
     ? currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -131,14 +148,24 @@ const Topbar = ({ toggleSidebar, role }) => {
 
         <div className="flex items-center gap-2 lg:hidden">
           <div className="w-8 h-8 bg-white rounded-full flex items-center justify-center shadow-[0_0_12px_rgba(200,169,106,0.4)] overflow-hidden ring-2 ring-accent/60 p-1">
-            <img
-              src={clientBranding?.logo || "/logo.png"}
-              alt={clientBranding?.businessName || "ZaneZion"}
-              className={`w-full h-full object-contain ${!clientBranding?.logo ? 'scale-[2.4]' : ''}`}
-            />
+            {topbarLogo ? (
+              <img
+                src={topbarLogo}
+                alt={topbarBrandName}
+                className={`w-full h-full object-contain ${topbarLogo === '/logo.png' ? 'scale-[2.4]' : ''}`}
+              />
+            ) : isSaas ? (
+              <span className="font-black text-black text-xs uppercase">{topbarBrandName.charAt(0).toUpperCase()}</span>
+            ) : (
+              <img
+                src="/logo.png"
+                alt={topbarBrandName}
+                className="w-full h-full object-contain scale-[2.4]"
+              />
+            )}
           </div>
           <span className="text-sm font-black text-white tracking-tight uppercase">
-            {clientBranding?.businessName || "ZaneZion"}
+            {topbarBrandName}
           </span>
         </div>
       </div>

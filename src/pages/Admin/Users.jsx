@@ -12,6 +12,7 @@ import { normalizeRole, resolvePortalRole } from '../../utils/authUtils';
 import api from '../../services/api/setupAxios.js';
 import { toAbsoluteImageUrl } from '../../utils/apiHelpers';
 import Swal from 'sweetalert2';
+import { ageFromBirthday, getMaxBirthdayDate } from '../../utils/dateEst';
 
 const Users = () => {
   const [showPassword, setShowPassword] = useState(false);
@@ -432,8 +433,17 @@ const Users = () => {
         return;
       }
 
-      if (formData.birthday && new Date(formData.birthday) > new Date()) {
+      if (!formData.birthday) {
+        swalWarning('Validation Error', 'Birthday is required to verify the user is at least 18 years old.');
+        return;
+      }
+      if (new Date(formData.birthday) > new Date()) {
         swalWarning('Validation Error', 'Birthday cannot be in the future.');
+        return;
+      }
+      const userAge = ageFromBirthday(formData.birthday);
+      if (userAge == null || userAge < 18) {
+        swalWarning('Validation Error', 'User must be at least 18 years old to register.');
         return;
       }
       if (formData.phone && !/^\d+$/.test(formData.phone)) {
@@ -532,9 +542,16 @@ const Users = () => {
         swalWarning('Validation Error', 'Password must be at least 6 characters.');
         return;
       }
-      if (formData.birthday && new Date(formData.birthday) > new Date()) {
-        swalWarning('Validation Error', 'Birthday cannot be in the future.');
-        return;
+      if (formData.birthday) {
+        if (new Date(formData.birthday) > new Date()) {
+          swalWarning('Validation Error', 'Birthday cannot be in the future.');
+          return;
+        }
+        const userAge = ageFromBirthday(formData.birthday);
+        if (userAge == null || userAge < 18) {
+          swalWarning('Validation Error', 'User must be at least 18 years old.');
+          return;
+        }
       }
       if (formData.phone && !/^\d+$/.test(formData.phone)) {
         swalWarning('Validation Error', 'Phone number must contain only numeric characters.');
@@ -1592,10 +1609,15 @@ const Users = () => {
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-muted uppercase">Birthday</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] font-bold text-muted uppercase">
+                      Birthday {modalType === 'add' && <span className="text-danger">*</span>}
+                    </label>
+                    <span className="text-[9px] font-bold text-accent uppercase tracking-wider">18+ only</span>
+                  </div>
                   <input
                     type="date"
-                    max={new Date().toISOString().split('T')[0]}
+                    max={getMaxBirthdayDate(18)}
                     value={formData.birthday || ''}
                     onChange={(e) => setFormData({ ...formData, birthday: e.target.value })}
                     className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm focus:border-accent outline-none"

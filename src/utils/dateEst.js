@@ -27,6 +27,17 @@ export function formatDateTimeEst(input, options = {}) {
 }
 
 export function ageFromBirthday(isoDateStr) {
+  if (!isoDateStr) return null;
+  const s = String(isoDateStr).trim().split('T')[0];
+  const parts = s.split('-').map(Number);
+  if (parts.length === 3 && !parts.some(n => Number.isNaN(n))) {
+    const [year, month, day] = parts;
+    const today = new Date();
+    let age = today.getFullYear() - year;
+    const m = (today.getMonth() + 1) - month;
+    if (m < 0 || (m === 0 && today.getDate() < day)) age -= 1;
+    return age;
+  }
   const d = safeParseDate(isoDateStr);
   if (!d) return null;
   const today = new Date();
@@ -34,6 +45,14 @@ export function ageFromBirthday(isoDateStr) {
   const m = today.getMonth() - d.getMonth();
   if (m < 0 || (m === 0 && today.getDate() < d.getDate())) age -= 1;
   return age;
+}
+
+export function getMaxBirthdayDate(minAge = 18) {
+  const today = new Date();
+  const year = today.getFullYear() - minAge;
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
 }
 
 export function formatDateEst(input) {

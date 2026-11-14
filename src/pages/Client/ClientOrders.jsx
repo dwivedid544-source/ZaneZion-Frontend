@@ -329,10 +329,10 @@ const ClientOrders = () => {
                 status: effectiveStatus,
                 location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || o.dropLocation || 'Client Address',
                 pickupLocation: linkedDelivery?.pickupLocation || o.pickupLocation || o.pickup_location || null,
-                deliveryType: (o.deliveryType && o.deliveryType !== 'Road') ? o.deliveryType : (o.delivery_mode || o.mode || meta?.delivery_mode || meta?.deliveryType || o.deliveryType || 'Road'),
-                transport_asset: o.transport_asset || o.transportAsset || o.metadata?.transport_asset || o.metadata?.transportAsset || null,
-                transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || o.charterDetails || o.metadata?.transport_asset_custom || o.metadata?.charter_details || null,
-                island_location: o.island_location || o.islandLocation || o.metadata?.island_location || null,
+                deliveryType: (o.deliveryType && o.deliveryType !== 'Road') ? o.deliveryType : (o.delivery_mode || o.mode || meta?.delivery_mode || meta?.deliveryType || meta?.delivery_type || o.deliveryType || 'Road'),
+                transport_asset: o.transport_asset || o.transportAsset || meta?.transport_asset || meta?.transportAsset || null,
+                transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || o.charterDetails || meta?.transport_asset_custom || meta?.charter_details || meta?.transportAssetCustom || null,
+                island_location: o.island_location || o.islandLocation || meta?.island_location || meta?.islandLocation || null,
                 driverName: linkedDelivery?.driver || o.driverName || null,
                 source: 'orders',
                 originalRecord: o
@@ -487,10 +487,17 @@ const ClientOrders = () => {
                 const cfg = CATEGORY_CONFIG[tx.category] || CATEGORY_CONFIG['Custom Order'];
                 const Icon = cfg.icon;
                 return (
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-wider italic ${cfg.color}`}>
-                        <Icon size={12} />
-                        {tx.category}
-                    </span>
+                    <div className="flex flex-col gap-1 items-start">
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-wider italic ${cfg.color}`}>
+                            <Icon size={12} />
+                            {tx.category}
+                        </span>
+                        {tx.deliveryType && tx.category !== 'Chauffeur Booking' && (
+                            <span className="text-[9px] font-bold text-muted/70 tracking-wider uppercase">
+                                {tx.deliveryType === 'Air' ? '✈ Air Protocol' : tx.deliveryType === 'Sea' ? '🛥 Sea Protocol' : '🚚 Road Protocol'}
+                            </span>
+                        )}
+                    </div>
                 );
             }
         },
@@ -670,6 +677,7 @@ const ClientOrders = () => {
                 <p>${tx.dueDate ? new Date(tx.dueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}</p>
             </div>
             ${tx.location ? `<div class="info-cell" style="grid-column:span 3;"><label>Service / Delivery Location</label><p>${tx.location}</p></div>` : ''}
+            ${tx.deliveryType && tx.category !== 'Chauffeur Booking' ? `<div class="info-cell" style="grid-column:span 3;"><label>Logistics Mode & Protocol</label><p>${tx.deliveryType === 'Air' ? '✈ Air Charter Protocol' : tx.deliveryType === 'Sea' ? '🛥 Sea Marine Protocol' : '🚚 Road Courier & Ground Transport Protocol'}${tx.transport_asset ? ` — ${tx.transport_asset}` : ''}${tx.island_location ? ` (Location: ${tx.island_location})` : ''}</p></div>` : ''}
         </div>
     </div>
 
@@ -1023,43 +1031,69 @@ const ClientOrders = () => {
                                         </div>
                                     )}
 
-                                    {/* Logistics Transport & Air Charter Details */}
+                                    {/* Logistics Transport & Delivery Protocol Details */}
                                     {(() => {
-                                        const orig = selectedTransaction.originalRecord || {};
-                                        const origMeta = typeof orig.metadata === 'string' ? JSON.parse(orig.metadata) : (orig.metadata || {});
-                                        const delType = (selectedTransaction.deliveryType && selectedTransaction.deliveryType !== 'Road') ? selectedTransaction.deliveryType : (orig.delivery_mode || origMeta.delivery_mode || orig.deliveryType || origMeta.deliveryType || selectedTransaction.deliveryType || 'Road');
-                                        const tAsset = selectedTransaction.transport_asset || orig.transport_asset || orig.transportAsset || origMeta.transport_asset || origMeta.transportAsset;
-                                        const tAssetCustom = selectedTransaction.transport_asset_custom || orig.transport_asset_custom || orig.transportAssetCustom || orig.charterDetails || origMeta.transport_asset_custom || origMeta.charter_details;
-                                        const islLoc = selectedTransaction.island_location || orig.island_location || orig.islandLocation || origMeta.island_location || origMeta.islandLocation;
+                                        const isChauffeur = selectedTransaction.category === 'Chauffeur Booking' || String(selectedTransaction.id || '').startsWith('CH-');
+                                        if (isChauffeur) return null;
 
-                                        if (delType !== 'Air' && delType !== 'Sea' && !tAsset && !tAssetCustom && !islLoc) {
-                                            return null;
+                                        const orig = selectedTransaction.originalRecord || {};
+                                        let origMeta = orig.metadata;
+                                        if (typeof origMeta === 'string') {
+                                            try { origMeta = JSON.parse(origMeta); } catch { origMeta = {}; }
                                         }
+                                        origMeta = origMeta || {};
+
+                                        const rawMode = (selectedTransaction.deliveryType && selectedTransaction.deliveryType !== 'Road')
+                                            ? selectedTransaction.deliveryType
+                                            : (origMeta.delivery_mode || origMeta.deliveryType || origMeta.delivery_type || orig.delivery_mode || orig.deliveryType || selectedTransaction.deliveryType || 'Road');
+
+                                        const isAir = String(rawMode).toLowerCase().includes('air');
+                                        const isSea = String(rawMode).toLowerCase().includes('sea');
+                                        const delType = isAir ? 'Air' : isSea ? 'Sea' : 'Road';
+
+                                        const tAsset = selectedTransaction.transport_asset || orig.transport_asset || orig.transportAsset || origMeta.transport_asset || origMeta.transportAsset;
+                                        const tAssetCustom = selectedTransaction.transport_asset_custom || orig.transport_asset_custom || orig.transportAssetCustom || orig.charterDetails || origMeta.transport_asset_custom || origMeta.charter_details || origMeta.transportAssetCustom;
+                                        const islLoc = selectedTransaction.island_location || orig.island_location || orig.islandLocation || origMeta.island_location || origMeta.islandLocation;
 
                                         return (
                                             <div className="p-4 rounded-2xl bg-accent/5 border border-accent/20 space-y-3">
                                                 <div className="flex items-center justify-between">
                                                     <p className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-1.5">
-                                                        {delType === 'Air' ? '✈ Logistics Mode: Air Charter Protocol' : '🛥 Logistics Mode: Sea Marine Protocol'}
+                                                        {delType === 'Air' && '✈ Logistics Mode: Air Charter Protocol'}
+                                                        {delType === 'Sea' && '🛥 Logistics Mode: Sea Marine Protocol'}
+                                                        {delType === 'Road' && '🚚 Logistics Mode: Road Courier & Ground Transport Protocol'}
                                                     </p>
                                                     <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-accent/20 text-accent border border-accent/30">
-                                                        {tAsset || (delType === 'Air' ? 'Charter Jet' : 'Sea Vessel')}
+                                                        {tAsset || (delType === 'Air' ? 'Air Charter' : delType === 'Sea' ? 'Marine Fleet' : 'Ground Courier')}
                                                     </span>
                                                 </div>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                                                     <div>
                                                         <p className="text-[9px] font-bold text-muted uppercase">Fleet / Asset Type</p>
-                                                        <p className="font-bold text-white">{tAsset || (delType === 'Air' ? 'Charter Jet' : 'Sea Vessel')}</p>
+                                                        <p className="font-bold text-white">
+                                                            {tAsset || (delType === 'Air' ? 'Charter Jet / Cargo Aircraft' : delType === 'Sea' ? 'Sea Cargo / Marine Vessel' : 'Standard Road Fleet / Courier')}
+                                                        </p>
                                                     </div>
-                                                    {islLoc && (
+                                                    {islLoc ? (
                                                         <div>
-                                                            <p className="text-[9px] font-bold text-muted uppercase">Island / Airstrip Location</p>
+                                                            <p className="text-[9px] font-bold text-muted uppercase">
+                                                                {delType === 'Air' ? 'Island / Airstrip Location' : delType === 'Sea' ? 'Island / Marina Location' : 'Dispatch Terminal Location'}
+                                                            </p>
                                                             <p className="font-bold text-white">{islLoc}</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <p className="text-[9px] font-bold text-muted uppercase">Dispatch Protocol</p>
+                                                            <p className="font-bold text-white">
+                                                                {selectedTransaction.driverName ? `Assigned Courier: ${selectedTransaction.driverName}` : `${delType} Transit Priority Protocol`}
+                                                            </p>
                                                         </div>
                                                     )}
                                                     {tAssetCustom && (
                                                         <div className="sm:col-span-2">
-                                                            <p className="text-[9px] font-bold text-muted uppercase">Charter Specs / Tail Number / Instructions</p>
+                                                            <p className="text-[9px] font-bold text-muted uppercase">
+                                                                {delType === 'Air' ? 'Charter Specs / Tail Number / Instructions' : delType === 'Sea' ? 'Vessel Specs / Marina Details / Instructions' : 'Ground Logistics Notes / Instructions'}
+                                                            </p>
                                                             <p className="font-black text-accent">{tAssetCustom}</p>
                                                         </div>
                                                     )}

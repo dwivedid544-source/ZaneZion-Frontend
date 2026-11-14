@@ -2302,16 +2302,19 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchQuotes = React.useCallback(async (params = {}) => {
     try {
-      const res = await api.get("/procurement/quotes", { params });
+      const res = await api.get("/quotations", { params });
       if (res.data?.success) {
+        const quoteList = Array.isArray(res.data.data)
+          ? res.data.data
+          : (res.data.data?.quotations || []);
         setQuotes(
-          res.data.data.map((q) => ({
+          quoteList.map((q) => ({
             ...q,
             vendorId: q.vendor_id ?? q.vendorId ?? null,
-            vendor: q.vendor_name || q.vendor,
-            vendorName: q.vendor_name || q.vendor,
-            date: q.created_at || q.date,
-            total: parseFloat(q.total_amount || q.total || 0),
+            vendor: q.vendor_name || q.vendor || q.vendor?.companyName,
+            vendorName: q.vendor_name || q.vendor || q.vendor?.companyName,
+            date: q.created_at || q.createdAt || q.date,
+            total: parseFloat(q.amount || q.total_amount || q.total || 0),
             validity: q.validity_date || q.validity,
           })),
         );
@@ -5900,7 +5903,7 @@ export const GlobalDataProvider = ({ children }) => {
         Number.isFinite(parsedVendorId) && parsedVendorId > 0
           ? parsedVendorId
           : null;
-      const res = await api.post("/procurement/quotes", {
+      const res = await api.post("/quotations", {
         ...quote,
         vendor_id: normalizedVendorId,
         vendor_name: quote.vendor_name || quote.vendor || "",
@@ -5935,7 +5938,7 @@ export const GlobalDataProvider = ({ children }) => {
         payment_terms: updated.paymentTerms ?? updated.payment_terms,
         notes: updated.notes,
       };
-      await api.put(`/procurement/quotes/${qid}`, payload);
+      await api.put(`/quotations/${qid}/status`, payload).catch(() => api.put(`/quotations/${qid}`, payload));
       setQuotes((prev) =>
         prev.map((q) => (q.id === updated.id ? { ...updated, ...payload } : q)),
       );
@@ -5954,7 +5957,7 @@ export const GlobalDataProvider = ({ children }) => {
 
   const deleteQuote = async (id) => {
     try {
-      await api.delete(`/procurement/quotes/${id}`);
+      await api.delete(`/quotations/${id}`);
       setQuotes((prev) => prev.filter((q) => q.id !== id));
       addLog({
         action: "Quote Discarded",

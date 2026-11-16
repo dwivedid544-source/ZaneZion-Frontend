@@ -2353,28 +2353,38 @@ export const GlobalDataProvider = ({ children }) => {
       if (quotes.data?.success || Array.isArray(quotes.data?.data) || Array.isArray(quotes.data?.data?.quotations)) {
         const quoteData = Array.isArray(quotes.data?.data) ? quotes.data.data : (quotes.data?.data?.quotations || []);
         setQuotes(
-          quoteData.map((q) => ({
-            ...q,
-            vendorId: q.vendor_id ?? q.vendorId ?? null,
-            vendor: q.vendor_name || q.vendor,
-            vendorName: q.vendor_name || q.vendor,
-            date: q.created_at || q.date,
-            total: parseFloat(q.amount || q.totalAmount || q.total_amount || q.total || 0),
-            validity: q.validity_date || q.validity,
-          }))
+          quoteData.map((q) => {
+            const vName = typeof q.vendor === 'object' && q.vendor !== null
+              ? (q.vendor.companyName || q.vendor.business_name || q.vendor.name || q.vendor.vendor_name || '')
+              : (q.vendor_name || (typeof q.vendorName === 'string' ? q.vendorName : '') || (typeof q.vendor === 'string' ? q.vendor : ''));
+            return {
+              ...q,
+              vendorId: q.vendor_id ?? q.vendorId ?? null,
+              vendor: vName,
+              vendorName: vName,
+              date: q.created_at || q.date,
+              total: parseFloat(q.amount || q.totalAmount || q.total_amount || q.total || 0),
+              validity: q.validity_date || q.validity,
+            };
+          })
         );
       }
       if (pos.data?.success || Array.isArray(pos.data?.data) || Array.isArray(pos.data?.data?.purchaseOrders)) {
         const poData = Array.isArray(pos.data?.data) ? pos.data.data : (pos.data?.data?.purchaseOrders || []);
         setPurchaseOrders(
-          poData.map((po) => ({
-            ...po,
-            vendorId: po.vendor_id ?? po.vendorId ?? null,
-            vendor: po.vendor_name || po.vendor,
-            vendorName: po.vendor_name || po.vendor,
-            date: po.created_at || po.date,
-            total: parseFloat(po.amount || po.totalAmount || po.total_amount || po.total || 0),
-          }))
+          poData.map((po) => {
+            const vName = typeof po.vendor === 'object' && po.vendor !== null
+              ? (po.vendor.companyName || po.vendor.business_name || po.vendor.name || po.vendor.vendor_name || 'Vendor')
+              : (po.vendor_name || (typeof po.vendorName === 'string' ? po.vendorName : '') || (typeof po.vendor === 'string' ? po.vendor : 'Vendor'));
+            return {
+              ...po,
+              vendorId: po.vendor_id ?? po.vendorId ?? null,
+              vendor: vName,
+              vendorName: vName,
+              date: po.created_at || po.date,
+              total: parseFloat(po.amount || po.totalAmount || po.total_amount || po.total || 0),
+            };
+          })
         );
       }
     } catch (e) {
@@ -2390,15 +2400,20 @@ export const GlobalDataProvider = ({ children }) => {
           ? res.data.data
           : (res.data.data?.quotations || []);
         setQuotes(
-          quoteList.map((q) => ({
-            ...q,
-            vendorId: q.vendor_id ?? q.vendorId ?? null,
-            vendor: q.vendor_name || q.vendor || q.vendor?.companyName,
-            vendorName: q.vendor_name || q.vendor || q.vendor?.companyName,
-            date: q.created_at || q.createdAt || q.date,
-            total: parseFloat(q.amount || q.total_amount || q.total || 0),
-            validity: q.validity_date || q.validity,
-          })),
+          quoteList.map((q) => {
+            const vName = typeof q.vendor === 'object' && q.vendor !== null
+              ? (q.vendor.companyName || q.vendor.business_name || q.vendor.name || q.vendor.vendor_name || '')
+              : (q.vendor_name || (typeof q.vendorName === 'string' ? q.vendorName : '') || (typeof q.vendor === 'string' ? q.vendor : ''));
+            return {
+              ...q,
+              vendorId: q.vendor_id ?? q.vendorId ?? null,
+              vendor: vName,
+              vendorName: vName,
+              date: q.created_at || q.createdAt || q.date,
+              total: parseFloat(q.amount || q.total_amount || q.total || 0),
+              validity: q.validity_date || q.validity,
+            };
+          }),
         );
       }
     } catch (e) {

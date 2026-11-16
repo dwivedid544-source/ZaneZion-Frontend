@@ -23,17 +23,17 @@ const getCurrentUserContext = () => {
 
 export const useOrders = (page = 1, limit = 10, search = '', viewerRole = '') => {
   const { userId, tenantId } = getCurrentUserContext();
-  const isAdminViewer = ['admin', 'super_admin', 'superadmin'].includes(String(viewerRole).toLowerCase());
+  const isSuperAdminViewer = ['super_admin', 'superadmin'].includes(String(viewerRole).toLowerCase());
   return useQuery({
     queryKey: ['orders', userId, tenantId, page, limit, search, viewerRole],
     queryFn: async () => {
       try {
         const response = await api.get('/orders', {
-          params: { page, limit, search, viewerRole, ...(isAdminViewer ? { allTenants: 'true' } : {}) }
+          params: { page, limit, search, viewerRole, ...(isSuperAdminViewer ? { allTenants: 'true' } : {}) }
         });
         return response.data;
       } catch (err) {
-        if (err.response?.status === 500 && isAdminViewer) {
+        if (err.response?.status === 500 && isSuperAdminViewer) {
           const fallback = await api.get('/orders', {
             params: { page, limit, search, viewerRole, allTenants: 'true' }
           });

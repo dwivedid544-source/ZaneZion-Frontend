@@ -287,6 +287,23 @@ const Orders = () => {
       list = list.filter(o => !isOrderHeldFromFieldStaff(o, clients));
     }
 
+    // Multi-tenant isolation: Super Admin sees all tenants; HQ Admin/Staff strictly sees Tenant 1; SaaS tenant strictly sees their tenant
+    const isSuperAdmin = ['super_admin', 'superadmin'].includes(portalRole) || ['super_admin', 'superadmin'].includes(normalizedRole);
+    if (!isSuperAdmin) {
+      const myTenantId = currentUser?.tenantId ?? currentUser?.company_id ?? currentUser?.companyId ?? currentUser?.tenant_id;
+      if (myTenantId && Number(myTenantId) !== 1) {
+        list = list.filter(o => {
+          const oTenant = o.tenantId ?? o.tenant_id ?? o.companyId ?? o.company_id;
+          return oTenant == null || Number(oTenant) === Number(myTenantId);
+        });
+      } else if (myTenantId && Number(myTenantId) === 1) {
+        list = list.filter(o => {
+          const oTenant = o.tenantId ?? o.tenant_id ?? o.companyId ?? o.company_id;
+          return oTenant == null || Number(oTenant) === 1;
+        });
+      }
+    }
+
     return [...list].sort(compareOrdersNewestFirst);
   })();
 

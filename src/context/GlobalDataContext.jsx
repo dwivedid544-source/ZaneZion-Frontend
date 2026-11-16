@@ -1474,7 +1474,7 @@ export const GlobalDataProvider = ({ children }) => {
             list.push(s);
           }
         });
-      } catch {}
+      } catch { }
     }
     return list;
   }, [vendors, bulkDataVersion, currentUser?.role]);
@@ -1614,7 +1614,7 @@ export const GlobalDataProvider = ({ children }) => {
             return !(idStr && deletedSet.has(idStr)) && !(nameStr && deletedSet.has(nameStr));
           });
         }
-      } catch {}
+      } catch { }
 
       if (Array.isArray(savedBulk) && savedBulk.length > 0) {
         savedBulk.forEach(bItem => {
@@ -3749,7 +3749,7 @@ export const GlobalDataProvider = ({ children }) => {
       if (safePayload.vacationBalance !== undefined && id) {
         try {
           localStorage.setItem(`dedicated_vacation_${id}`, String(safePayload.vacationBalance));
-        } catch (_) {}
+        } catch (_) { }
       }
 
       const endpoint = String(id) === String(currentUser?.id) ? '/auth/profile' : `/users/${id}`;
@@ -5462,7 +5462,7 @@ export const GlobalDataProvider = ({ children }) => {
           };
           try {
             localStorage.setItem('user', JSON.stringify(updatedUser));
-          } catch (_) {}
+          } catch (_) { }
           return updatedUser;
         });
         addLog({
@@ -6479,18 +6479,18 @@ export const GlobalDataProvider = ({ children }) => {
           // so it must never be treated as the customer's ownership identity.
           const customerOwnerId =
             (meta.customer_id != null && !isNaN(Number(meta.customer_id))) ? Number(meta.customer_id) :
-            (meta.customer_user_id != null && !isNaN(Number(meta.customer_user_id))) ? Number(meta.customer_user_id) :
-            (meta.user_id != null && !isNaN(Number(meta.user_id))) ? Number(meta.user_id) :
-            (meta.userId != null && !isNaN(Number(meta.userId))) ? Number(meta.userId) :
-            (customItem?.customer_id != null && !isNaN(Number(customItem.customer_id))) ? Number(customItem.customer_id) :
-            (customItem?.user_id != null && !isNaN(Number(customItem.user_id))) ? Number(customItem.user_id) :
-            (customItem?.userId != null && !isNaN(Number(customItem.userId))) ? Number(customItem.userId) :
-            (detail?.customer_id != null && !isNaN(Number(detail.customer_id))) ? Number(detail.customer_id) :
-            (detail?.user_id != null && !isNaN(Number(detail.user_id))) ? Number(detail.user_id) :
-            (order.customer_id != null && !isNaN(Number(order.customer_id))) ? Number(order.customer_id) :
-            (order.userId != null && !isNaN(Number(order.userId))) ? Number(order.userId) :
-            (order.user_id != null && !isNaN(Number(order.user_id))) ? Number(order.user_id) :
-            null;
+              (meta.customer_user_id != null && !isNaN(Number(meta.customer_user_id))) ? Number(meta.customer_user_id) :
+                (meta.user_id != null && !isNaN(Number(meta.user_id))) ? Number(meta.user_id) :
+                  (meta.userId != null && !isNaN(Number(meta.userId))) ? Number(meta.userId) :
+                    (customItem?.customer_id != null && !isNaN(Number(customItem.customer_id))) ? Number(customItem.customer_id) :
+                      (customItem?.user_id != null && !isNaN(Number(customItem.user_id))) ? Number(customItem.user_id) :
+                        (customItem?.userId != null && !isNaN(Number(customItem.userId))) ? Number(customItem.userId) :
+                          (detail?.customer_id != null && !isNaN(Number(detail.customer_id))) ? Number(detail.customer_id) :
+                            (detail?.user_id != null && !isNaN(Number(detail.user_id))) ? Number(detail.user_id) :
+                              (order.customer_id != null && !isNaN(Number(order.customer_id))) ? Number(order.customer_id) :
+                                (order.userId != null && !isNaN(Number(order.userId))) ? Number(order.userId) :
+                                  (order.user_id != null && !isNaN(Number(order.user_id))) ? Number(order.user_id) :
+                                    null;
 
           const customerEmail =
             meta.customer_email ||

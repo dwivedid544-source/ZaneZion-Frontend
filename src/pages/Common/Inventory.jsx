@@ -176,7 +176,10 @@ const Inventory = () => {
   // Merge items from server with any bulk imported marketplace items
   // SaaS clients must NEVER see the hardcoded seed/demo items — they start with a clean slate
   const _isSaasClientRole = (() => {
-    const r = (currentUser?.role || '').toLowerCase().replace(/[-\s]/g, '_');
+    const rawRole = typeof currentUser?.role === 'string'
+      ? currentUser.role
+      : (currentUser?.role?.name || currentUser?.roleName || '');
+    const r = rawRole.toLowerCase().replace(/[-\s]/g, '_');
     return r === 'saas_client' || r === 'saas_admin';
   })();
 

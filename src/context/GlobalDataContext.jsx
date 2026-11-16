@@ -4556,68 +4556,6 @@ export const GlobalDataProvider = ({ children }) => {
         setOrders((prev) => [optimisticOrder, ...prev.filter((o) => String(o.id) !== String(newId))]);
       }
 
-      // Some backends ignore create-time status defaults. Enforce routed status where role allows.
-      if (
-        requestedStatus &&
-        newId != null &&
-        roleCanUpdateOrderStatus(normalizeRole(currentUser?.role))
-      ) {
-        try {
-          await api.patch(`/orders/${newId}/status`, {
-            status: requestedStatus,
-          });
-        } catch (statusErr) {
-          console.warn(
-            "Could not enforce routed status after order create:",
-            statusErr?.response?.data || statusErr?.message,
-          );
-        }
-      }
-
-      // Delivery dispatch and staff assignment are handled when Admin accepts the order in Orders view
-      /** Custom / bespoke: no immediate Ops/Procurement staff row — admin approves → `concierge` stage, then `assignOrderToStage` creates the concierge desk assignment. */
-
-      await syncGlobalState();
-
-      let charged = !isPersonalAutoChargeUser;
-      let chargeError = null;
-      // Personal (non-business) accounts: immediately raise invoice + settlement record.
-      if (isPersonalAutoChargeUser && newId != null) {
-        try {
-          const invRes = await api.post(
-            "/finance/invoices",
-            buildFinanceInvoiceCreatePayload({
-              orderId: newId,
-              clientId: currentUser?.id ?? null,
-              totalAmount: totalAmountVal,
-              dueDate: orderDateVal,
-              paidAmount: 0,
-              status: "unpaid",
-            }),
-          );
-          const payload = invRes.data?.data ?? invRes.data;
-          const invId = payload?.id ?? payload?.invoice_id ?? payload;
-          if (invId != null && String(invId).match(/^\d+$/)) {
-            await api.post(`/finance/invoices/${invId}/pay`, {
-              amount: totalAmountVal,
-              payment_method: "Instant checkout (personal)",
-              transaction_id: `AUTO-${Date.now()}`,
-            });
-            await fetchFinance();
-            charged = true;
-          } else {
-            chargeError = "Invoice ID missing after invoice creation.";
-          }
-        } catch (e) {
-          chargeError =
-            e?.response?.data?.message || e?.message || "Auto-charge failed.";
-          console.warn(
-            "Personal auto-charge failed:",
-            e?.response?.data || e?.message,
-          );
-        }
-      }
-
       if (!silentUi) {
         swalSuccess(
           "Institutional Protocol Initialized: Order has been successfully logged and queued for audit.",
@@ -4629,7 +4567,64 @@ export const GlobalDataProvider = ({ children }) => {
         detail: `${newId} submitted by client.`,
         type: "system",
       });
-      return { ok: true, id: newId, charged, chargeError };
+
+      // Background tasks (non-blocking Promise execution so UI doesn't hang)
+      Promise.resolve().then(async () => {
+        // Enforce routed status if role allows
+        if (
+          requestedStatus &&
+          newId != null &&
+          roleCanUpdateOrderStatus(normalizeRole(currentUser?.role))
+        ) {
+          try {
+            await api.patch(`/orders/${newId}/status`, {
+              status: requestedStatus,
+            });
+          } catch (statusErr) {
+            console.warn(
+              "Could not enforce routed status after order create:",
+              statusErr?.response?.data || statusErr?.message,
+            );
+          }
+        }
+
+        // Personal (non-business) accounts: immediately raise invoice + settlement record in background
+        if (isPersonalAutoChargeUser && newId != null) {
+          try {
+            const invRes = await api.post(
+              "/finance/invoices",
+              buildFinanceInvoiceCreatePayload({
+                orderId: newId,
+                clientId: currentUser?.id ?? null,
+                totalAmount: totalAmountVal,
+                dueDate: orderDateVal,
+                paidAmount: 0,
+                status: "unpaid",
+              }),
+            );
+            const payload = invRes.data?.data ?? invRes.data;
+            const invId = payload?.id ?? payload?.invoice_id ?? payload;
+            if (invId != null && String(invId).match(/^\d+$/)) {
+              await api.post(`/finance/invoices/${invId}/pay`, {
+                amount: totalAmountVal,
+                payment_method: "Instant checkout (personal)",
+                transaction_id: `AUTO-${Date.now()}`,
+              });
+              await fetchFinance();
+            }
+          } catch (e) {
+            console.warn(
+              "Personal auto-charge in background:",
+              e?.response?.data || e?.message,
+            );
+          }
+        }
+
+        // Global state background synchronization
+        if (syncGlobalState) await syncGlobalState();
+      }).catch(err => console.error("Background order sync error:", err));
+
+      return { ok: true, id: newId, charged: true, chargeError: null };
     } catch (error) {
       console.error("Failed to submit order:", error);
       const hint = error.response?.data?.message || error.message;

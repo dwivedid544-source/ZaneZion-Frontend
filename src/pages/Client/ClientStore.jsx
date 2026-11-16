@@ -646,12 +646,6 @@ const ClientStore = () => {
         setIsPlacingOrder(true);
 
         try {
-            if (paymentMethod === 'card') {
-                swalInfo('Card Payment Gateway', 'Authorizing card charge via saved wallet... Order will dispatch immediately.');
-            } else if (paymentMethod === 'bank') {
-                swalInfo('Bank Transfer Gateway', 'Initiating direct online banking transfer... Order will dispatch immediately.');
-            }
-
             const result = await addOrder(orderPayload, { silentUi: true, customerCheckout: true });
             if (!result?.ok) {
                 setIsPlacingOrder(false);
@@ -659,10 +653,7 @@ const ClientStore = () => {
                 return;
             }
 
-            if (fetchOrders) {
-                await fetchOrders();
-            }
-
+            // Immediately clear cart, close modals, and close loading screen
             if (activeTab === 'catalog') clearCart();
             else {
                 setCustomItems([{ name: '', qty: 1, price: 0 }]);
@@ -671,6 +662,11 @@ const ClientStore = () => {
 
             setIsCartOpen(false);
             setIsPlacingOrder(false);
+
+            // Background fetch orders (non-blocking)
+            if (fetchOrders) {
+                fetchOrders().catch(() => {});
+            }
 
             const totalStr = `$${estimatedGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}`;
 

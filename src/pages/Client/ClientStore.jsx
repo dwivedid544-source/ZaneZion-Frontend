@@ -253,13 +253,26 @@ const ClientStore = () => {
         setActiveTab('catalog');
     }, [location, isCustomRequestRoute, navigate]);
 
+    const isSaaSCustomerOrTenant = Boolean(
+        (currentUser?.tenantId && Number(currentUser.tenantId) !== 1) ||
+        ['saas_client', 'saas_admin'].includes(String(currentUser?.role?.name || currentUser?.role || '').toLowerCase().replace(/[-\s]/g, '_')) ||
+        (currentUser?.company_id && (clients || []).some(c => String(c.id) === String(currentUser.company_id) && (c.clientType === 'SaaS' || c.client_type === 'SaaS')))
+    );
+
     const marketplaceInventory = inventory.filter(item => {
         const isCustomAdHoc = Boolean(
-            item.inventoryType === 'INTERNAL' ||
-            item.inventory_type === 'INTERNAL' ||
             /\b(delivery|chauffeur|custom order|custom item|document pickup)\b/i.test(item.name || '')
         );
         if (isCustomAdHoc) return false;
+        if (isSaaSCustomerOrTenant) {
+            // For SaaS clients and their customers, all uploaded warehouse items belong to their marketplace catalog
+            return true;
+        }
+        const isExplicitInternal = Boolean(
+            item.inventoryType === 'INTERNAL' ||
+            item.inventory_type === 'INTERNAL'
+        );
+        if (isExplicitInternal) return false;
         const invType = String(item.inventoryType || item.inventory_type || '').toUpperCase();
         // Show items that are marketplace type, or have no type assigned (newly created items default to marketplace)
         return invType === 'MARKETPLACE' || invType === '' || !item.inventoryType;
@@ -338,12 +351,13 @@ const ClientStore = () => {
 
     const inventoryByStore = useMemo(() => {
         const groups = new Map();
+        const saasDefaultLabel = currentUser?.company_name || currentUser?.companyName || (isSaaSCustomerOrTenant ? (currentUser?.name ? `${currentUser.name}'s Store` : 'Store') : 'General Catalogue');
         for (const item of catalogInventory) {
             const vid = resolveVendorIdForItem(item);
             const label =
                 String(item.vendorName || item.vendor_name || item.store || '').trim()
                 || (vid != null && vendors?.find(v => String(v.id) === String(vid))?.name)
-                || 'General Catalogue';
+                || saasDefaultLabel;
             const key = vid != null ? `vendor:${vid}` : `name:${label.toLowerCase()}`;
             if (!groups.has(key)) {
                 groups.set(key, { key, vendorId: vid, label, items: [] });
@@ -351,7 +365,7 @@ const ClientStore = () => {
             groups.get(key).items.push(item);
         }
         return [...groups.values()].sort((a, b) => a.label.localeCompare(b.label));
-    }, [catalogInventory, vendors]);
+    }, [catalogInventory, vendors, isSaaSCustomerOrTenant, currentUser]);
 
     const catalogSections = catalogStoreFilter === 'all'
         ? inventoryByStore

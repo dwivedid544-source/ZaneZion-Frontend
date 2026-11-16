@@ -1401,7 +1401,11 @@ export const GlobalDataProvider = ({ children }) => {
       // Server status is source of truth (pending/inactive until super-admin approval).
       // SaaS tenants must NOT have hardcoded seed vendors injected into their vendor state
       const _rawRole = typeof currentUser?.role === 'string' ? currentUser.role : (currentUser?.role?.name || currentUser?.roleName || '');
-      const _isSaas = _rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_client' || _rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_admin';
+      const _normRole = _rawRole.toLowerCase().replace(/[-\s]/g, '_');
+      const _isSaas = (currentUser?.tenantId && Number(currentUser.tenantId) !== 1)
+        || _normRole === 'saas_client'
+        || _normRole === 'saas_admin'
+        || (currentUser?.company_id && (clients || []).some(c => String(c.id) === String(currentUser.company_id) && (c.clientType === 'SaaS' || c.client_type === 'SaaS')));
       if (!_isSaas) {
         const autoMarketplace = getAutoSyncedMarketplaceVendors();
         autoMarketplace.forEach((mv) => {
@@ -1431,6 +1435,12 @@ export const GlobalDataProvider = ({ children }) => {
             Math.round((v.rating || 0) * 100)) ||
           90,
       }));
+      const _rawRole = typeof currentUser?.role === 'string' ? currentUser.role : (currentUser?.role?.name || currentUser?.roleName || '');
+      const _normRole = _rawRole.toLowerCase().replace(/[-\s]/g, '_');
+      const _isSaas = (currentUser?.tenantId && Number(currentUser.tenantId) !== 1)
+        || _normRole === 'saas_client'
+        || _normRole === 'saas_admin'
+        || (currentUser?.company_id && (clients || []).some(c => String(c.id) === String(currentUser.company_id) && (c.clientType === 'SaaS' || c.client_type === 'SaaS')));
       if (!_isSaas) {
         const autoMarketplace = getAutoSyncedMarketplaceVendors();
         autoMarketplace.forEach((mv) => {
@@ -1441,7 +1451,7 @@ export const GlobalDataProvider = ({ children }) => {
       }
       setVendors(vendorsVisibleInDirectory(seed, currentUser?.role));
     }
-  }, [currentUser?.role, currentUser?.id]);
+  }, [currentUser?.role, currentUser?.id, currentUser?.tenantId, currentUser?.company_id, clients]);
 
   const [bulkDataVersion, setBulkDataVersion] = React.useState(0);
 
@@ -1461,13 +1471,16 @@ export const GlobalDataProvider = ({ children }) => {
     const list = (vendors || []).filter(
       (v) => String(v?.status || "").trim().toLowerCase() === "active",
     );
-    // SaaS clients must NOT see hardcoded seed/demo vendors in any dropdown
+    // SaaS clients and SaaS customers must NOT see hardcoded seed/demo vendors in any dropdown
     const rawRole = typeof currentUser?.role === 'string'
       ? currentUser.role
       : (currentUser?.role?.name || currentUser?.roleName || '');
-    const isSaasRole = rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_client'
-      || rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_admin';
-    if (!isSaasRole) {
+    const normRole = rawRole.toLowerCase().replace(/[-\s]/g, '_');
+    const isSaasUser = (currentUser?.tenantId && Number(currentUser.tenantId) !== 1)
+      || normRole === 'saas_client'
+      || normRole === 'saas_admin'
+      || (currentUser?.company_id && (clients || []).some(c => String(c.id) === String(currentUser.company_id) && (c.clientType === 'SaaS' || c.client_type === 'SaaS')));
+    if (!isSaasUser) {
       try {
         const autoStores = getAutoSyncedMarketplaceVendors();
         autoStores.forEach(s => {
@@ -1478,12 +1491,16 @@ export const GlobalDataProvider = ({ children }) => {
       } catch { }
     }
     return list;
-  }, [vendors, bulkDataVersion, currentUser?.role]);
+  }, [vendors, bulkDataVersion, currentUser?.role, currentUser?.tenantId, currentUser?.company_id, clients]);
 
   const fetchInventory = React.useCallback(async () => {
     let itemsArr = [];
     try {
-      const itemsRes = await api.get("/items", { params: { limit: 500 } });
+      const params = { limit: 500 };
+      if (currentUser?.tenantId && Number(currentUser.tenantId) !== 1) {
+        params.tenantId = currentUser.tenantId;
+      }
+      const itemsRes = await api.get("/items", { params });
       const rawItems = itemsRes.data?.data;
       itemsArr = Array.isArray(rawItems) ? rawItems : (Array.isArray(rawItems?.items) ? rawItems.items : []);
     } catch (e) {
@@ -1591,66 +1608,77 @@ export const GlobalDataProvider = ({ children }) => {
       }
     }
 
-    try {
-      let savedBulk = [];
-      const hasKey = localStorage.getItem('bulk_uploaded_marketplace_items') !== null;
-      try {
-        savedBulk = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
-      } catch {
-        savedBulk = [];
-      }
-      if (!Array.isArray(savedBulk) || (!hasKey && savedBulk.length === 0)) {
-        savedBulk = DEFAULT_MARKETPLACE_TEST_ITEMS;
-        localStorage.setItem('bulk_uploaded_marketplace_items', JSON.stringify(DEFAULT_MARKETPLACE_TEST_ITEMS));
-      }
+    const rawRole = typeof currentUser?.role === 'string'
+      ? currentUser.role
+      : (currentUser?.role?.name || currentUser?.roleName || '');
+    const normRole = rawRole.toLowerCase().replace(/[-\s]/g, '_');
+    const isSaasUser = (currentUser?.tenantId && Number(currentUser.tenantId) !== 1)
+      || normRole === 'saas_client'
+      || normRole === 'saas_admin'
+      || (currentUser?.company_id && (clients || []).some(c => String(c.id) === String(currentUser.company_id) && (c.clientType === 'SaaS' || c.client_type === 'SaaS')));
 
-      // Filter out deleted items from savedBulk
+    if (!isSaasUser) {
       try {
-        const deletedRaw = JSON.parse(localStorage.getItem('deleted_inventory_item_ids') || '[]');
-        if (Array.isArray(deletedRaw) && deletedRaw.length > 0) {
-          const deletedSet = new Set(deletedRaw.map(x => String(x).toLowerCase().trim()));
-          savedBulk = savedBulk.filter(bItem => {
-            const idStr = String(bItem.id ?? bItem.itemId ?? '').trim().toLowerCase();
-            const nameStr = `name:${(bItem.name || bItem.item || '').trim().toLowerCase()}`;
-            return !(idStr && deletedSet.has(idStr)) && !(nameStr && deletedSet.has(nameStr));
+        let savedBulk = [];
+        const hasKey = localStorage.getItem('bulk_uploaded_marketplace_items') !== null;
+        try {
+          savedBulk = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
+        } catch {
+          savedBulk = [];
+        }
+        if (!Array.isArray(savedBulk) || (!hasKey && savedBulk.length === 0)) {
+          savedBulk = DEFAULT_MARKETPLACE_TEST_ITEMS;
+          localStorage.setItem('bulk_uploaded_marketplace_items', JSON.stringify(DEFAULT_MARKETPLACE_TEST_ITEMS));
+        }
+
+        // Filter out deleted items from savedBulk
+        try {
+          const deletedRaw = JSON.parse(localStorage.getItem('deleted_inventory_item_ids') || '[]');
+          if (Array.isArray(deletedRaw) && deletedRaw.length > 0) {
+            const deletedSet = new Set(deletedRaw.map(x => String(x).toLowerCase().trim()));
+            savedBulk = savedBulk.filter(bItem => {
+              const idStr = String(bItem.id ?? bItem.itemId ?? '').trim().toLowerCase();
+              const nameStr = `name:${(bItem.name || bItem.item || '').trim().toLowerCase()}`;
+              return !(idStr && deletedSet.has(idStr)) && !(nameStr && deletedSet.has(nameStr));
+            });
+          }
+        } catch { }
+
+        if (Array.isArray(savedBulk) && savedBulk.length > 0) {
+          savedBulk.forEach(bItem => {
+            const matchIdx = inventoryData.findIndex(existing => String(existing.id) === String(bItem.id) || (existing.name || '').toLowerCase() === (bItem.name || '').toLowerCase());
+            const formattedBulkItem = {
+              ...bItem,
+              id: bItem.id || bItem.itemId,
+              itemId: bItem.id || bItem.itemId,
+              qty: Number(bItem.qty || bItem.quantity || 1),
+              quantity: Number(bItem.qty || bItem.quantity || 1),
+              price: Number(bItem.price || 0),
+              unitPrice: Number(bItem.price || 0),
+              unit_price: Number(bItem.price || 0),
+              image: bItem.image || bItem.image_url || bItem.imageUrl || '',
+              image_url: bItem.image || bItem.image_url || bItem.imageUrl || '',
+              store: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
+              vendorName: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
+              vendor_name: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
+              vendor_group_key: bItem.vendor_group_key || `name:${(bItem.store || bItem.vendorName || '').toLowerCase()}`,
+              category: canonicalMarketplaceCategory(bItem.category || 'Grocery'),
+              location: bItem.warehouse || bItem.location || 'General Storage',
+              warehouse_name: bItem.warehouse || bItem.location || 'General Storage',
+              inventoryType: 'Marketplace',
+              type: 'Marketplace',
+              status: bItem.status || 'Normal',
+            };
+            if (matchIdx >= 0) {
+              inventoryData[matchIdx] = { ...inventoryData[matchIdx], ...formattedBulkItem };
+            } else {
+              inventoryData.unshift(formattedBulkItem);
+            }
           });
         }
-      } catch { }
-
-      if (Array.isArray(savedBulk) && savedBulk.length > 0) {
-        savedBulk.forEach(bItem => {
-          const matchIdx = inventoryData.findIndex(existing => String(existing.id) === String(bItem.id) || (existing.name || '').toLowerCase() === (bItem.name || '').toLowerCase());
-          const formattedBulkItem = {
-            ...bItem,
-            id: bItem.id || bItem.itemId,
-            itemId: bItem.id || bItem.itemId,
-            qty: Number(bItem.qty || bItem.quantity || 1),
-            quantity: Number(bItem.qty || bItem.quantity || 1),
-            price: Number(bItem.price || 0),
-            unitPrice: Number(bItem.price || 0),
-            unit_price: Number(bItem.price || 0),
-            image: bItem.image || bItem.image_url || bItem.imageUrl || '',
-            image_url: bItem.image || bItem.image_url || bItem.imageUrl || '',
-            store: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
-            vendorName: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
-            vendor_name: bItem.store || bItem.vendorName || "Solomon's Fresh Market",
-            vendor_group_key: bItem.vendor_group_key || `name:${(bItem.store || bItem.vendorName || '').toLowerCase()}`,
-            category: canonicalMarketplaceCategory(bItem.category || 'Grocery'),
-            location: bItem.warehouse || bItem.location || 'General Storage',
-            warehouse_name: bItem.warehouse || bItem.location || 'General Storage',
-            inventoryType: 'Marketplace',
-            type: 'Marketplace',
-            status: bItem.status || 'Normal',
-          };
-          if (matchIdx >= 0) {
-            inventoryData[matchIdx] = { ...inventoryData[matchIdx], ...formattedBulkItem };
-          } else {
-            inventoryData.unshift(formattedBulkItem);
-          }
-        });
+      } catch (e) {
+        console.warn('Failed parsing bulk_uploaded_marketplace_items in fetchInventory', e);
       }
-    } catch (e) {
-      console.warn('Failed parsing bulk_uploaded_marketplace_items in fetchInventory', e);
     }
 
     // Filter out decommissioned/deleted items from inventoryData
@@ -1671,7 +1699,7 @@ export const GlobalDataProvider = ({ children }) => {
     }
 
     setInventory(inventoryData);
-  }, []);
+  }, [currentUser?.role, currentUser?.tenantId, currentUser?.company_id, clients]);
 
   const fetchStockMovements = React.useCallback(async () => {
     try {

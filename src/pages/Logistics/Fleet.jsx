@@ -49,7 +49,7 @@ const Fleet = () => {
   };
 
   const columns = [
-    { header: "Fleet ID", accessor: "id" },
+    { header: "Plate / Fleet ID", accessor: "id" },
     { header: "Asset Type", accessor: "type" },
     { header: "Model", accessor: "model" },
     { header: "Fuel/Charge", accessor: "fuel" },
@@ -278,7 +278,7 @@ const Fleet = () => {
               <div className="space-y-6">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
                   {[
-                    { label: 'Fleet ID', value: formData.id, field: 'id', disabled: modalType !== 'add' },
+                    { label: 'Plate / Fleet ID', value: formData.id, field: 'id', placeholder: 'e.g. NP-4521 or FLT-001', disabled: modalType !== 'add' },
                     { label: 'Asset Type', type: 'select', options: ['Luxury Truck', 'Luxury Car', 'Speed Boat', 'Private Jet', 'Cargo Van'], field: 'type' },
                     { label: 'Model Name', value: formData.model, field: 'model' },
                     { label: 'Capacity', value: formData.capacity, field: 'capacity' },
@@ -303,6 +303,7 @@ const Fleet = () => {
                       ) : (
                         <input
                           type={input.type || 'text'}
+                          placeholder={input.placeholder || ''}
                           className="w-full bg-white/[0.02] border border-white/10 rounded-2xl px-4 py-3.5 text-xs sm:text-sm focus:border-accent outline-none font-black text-white"
                           value={input.value !== undefined ? input.value : formData[input.field]}
                           onChange={(e) => setFormData({ ...formData, [input.field]: e.target.value })}

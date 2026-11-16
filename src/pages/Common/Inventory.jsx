@@ -516,14 +516,10 @@ const Inventory = () => {
       if (modalType === 'entry') {
         let wid = formData.warehouseId ?? formData.warehouse_id;
 
-        // Fix state desync: If wid is missing or desynced, find ID automatically from matched warehouse or first available
-        if (!wid && warehouses && warehouses.length > 0) {
-          const matchedWarehouse = warehouses.find(w => w.name === formData.warehouse) || warehouses[0];
-          if (matchedWarehouse) {
-            wid = matchedWarehouse.id;
-            formData.warehouse = matchedWarehouse.name;
-            formData.warehouseId = matchedWarehouse.id;
-          }
+        // Fix state desync: If wid is missing but the UI shows a warehouse name, find the ID automatically
+        if (!wid && formData.warehouse && warehouses && warehouses.length > 0) {
+          const matchedWarehouse = warehouses.find(w => w.name === formData.warehouse);
+          if (matchedWarehouse) wid = matchedWarehouse.id;
         }
 
         if (!wid) {
@@ -2059,7 +2055,7 @@ Artisan Italian Espresso Beans,Maxwell's Supermarket,Pantry,12.50,30,bags,MX-COF
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-muted uppercase tracking-widest">Warehouse</label>
                 <select
-                  value={formData.warehouse || (warehouses[0]?.name ?? '')}
+                  value={formData.warehouse}
                   onChange={(e) => {
                     const name = e.target.value;
                     const wh = warehouses.find(w => w.name === name);
@@ -2184,7 +2180,7 @@ Artisan Italian Espresso Beans,Maxwell's Supermarket,Pantry,12.50,30,bags,MX-COF
               <div className="space-y-1">
                 <label className="text-[10px] font-black text-muted uppercase tracking-widest">Warehouse Source</label>
                 <select
-                  value={formData.warehouse || (warehouses[0]?.name ?? '')}
+                  value={formData.warehouse}
                   onChange={(e) => setFormData({ ...formData, warehouse: e.target.value })}
                   className="w-full bg-background border border-white/10 rounded-lg px-4 py-2 text-sm focus:border-accent outline-none font-bold text-white shadow-xl shadow-black/20"
                 >

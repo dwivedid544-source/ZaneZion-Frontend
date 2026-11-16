@@ -12,7 +12,7 @@ export const getApiBaseUrl = () => {
   if (!envUrl) {
     const envMode = (import.meta.env.VITE_ENV_MODE || '').trim().toLowerCase();
     const localUrl = import.meta.env.VITE_API_URL_LOCAL || 'http://localhost:8000/api/v1';
-    const prodUrl = import.meta.env.VITE_API_URL_PROD || 'https://zanezion-backend-production-6c8a.up.railway.app/api/v1';
+    const prodUrl = import.meta.env.VITE_API_URL_PROD || 'https://zanezone-backend-production.up.railway.app/api/v1';
 
     if (envMode === 'local' || envMode === 'dev' || envMode === 'development') {
       envUrl = localUrl;
@@ -55,9 +55,25 @@ export const toAbsoluteImageUrl = (rawPath) => {
   if (typeof rawPath !== 'string') return null;
   const trimmed = rawPath.trim();
   if (!trimmed) return null;
-  if (trimmed.startsWith('http') || trimmed.startsWith('data:')) return trimmed;
-  const path = trimmed.startsWith('/') ? trimmed : `/${trimmed.replace(/\\/g, '/')}`;
-  return `${BACKEND_ORIGIN}${path}`;
+  if (trimmed.startsWith('data:')) return trimmed;
+
+  let fullUrl = trimmed;
+  if (!trimmed.startsWith('http')) {
+    const path = trimmed.startsWith('/') ? trimmed : `/${trimmed.replace(/\\/g, '/')}`;
+    fullUrl = `${BACKEND_ORIGIN}${path}`;
+  }
+
+  // If accessing private uploaded files under /uploads/ and missing token, attach query token
+  if (fullUrl.includes('/uploads/') && !fullUrl.includes('token=')) {
+    try {
+      const token = typeof localStorage !== 'undefined' ? localStorage.getItem('token') : null;
+      if (token) {
+        fullUrl += (fullUrl.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}`;
+      }
+    } catch (_) {}
+  }
+
+  return fullUrl;
 };
 
 const isGenericName = (name) => {
@@ -167,3 +183,59 @@ export const formatClientDisplayName = (item, clients = [], users = []) => {
 
   return 'Personal Client';
 };
+
+export const getRecordTimeScore = (record) => {
+  if (!record) return 0;
+  const candidates = [
+    record.createdAt,
+    record.created_at,
+    record.order_date,
+    record.orderDate,
+    record.requestDate,
+    record.request_date,
+    record.date,
+    record.updatedAt,
+    record.updated_at,
+    record.originalRecord?.createdAt,
+    record.originalRecord?.created_at,
+    record.originalRecord?.order_date,
+    record.originalRecord?.requestDate,
+    record.metadata?.createdAt,
+    record.metadata?.created_at,
+    record.metadata?.order_date,
+    record.metadata?.request_date,
+  ];
+
+  for (const raw of candidates) {
+    if (!raw) continue;
+    if (raw instanceof Date && !isNaN(raw.getTime())) return raw.getTime();
+    if (typeof raw === 'number' && raw > 0) return raw;
+    if (typeof raw === 'string') {
+      const trimmed = raw.trim();
+      const direct = new Date(trimmed).getTime();
+      if (!isNaN(direct) && direct > 0) return direct;
+
+      // Handle DD-MM-YYYY or DD/MM/YYYY
+      if (/^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(trimmed)) {
+        const parts = trimmed.split(/[-/]/).map(n => parseInt(n, 10));
+        const parsed = new Date(parts[2], parts[1] - 1, parts[0]).getTime();
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+    }
+  }
+  return 0;
+};
+
+export const compareOrdersNewestFirst = (a, b) => {
+  const timeA = getRecordTimeScore(a);
+  const timeB = getRecordTimeScore(b);
+  if (timeA !== timeB) {
+    if (timeA > 0 && timeB <= 0) return -1;
+    if (timeB > 0 && timeA <= 0) return 1;
+    return timeB - timeA;
+  }
+  const numA = parseInt(String(a.rawId || a.id || 0).replace(/\D/g, ''), 10) || 0;
+  const numB = parseInt(String(b.rawId || b.id || 0).replace(/\D/g, ''), 10) || 0;
+  return numB - numA;
+};
+

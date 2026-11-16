@@ -194,7 +194,8 @@ const Chauffeur = () => {
 
     const userRoleKey = normalizeRole(currentUser?.role);
     const isCustomer = userRoleKey === 'customer';
-    const isClientAdmin = userRoleKey === 'client' || userRoleKey === 'saas_client';
+    const isSaasAdmin = userRoleKey === 'saas_client';
+    const isClientAdmin = userRoleKey === 'client';
     const isStaffAdmin = !isCustomer && !isClientAdmin;
     const isAdmin = isStaffAdmin;
     const isFeeLocked = isCustomer || (isClientAdmin && (!editingRequest || editingRequest?.userId === currentUser?.id));
@@ -377,6 +378,7 @@ const Chauffeur = () => {
             : (editingRequest?.passengerName || editingRequest?.guestName || targetClientName);
 
         const request = {
+            tenantId: editingRequest?.tenantId || currentUser?.tenantId || currentUser?.tenant_id || 1,
             userId: targetUserId,
             user_id: targetUserId,
             customer_id: targetUserId,
@@ -1020,10 +1022,10 @@ const Chauffeur = () => {
                 <div>
                     <h1 className="text-3xl font-black tracking-tighter text-white italic uppercase">Chauffeur Protocol</h1>
                     <p className="text-secondary text-xs mt-1 font-black uppercase tracking-[0.2em] opacity-70 italic">
-                        {isClientAdmin ? 'Client Chauffeur Protocol & Booking Panel' : (isAdmin ? 'Elite Fleet Management & Logistic Control' : 'Elite transport & chauffeur protocol')}
+                        {isSaasAdmin ? 'SaaS Chauffeur Protocol & Fleet Control' : isClientAdmin ? 'Client Chauffeur Protocol & Booking Panel' : (isAdmin ? 'Elite Fleet Management & Logistic Control' : 'Elite transport & chauffeur protocol')}
                     </p>
                 </div>
-                {(isCustomer || isClientAdmin || hasMenuPermission('Chauffeur', 'can_add')) && (
+                {(isCustomer || isClientAdmin || isSaasAdmin || hasMenuPermission('Chauffeur', 'can_add')) && (
                     <button
                         onClick={() => openModal('create')}
                         className="btn-primary group flex items-center gap-3 px-8 shadow-xl shadow-accent/20"
@@ -1043,7 +1045,7 @@ const Chauffeur = () => {
                     <div>
                         <h3 className="text-sm font-black text-white italic uppercase tracking-tight">Protocol Status</h3>
                         <p className="text-secondary text-xs font-medium opacity-80 uppercase tracking-widest mt-1">
-                            {isClientAdmin ? 'Client Portal Active' : (isAdmin ? 'System Active' : 'Elite Access Granted')}
+                            {isSaasAdmin ? 'SaaS Admin Active' : isClientAdmin ? 'Client Portal Active' : (isAdmin ? 'System Active' : 'Elite Access Granted')}
                         </p>
                     </div>
                 </div>
@@ -1079,7 +1081,7 @@ const Chauffeur = () => {
             <div className="glass-card p-6">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
                     <h2 className="text-[10px] font-black text-muted uppercase tracking-[0.3em]">
-                        {isClientAdmin ? 'My Chauffeur Bookings' : (isAdmin ? 'Fleet Manifest Intelligence' : 'Chauffeur Bookings')}
+                        {isSaasAdmin ? 'My Tenant Chauffeur Bookings' : isClientAdmin ? 'My Chauffeur Bookings' : (isAdmin ? 'Fleet Manifest Intelligence' : 'Chauffeur Bookings')}
                     </h2>
                     <div className="relative w-full md:w-64">
                         <input

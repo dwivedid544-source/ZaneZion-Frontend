@@ -9,7 +9,7 @@ import {
 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import api from '../../services/api/setupAxios.js';
-import { ageFromBirthday } from '../../utils/dateEst';
+import { ageFromBirthday, getMaxBirthdayDate } from '../../utils/dateEst';
 
 const StaffSignup = () => {
     const navigate = useNavigate();
@@ -172,7 +172,7 @@ const StaffSignup = () => {
                         </div>
                         <div className="space-y-2">
                             <label className="text-[10px] font-black uppercase tracking-widest text-muted">Date of Birth <span className="text-warning">(minimum age 18)</span></label>
-                            <input type="date" name="birthday" required value={formData.birthday} onChange={handleChange} max={new Date().toISOString().split('T')[0]} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-accent outline-none" />
+                            <input type="date" name="birthday" required value={formData.birthday} onChange={handleChange} max={getMaxBirthdayDate(18)} className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm focus:border-accent outline-none" />
                         </div>
                     </motion.div>
                 );

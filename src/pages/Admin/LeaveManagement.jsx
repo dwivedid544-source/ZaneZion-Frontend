@@ -303,22 +303,35 @@ const LeaveManagement = () => {
               <button
                 onClick={async () => {
                   try {
+                    if (!leaveFormData.start || !leaveFormData.end) {
+                      swalError('Missing Dates', 'Please select both commencement and conclusion dates before submitting.');
+                      return;
+                    }
                     if (editingLeaveRequest) {
-                      await updateLeaveRequest({
+                      const res = await updateLeaveRequest({
                         id: editingLeaveRequest.id,
                         ...leaveFormData
                       });
+                      if (res && res.success === false) {
+                        swalError('Update Failed', res.message || 'Could not update leave request.');
+                        return;
+                      }
                       swalSuccess('Updated', 'Absence request has been successfully updated.');
                     } else {
-                      await addLeaveRequest({
+                      const res = await addLeaveRequest({
                         ...leaveFormData,
                         name: currentUser?.name,
                         userId: currentUser?.id
                       });
+                      if (res && res.success === false) {
+                        swalError('Submission Failed', res.message || 'Could not submit leave request.');
+                        return;
+                      }
                       swalSuccess('Submitted', 'Absence request has been successfully submitted.');
                     }
                   } catch (err) {
                     swalError('Error', err.message || 'Submission failed.');
+                    return;
                   }
                   setIsLeaveModalOpen(false);
                 }}

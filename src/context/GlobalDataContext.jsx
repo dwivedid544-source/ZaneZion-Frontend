@@ -23,7 +23,7 @@ import {
 import { INVENTORY, VENDORS, ACCESS_PLANS, DEFAULT_MARKETPLACE_TEST_ITEMS, getAutoSyncedMarketplaceVendors } from "../utils/data";
 
 import { notifyStateChanged, getDeletedChauffeurIds, addDeletedChauffeurId, getUpdatedChauffeurMap, setUpdatedChauffeurItem } from "../utils/stateSyncHelper";
-import { formatClientDisplayName, BACKEND_ORIGIN } from "../utils/apiHelpers";
+import { formatClientDisplayName, BACKEND_ORIGIN, compareOrdersNewestFirst } from "../utils/apiHelpers";
 
 const GlobalDataContext = createContext();
 
@@ -164,7 +164,25 @@ function normalizeUserForUi(user) {
     user.routingNumber ??
     user.bankingInfo?.routing ??
     "";
-  const vacationBalance = user.vacation_balance ?? user.vacationBalance ?? 0;
+  const rawBanking = (user.bankingInfo && typeof user.bankingInfo === 'object') ? user.bankingInfo : {};
+  let rawBalance = user.vacation_balance ?? user.vacationBalance;
+  const storedDedicated = user.id ? localStorage.getItem(`dedicated_vacation_${user.id}`) : null;
+
+  // Filter out any 10,000-based artifacts (e.g. 10000, 9928, 9856)
+  const isCorruptVal = (v) => v === undefined || v === null || isNaN(Number(v)) || Number(v) >= 5000 || Number(v) <= 0;
+
+  let vacationQuota = 80;
+  if (!isCorruptVal(rawBanking.vacationQuota)) {
+    vacationQuota = Number(rawBanking.vacationQuota);
+  } else if (!isCorruptVal(storedDedicated)) {
+    vacationQuota = Number(storedDedicated);
+  } else if (!isCorruptVal(rawBalance)) {
+    vacationQuota = Number(rawBalance);
+  }
+
+  let finalBalance = !isCorruptVal(rawBalance) ? Number(rawBalance) : vacationQuota;
+  if (finalBalance === undefined || isNaN(finalBalance)) finalBalance = vacationQuota || 0;
+
   return {
     ...user,
     bank_name: bankName,
@@ -173,14 +191,16 @@ function normalizeUserForUi(user) {
     accountNumber,
     routing_number: routingNumber,
     routingNumber,
-    vacation_balance: vacationBalance,
-    vacationBalance,
+    vacation_balance: finalBalance,
+    vacationBalance: finalBalance,
+    vacationQuota,
     bankingInfo: {
-      ...(user.bankingInfo || {}),
+      ...rawBanking,
       bank: bankName,
       account: accountNumber,
       routing: routingNumber,
-      method: user.bankingInfo?.method || "Direct Deposit",
+      method: rawBanking.method || "Direct Deposit",
+      vacationQuota,
     },
   };
 }
@@ -739,7 +759,7 @@ export const GlobalDataProvider = ({ children }) => {
     const savedUser = localStorage.getItem("user");
     if (savedUser) {
       try {
-        return JSON.parse(savedUser);
+        return normalizeUserForUi(JSON.parse(savedUser));
       } catch (e) {
         console.error("Failed to parse saved user", e);
       }
@@ -754,8 +774,9 @@ export const GlobalDataProvider = ({ children }) => {
       if (token) {
         try {
           const res = await api.get('/auth/profile');
-          const realUser = res.data?.data || res.data;
-          if (realUser) {
+          const rawUser = res.data?.data || res.data;
+          if (rawUser) {
+            const realUser = normalizeUserForUi(rawUser);
             setCurrentUser((prev) => JSON.stringify(prev) === JSON.stringify(realUser) ? prev : realUser);
             localStorage.setItem('user', JSON.stringify(realUser));
             if (realUser.role?.name) {
@@ -1032,8 +1053,8 @@ export const GlobalDataProvider = ({ children }) => {
       if (!currentUser) return dataArray;
 
       const role = normalizeRole(currentUser.role);
-      // Super Admin and HQ staff see everything
-      if (["super_admin", "superadmin", "admin", "concierge", "operations", "logistics"].includes(role)) {
+      // Super Admin, HQ staff, and SaaS Admin (tenant scoped by backend) see everything returned
+      if (["super_admin", "superadmin", "admin", "concierge", "operations", "logistics", "saas_client"].includes(role)) {
         return dataArray;
       }
 
@@ -1928,19 +1949,10 @@ export const GlobalDataProvider = ({ children }) => {
 
           const transportMode = extractTransportModeFromOrder(d);
           // Support both real DB (orderId) and mock (order_id)
-          const rawOrderId = d.orderId ?? d.order_id ?? d.order?.id ?? null;
-          const orderRef = d.order?.orderNumber || d.orderNumber || (rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null);
+          const rawOrderId = d.orderId ?? d.order_id ?? null;
+          const orderRef = rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null;
           const rawClientId = d.clientId ?? d.client_id ?? d.customer_id ?? null;
-          const rawMissionType = d.missionType ?? d.mission_type ?? (
-            String(d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
-            String(d.order?.orderType || '').toLowerCase() === 'service'
-              ? 'Chauffeur'
-              : null
-          );
-          const isChauffeur = String(rawMissionType || '').toLowerCase() === 'chauffeur' ||
-            String(d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
-            String(d.order?.orderType || '').toLowerCase() === 'service';
-          const normalizedMissionType = isChauffeur ? 'Chauffeur' : (rawMissionType || 'Delivery');
+          const rawMissionType = d.missionType ?? d.mission_type ?? null;
           const rawDriverName = d.driverName ?? d.driver_name ?? (d.assignee ? `${d.assignee.firstName || ''} ${d.assignee.lastName || ''}`.trim() : null) ?? d.driver ?? null;
           const rawPlate = d.plateNumber ?? d.plate_number ?? d.vehicleRef ?? d.vehicle_ref ?? null;
           const rawPickup = d.pickupLocation ?? d.pickup_location ?? null;
@@ -1962,13 +1974,10 @@ export const GlobalDataProvider = ({ children }) => {
             clientId: rawClientId,
             client: formatClientDisplayName(d, clients, [...(users || []), ...(customerUsers || [])]),
             clientName: formatClientDisplayName(d, clients, [...(users || []), ...(customerUsers || [])]),
-            mission_type: normalizedMissionType,
-            missionType: normalizedMissionType,
-            orderType: isChauffeur ? 'CHAUFFEUR' : (d.order?.orderType || 'Delivery'),
-            isChauffeur: isChauffeur,
+            mission_type: rawMissionType,
             item: items.length > 0
               ? items[0].name
-              : isChauffeur
+              : rawMissionType === "Chauffeur"
                 ? "VIP Chauffeur Service"
                 : orderRef
                   ? `Order ${orderRef}`
@@ -2009,19 +2018,9 @@ export const GlobalDataProvider = ({ children }) => {
       }
 
       if (resChauffeur.data && resChauffeur.data.success) {
-        const chauffeurOrdersRaw = Array.isArray(resChauffeur.data.data)
+        const chauffeurOrders = Array.isArray(resChauffeur.data.data)
           ? resChauffeur.data.data
           : (resChauffeur.data.data?.orders || []);
-
-        const existingOrderIds = new Set(
-          combined.map(d => String(d.order_id_raw || d.orderId || '')).filter(Boolean)
-        );
-
-        const chauffeurOrders = chauffeurOrdersRaw.filter(order => {
-          const idStr = String(order.id);
-          const numStr = String(order.orderNumber || '');
-          return !existingOrderIds.has(idStr) && (!numStr || !existingOrderIds.has(numStr));
-        });
 
         combined.push(...chauffeurOrders.map((order) => {
           let meta = order.metadata;
@@ -2134,8 +2133,6 @@ export const GlobalDataProvider = ({ children }) => {
             mission_type: "Chauffeur",
             missionType: "Chauffeur",
             orderType: "CHAUFFEUR",
-        missionType: "Chauffeur",
-        mission_type: "Chauffeur",
             isDirectChauffeurOrder: true,
             item: "VIP Chauffeur Service",
             items: [{ name: "VIP Chauffeur Service", qty: 1 }],
@@ -2305,16 +2302,19 @@ export const GlobalDataProvider = ({ children }) => {
 
   const fetchQuotes = React.useCallback(async (params = {}) => {
     try {
-      const res = await api.get("/procurement/quotes", { params });
+      const res = await api.get("/quotations", { params });
       if (res.data?.success) {
+        const quoteList = Array.isArray(res.data.data)
+          ? res.data.data
+          : (res.data.data?.quotations || []);
         setQuotes(
-          res.data.data.map((q) => ({
+          quoteList.map((q) => ({
             ...q,
             vendorId: q.vendor_id ?? q.vendorId ?? null,
-            vendor: q.vendor_name || q.vendor,
-            vendorName: q.vendor_name || q.vendor,
-            date: q.created_at || q.date,
-            total: parseFloat(q.total_amount || q.total || 0),
+            vendor: q.vendor_name || q.vendor || q.vendor?.companyName,
+            vendorName: q.vendor_name || q.vendor || q.vendor?.companyName,
+            date: q.created_at || q.createdAt || q.date,
+            total: parseFloat(q.amount || q.total_amount || q.total || 0),
             validity: q.validity_date || q.validity,
           })),
         );
@@ -2398,10 +2398,6 @@ export const GlobalDataProvider = ({ children }) => {
         const displayDate = orderDay || createdDay;
         const statusForUi = o.status;
         const transportMode = extractTransportModeFromOrder(o);
-        const isChaufOrder = String(o.orderType || o.order_type || meta.orderType || meta.order_type || '').toUpperCase() === 'CHAUFFEUR' ||
-          String(o.orderType || o.order_type || '').toLowerCase() === 'service' ||
-          String(o.missionType || o.mission_type || meta.missionType || meta.mission_type || '').toLowerCase() === 'chauffeur' ||
-          Boolean(o.isChauffeur || meta.isChauffeur);
 
         return {
           ...meta,
@@ -2438,21 +2434,9 @@ export const GlobalDataProvider = ({ children }) => {
           transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || meta.transport_asset_custom || meta.transportAssetCustom || null,
           islandLocation: o.islandLocation || o.island_location || meta.islandLocation || meta.island_location || null,
           island_location: o.island_location || o.islandLocation || meta.island_location || meta.islandLocation || null,
-          orderType: isChaufOrder ? 'CHAUFFEUR' : (o.orderType || o.order_type || 'Delivery'),
-          order_type: isChaufOrder ? 'CHAUFFEUR' : (o.order_type || o.orderType || 'Delivery'),
-          missionType: isChaufOrder ? 'Chauffeur' : (o.missionType || o.mission_type || meta.missionType || meta.mission_type || null),
-          mission_type: isChaufOrder ? 'Chauffeur' : (o.mission_type || o.missionType || meta.mission_type || meta.missionType || null),
-          isChauffeur: isChaufOrder,
         };
       });
-      mappedOrders.sort((a, b) => {
-        const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
-        const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
-        if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
-        const numA = parseInt(String(a.id || a.rawId || 0).replace(/\D/g, ''), 10) || 0;
-        const numB = parseInt(String(b.id || b.rawId || 0).replace(/\D/g, ''), 10) || 0;
-        return numB - numA;
-      });
+      mappedOrders.sort(compareOrdersNewestFirst);
       setOrders(mappedOrders);
       return mappedOrders;
     } catch (e) {
@@ -2513,9 +2497,7 @@ export const GlobalDataProvider = ({ children }) => {
             driverName: driverNameResolved,
             vehicleId: plateResolved,
             plateNumber: plateResolved,
-            missionType: (String(m.mission_type || m.missionType || meta.mission_type || meta.missionType || '').toLowerCase() === 'chauffeur' || String(m.order?.orderType || meta.orderType || '').toUpperCase() === 'CHAUFFEUR' || String(m.order?.orderType || meta.orderType || '').toLowerCase() === 'service') ? 'Chauffeur' : (m.mission_type || m.missionType || meta.missionType || 'LOGISTICS'),
-            mission_type: (String(m.mission_type || m.missionType || meta.mission_type || meta.missionType || '').toLowerCase() === 'chauffeur' || String(m.order?.orderType || meta.orderType || '').toUpperCase() === 'CHAUFFEUR' || String(m.order?.orderType || meta.orderType || '').toLowerCase() === 'service') ? 'Chauffeur' : (m.mission_type || m.missionType || meta.missionType || 'LOGISTICS'),
-            isChauffeur: String(m.mission_type || m.missionType || meta.mission_type || meta.missionType || '').toLowerCase() === 'chauffeur' || String(m.order?.orderType || meta.orderType || '').toUpperCase() === 'CHAUFFEUR' || String(m.order?.orderType || meta.orderType || '').toLowerCase() === 'service',
+            missionType: m.mission_type || m.missionType || meta.missionType || 'LOGISTICS',
             destinationType: dropResolved,
             date: m.event_date
               ? m.event_date.split("T")[0]
@@ -2722,6 +2704,8 @@ export const GlobalDataProvider = ({ children }) => {
             id: uniqueTicketId,
             ticketId: uniqueTicketId,
             db_id: dbId,
+            tenantId: t.tenantId ?? t.tenant_id ?? null,
+            tenant_id: t.tenantId ?? t.tenant_id ?? null,
             // preserve original backend identification fields to satisfy global filters
             submitted_by: t.submitted_by ?? t.createdById ?? null,
             created_by: t.submitted_by ?? t.created_by ?? t.createdById ?? null,
@@ -3711,6 +3695,9 @@ export const GlobalDataProvider = ({ children }) => {
       if (!safePayload.password) {
         delete safePayload.password;
       }
+      if (safePayload.avatar && typeof safePayload.avatar === 'string' && safePayload.avatar.length > 190 && !safePayload.avatar.startsWith('http')) {
+        delete safePayload.avatar;
+      }
       const bank =
         safePayload?.bankingInfo?.bank ??
         safePayload.bankName ??
@@ -3735,7 +3722,20 @@ export const GlobalDataProvider = ({ children }) => {
           safePayload.vacationBalance ?? safePayload.vacation_balance,
         vacationBalance:
           safePayload.vacationBalance ?? safePayload.vacation_balance,
+        bankingInfo: {
+          ...(typeof safePayload.bankingInfo === 'object' ? safePayload.bankingInfo : {}),
+          bank,
+          account,
+          routing,
+          vacationQuota: Number(safePayload.vacationBalance ?? safePayload.vacation_balance ?? 80),
+        },
       };
+
+      if (safePayload.vacationBalance !== undefined && id) {
+        try {
+          localStorage.setItem(`dedicated_vacation_${id}`, String(safePayload.vacationBalance));
+        } catch (_) {}
+      }
 
       const endpoint = String(id) === String(currentUser?.id) ? '/auth/profile' : `/users/${id}`;
       const res = await api.put(endpoint, payload);
@@ -4719,8 +4719,6 @@ export const GlobalDataProvider = ({ children }) => {
         pending_pickup: "pending",
         pending_review: "pending",
         in_transit: "en_route",
-      en_route: "en_route",
-      arrived: "arrived",
         completed: "delivered",
       };
       const apiCreateStatus = createStatusMap[rawStatus] || rawStatus;
@@ -4730,11 +4728,6 @@ export const GlobalDataProvider = ({ children }) => {
         companyId: del.companyId || del.company_id || null,
         clientId: del.customerId || del.customer_id || del.client_id || null,
         missionType: ["Delivery", "Pickup", "Transfer", "Chauffeur"].includes(
-          del.missionType || del.mission_type,
-        )
-          ? del.missionType || del.mission_type
-          : "Delivery",
-        mission_type: ["Delivery", "Pickup", "Transfer", "Chauffeur"].includes(
           del.missionType || del.mission_type,
         )
           ? del.missionType || del.mission_type
@@ -4787,8 +4780,6 @@ export const GlobalDataProvider = ({ children }) => {
       .replace(/\s+/g, "_");
     const map = {
       in_transit: "en_route",
-      en_route: "en_route",
-      arrived: "arrived",
       pending_pickup: "pending",
       pending_review: "pending",
       /** Admin approved — still awaiting driver on logistics row */
@@ -4806,7 +4797,7 @@ export const GlobalDataProvider = ({ children }) => {
     const patchId = normalizeDeliveryDbId(updated);
     const apiStatus = toApiDeliveryStatus(updated.status);
 
-    const isChauffeurOrder = updated.isDirectChauffeurOrder || String(updated.id || "").startsWith("CH-ORD-");
+    const isChauffeurOrder = updated.mission_type === "Chauffeur" || String(updated.id).startsWith("CH-ORD-");
     if (isChauffeurOrder) {
       try {
         let detail = {};
@@ -4900,9 +4891,9 @@ export const GlobalDataProvider = ({ children }) => {
         console.log('PUT response:', res.data);
       } catch (delErr) {
         console.warn('PUT /deliveries failed, trying order status fallback:', delErr?.response?.data?.message || delErr.message);
-        const numericOrderId = updated.order?.id || updated.order_id_raw || (updated.orderId && /^ORD-0*(\d+)$/i.test(String(updated.orderId)) ? parseInt(String(updated.orderId).match(/^ORD-0*(\d+)$/i)[1], 10) : (updated.orderId || patchId));
-        if (numericOrderId && (!isNaN(Number(numericOrderId)) || /^ORD-/i.test(String(numericOrderId)))) {
-          await api.patch(`/orders/${numericOrderId}/status`, { status: updated.status === 'assigned' ? 'assigned' : updated.status });
+        const numericOrderId = updated.order_id_raw || (updated.orderId ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10) : patchId);
+        if (numericOrderId && !isNaN(numericOrderId)) {
+          await api.patch(`/orders/${numericOrderId}/status`, { status: updated.status === 'assigned' ? 'logistics' : updated.status });
         } else {
           throw delErr;
         }
@@ -4912,19 +4903,15 @@ export const GlobalDataProvider = ({ children }) => {
       const numericOrderId =
         updated.order_id_raw ||
         (updated.orderId
-          ? (/^ORD-0*(\d+)$/i.test(String(updated.orderId)) ? parseInt(String(updated.orderId).match(/^ORD-0*(\d+)$/i)[1], 10) : (!isNaN(Number(updated.orderId)) ? Number(updated.orderId) : String(updated.orderId).trim()))
+          ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10)
           : null);
-      if (numericOrderId && (!isNaN(Number(numericOrderId)) || /^ORD-/i.test(String(numericOrderId)))) {
+      if (numericOrderId && !isNaN(numericOrderId)) {
         let newOrderStatus = null;
         const delSt = String(updated.status || '').toLowerCase();
         if (['delivered', 'completed'].includes(delSt)) {
           newOrderStatus = 'completed';
-        } else if (delSt === 'arrived') {
-          newOrderStatus = 'arrived';
-        } else if (['en_route', 'in_transit', 'dispatched', 'shipped', 'picked_up'].includes(delSt)) {
-          newOrderStatus = 'en_route';
-        } else if (['assigned', 'accepted'].includes(delSt)) {
-          newOrderStatus = 'assigned';
+        } else if (['assigned', 'en_route', 'in_transit', 'dispatched', 'shipped', 'picked_up', 'accepted'].includes(delSt)) {
+          newOrderStatus = 'logistics';
         }
 
         if (newOrderStatus) {
@@ -4942,7 +4929,7 @@ export const GlobalDataProvider = ({ children }) => {
         const rawId =
           updated.order_id_raw ||
           (updated.orderId
-            ? (/^ORD-0*(\d+)$/i.test(String(updated.orderId)) ? parseInt(String(updated.orderId).match(/^ORD-0*(\d+)$/i)[1], 10) : (!isNaN(Number(updated.orderId)) ? Number(updated.orderId) : String(updated.orderId).trim()))
+            ? parseInt(String(updated.orderId).replace(/[^0-9]/g, ""), 10)
             : null);
         if (rawId) {
           const matchingOrder = orders.find(
@@ -5434,16 +5421,35 @@ export const GlobalDataProvider = ({ children }) => {
     try {
       // Map frontend naming to backend database fields
       const reqData = {
+        companyName: branding.businessName,
+        name: branding.businessName,
         business_name: branding.businessName,
         tagline: branding.tagline,
+        logoUrl: branding.logo,
+        logo: branding.logo,
         logo_url: branding.logo,
       };
 
-      const res = await api.put(`/clients/${clientId}`, reqData);
+      const numericId = String(clientId || '').replace('CLT-', '');
+      const res = await api.put(`/clients/${numericId}`, reqData);
       if (res.data?.success) {
         setClients((prev) =>
-          prev.map((c) => (c.id === clientId ? { ...c, ...reqData } : c)),
+          prev.map((c) => (String(c.id).replace('CLT-', '') === String(numericId) ? { ...c, ...reqData, companyName: branding.businessName, logoUrl: branding.logo, logo: branding.logo } : c)),
         );
+        setCurrentUser((prev) => {
+          if (!prev) return prev;
+          const updatedUser = {
+            ...prev,
+            companyName: branding.businessName || prev.companyName,
+            company_name: branding.businessName || prev.company_name,
+            logoUrl: branding.logo || prev.logoUrl,
+            logo: branding.logo || prev.logo
+          };
+          try {
+            localStorage.setItem('user', JSON.stringify(updatedUser));
+          } catch (_) {}
+          return updatedUser;
+        });
         addLog({
           action: "Branding Updated",
           detail: `Institutional identity recalibrated for ${clientId}.`,
@@ -5897,7 +5903,7 @@ export const GlobalDataProvider = ({ children }) => {
         Number.isFinite(parsedVendorId) && parsedVendorId > 0
           ? parsedVendorId
           : null;
-      const res = await api.post("/procurement/quotes", {
+      const res = await api.post("/quotations", {
         ...quote,
         vendor_id: normalizedVendorId,
         vendor_name: quote.vendor_name || quote.vendor || "",
@@ -5932,7 +5938,7 @@ export const GlobalDataProvider = ({ children }) => {
         payment_terms: updated.paymentTerms ?? updated.payment_terms,
         notes: updated.notes,
       };
-      await api.put(`/procurement/quotes/${qid}`, payload);
+      await api.put(`/quotations/${qid}/status`, payload).catch(() => api.put(`/quotations/${qid}`, payload));
       setQuotes((prev) =>
         prev.map((q) => (q.id === updated.id ? { ...updated, ...payload } : q)),
       );
@@ -5951,7 +5957,7 @@ export const GlobalDataProvider = ({ children }) => {
 
   const deleteQuote = async (id) => {
     try {
-      await api.delete(`/procurement/quotes/${id}`);
+      await api.delete(`/quotations/${id}`);
       setQuotes((prev) => prev.filter((q) => q.id !== id));
       addLog({
         action: "Quote Discarded",
@@ -7092,8 +7098,6 @@ export const GlobalDataProvider = ({ children }) => {
         clientId: request.clientId || compId || null,
         companyId: compId,
         orderType: "CHAUFFEUR",
-        missionType: "Chauffeur",
-        mission_type: "Chauffeur",
         status: reqData.status,
         totalAmount: fee,
         total_amount: fee,
@@ -7110,9 +7114,6 @@ export const GlobalDataProvider = ({ children }) => {
       const newChauffeurObj = {
         id: newId,
         db_id: newId,
-        orderType: "CHAUFFEUR",
-        missionType: "Chauffeur",
-        mission_type: "Chauffeur",
         clientId: request.clientId || 'CLT-GUEST',
         company_id: compId,
         companyId: compId,
@@ -7180,7 +7181,7 @@ export const GlobalDataProvider = ({ children }) => {
       }
       let piObj = {};
       try {
-        const rawPi = updated.passenger_info ?? updated._passengerInfo ?? (Array.isArray(updated.customItems) && updated.customItems[0] ? updated.customItems[0] : (updated.remarks || updated.package_details));
+        const rawPi = updated.passenger_info ?? updated._passengerInfo;
         if (typeof rawPi === "string") {
           piObj = JSON.parse(rawPi || "{}");
         } else if (rawPi && typeof rawPi === "object") {
@@ -7213,9 +7214,6 @@ export const GlobalDataProvider = ({ children }) => {
       try {
         const payload = {
           clientId: updated.clientId || updated.client_id || '',
-          orderType: 'CHAUFFEUR',
-          missionType: 'Chauffeur',
-          mission_type: 'Chauffeur',
           status: updated.status,
           items: [{
             ...piObj,
@@ -7989,13 +7987,16 @@ export const GlobalDataProvider = ({ children }) => {
 
   const addLeaveRequest = async (requestData) => {
     try {
+      if (!requestData?.start || !requestData?.end) {
+        return { success: false, message: "Please specify both commencement and conclusion dates." };
+      }
       const payload = {
-        user_id: requestData.userId,
-        company_id: requestData.tenantId || currentUser?.tenantId || currentUser?.company_id,
-        leave_type: requestData.type,
+        user_id: requestData.userId || currentUser?.id,
+        company_id: requestData.tenantId || currentUser?.tenantId || currentUser?.company_id || 1,
+        leave_type: requestData.type || "Vacation",
         start_date: requestData.start,
         end_date: requestData.end,
-        hours: requestData.hours,
+        hours: requestData.hours || 8,
         reason: requestData.reason || "No reason provided",
       };
       const res = await api.post("/staff/leave", payload);
@@ -8003,12 +8004,16 @@ export const GlobalDataProvider = ({ children }) => {
         await fetchLeaveRequests();
         addLog({
           action: "Leave Requested",
-          detail: `Submitted ${requestData.type} request.`,
+          detail: `Submitted ${requestData.type || 'Vacation'} request.`,
           type: "system",
         });
+        return { success: true, data: res.data?.data };
       }
+      return { success: false, message: res.data?.message || "Failed to submit leave request" };
     } catch (error) {
       console.error("Failed to add leave request:", error);
+      const errMsg = error?.response?.data?.message || error?.message || "Failed to add leave request";
+      return { success: false, message: errMsg };
     }
   };
 
@@ -8100,9 +8105,13 @@ export const GlobalDataProvider = ({ children }) => {
           detail: `Leave request ${reqData.id} updated to ${newStatus}.`,
           type: "system",
         });
+        return { success: true, data: res.data?.data };
       }
+      return { success: false, message: res.data?.message || "Failed to update leave request" };
     } catch (error) {
       console.error("Failed to update leave request:", error);
+      const errMsg = error?.response?.data?.message || error?.message || "Failed to update leave request";
+      return { success: false, message: errMsg };
     }
   };
 
@@ -8111,6 +8120,7 @@ export const GlobalDataProvider = ({ children }) => {
       const res = await api.delete(`/staff/leave/${id}`);
       if (res.data?.success) {
         await fetchLeaveRequests();
+        if (fetchStaff) await fetchStaff();
         addLog({
           action: "Leave Request Deleted",
           detail: `Deleted leave request ${id}.`,

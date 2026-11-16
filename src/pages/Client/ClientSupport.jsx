@@ -204,7 +204,7 @@ const ClientSupport = () => {
     });
 
     const roleKey = normalizeRole(currentUser?.role);
-    const isEndCustomerRole = ['customer', 'client', 'saas_client', 'admin'].includes(roleKey);
+    const isEndCustomerRole = ['customer', 'personal'].includes(roleKey);
 
     // Filter tickets belonging to the current user
     const myTickets = (supportTickets || []).filter((t) => {

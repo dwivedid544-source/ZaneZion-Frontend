@@ -544,8 +544,33 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         });
     };
 
+    const itemsSubtotal = React.useMemo(() => {
+        return (formData.items || []).reduce((acc, item) => acc + (parseFloat(item.price || 0) * (parseInt(item.qty) || 0)), 0);
+    }, [formData.items]);
+
+    const orderFees = React.useMemo(() => {
+        if (!effectiveOrder) return 0;
+        let meta = effectiveOrder.metadata;
+        if (typeof meta === 'string') {
+            try { meta = JSON.parse(meta); } catch (_) { meta = {}; }
+        }
+        meta = meta || {};
+        const directFee = Number(meta.tier_delivery_fee || meta.transport_fee || meta.delivery_fee || meta.shipping_fee || 0);
+        if (directFee > 0) return directFee;
+
+        const savedTot = Number(effectiveOrder.totalAmount || effectiveOrder.total_amount || effectiveOrder.total || meta.totalAmount || meta.total_amount || meta.estimated_total || 0);
+        if (savedTot > itemsSubtotal && itemsSubtotal > 0) {
+            return Number((savedTot - itemsSubtotal).toFixed(2));
+        }
+        return 0;
+    }, [effectiveOrder, itemsSubtotal]);
+
     const calculateTotal = () => {
-        return formData.items.reduce((acc, item) => acc + (parseFloat(item.price || 0) * (parseInt(item.qty) || 0)), 0).toFixed(2);
+        if (currentModalType === 'view' && effectiveOrder) {
+            const savedTot = Number(effectiveOrder.totalAmount || effectiveOrder.total_amount || effectiveOrder.total || 0);
+            if (savedTot > 0) return savedTot.toFixed(2);
+        }
+        return (itemsSubtotal + orderFees).toFixed(2);
     };
 
     const isChauffeurOrder = React.useMemo(() => {
@@ -1055,7 +1080,19 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 )}
 
                                                 <div className="flex justify-end pt-2 border-t border-white/5 mt-4">
-                                                    <div className="text-right p-4 bg-accent/[0.03] border border-accent/10 rounded-2xl min-w-[200px]">
+                                                    <div className="text-right p-4 bg-accent/[0.03] border border-accent/10 rounded-2xl min-w-[220px] space-y-1">
+                                                        {orderFees > 0 && (
+                                                            <div className="flex justify-between items-center text-xs text-muted pb-1 border-b border-white/5 gap-4">
+                                                                <span>Items Subtotal:</span>
+                                                                <span className="font-bold text-white">${itemsSubtotal.toFixed(2)}</span>
+                                                            </div>
+                                                        )}
+                                                        {orderFees > 0 && (
+                                                            <div className="flex justify-between items-center text-xs text-muted pb-1 border-b border-white/5 gap-4">
+                                                                <span>Delivery & Logistics:</span>
+                                                                <span className="font-bold text-accent">+${orderFees.toFixed(2)}</span>
+                                                            </div>
+                                                        )}
                                                         <p className="text-[10px] font-black text-muted uppercase tracking-widest">Grand Total (Estimated)</p>
                                                         <p className="text-2xl font-black text-accent">${calculateTotal()}</p>
                                                     </div>

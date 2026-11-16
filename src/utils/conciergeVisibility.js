@@ -70,10 +70,6 @@ export function isConciergeOrder(order) {
     metadata = order.metadata;
   }
 
-  const missionTypeStr = String(order.missionType || order.mission_type || metadata.missionType || metadata.mission_type || '').toLowerCase();
-  if (missionTypeStr === 'chauffeur') return true;
-  if (typeStr === 'SERVICE' && (order.serviceType || metadata.serviceType || missionTypeStr === 'chauffeur' || metadata.driverName || order.driverName)) return true;
-
   // 1. Explicit orderType checks
   if (
     typeStr.includes('CONCIERGE') ||

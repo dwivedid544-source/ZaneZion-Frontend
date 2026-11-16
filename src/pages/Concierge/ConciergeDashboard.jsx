@@ -79,40 +79,10 @@ const ConciergeDashboard = () => {
     return ['assigned', 'en_route', 'in_transit'].includes(s);
   });
   // Chauffeur deliveries from the deliveries array (for the status monitor)
-  const chauffeurDeliveries = (deliveries || []).filter(d => {
-    const isChauffeur = String(d.mission_type || d.missionType || '').toLowerCase() === 'chauffeur' ||
-      String(d.orderType || d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
-      Boolean(d.isChauffeur) ||
-      String(d.orderType || d.order?.orderType || '').toLowerCase() === 'service';
-    const s = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
-    return isChauffeur && !['delivered', 'completed', 'cancelled', 'rejected'].includes(s);
-  });
-
-  const allChauffeurMonitorItems = (() => {
-    const list = [...chauffeurDeliveries];
-    const seen = new Set(chauffeurDeliveries.map(d => String(d.order_id_raw || d.orderId || d.id || '')));
-    (chauffeurRequests || []).forEach(c => {
-      const s = String(c.status || c.chauffeur_status || '').toLowerCase().replace(/\s+/g, '_');
-      const idKey = String(c.orderNumber || c.orderId || c.db_id || c.id || '');
-      if (!seen.has(idKey) && !['delivered', 'completed', 'cancelled', 'rejected'].includes(s)) {
-        seen.add(idKey);
-        list.push({
-          ...c,
-          id: c.orderNumber || (c.id ? `ORD-${c.id}` : 'CHAUFFEUR'),
-          item: 'VIP Chauffeur Service',
-          driver: c.driverName || c.driver || null,
-          eta: c.pickupDate || c.dueDate || c.pickupTime || 'TBD',
-          pickupLocation: c.pickupLocation || '',
-          dropLocation: c.dropLocation || '',
-          status: c.status || c.chauffeur_status || 'pending',
-          missionType: 'Chauffeur',
-          mission_type: 'Chauffeur'
-        });
-      }
-    });
-    return list;
-  })();
-
+  const chauffeurDeliveries = (deliveries || []).filter(d =>
+    String(d.mission_type || '').toLowerCase() === 'chauffeur' &&
+    !['delivered', 'completed', 'cancelled'].includes(String(d.status || '').toLowerCase().replace(/\s+/g, '_'))
+  );
 
   return (
     <div className="space-y-8 px-0 sm:px-2">
@@ -222,7 +192,7 @@ const ConciergeDashboard = () => {
           )}
 
           <div className="space-y-4">
-            {allChauffeurMonitorItems.map((del, idx) => (
+            {chauffeurDeliveries.map((del, idx) => (
               <div key={idx} className="p-3 bg-white/[0.02] border border-border rounded-xl hover:border-accent/30 transition-all">
                 <div className="flex justify-between items-start mb-2">
                   <p className="text-[11px] font-bold text-white">{del.item || 'VIP Chauffeur Service'}</p>
@@ -237,7 +207,7 @@ const ConciergeDashboard = () => {
                 )}
               </div>
             ))}
-            {allChauffeurMonitorItems.length === 0 && (
+            {chauffeurDeliveries.length === 0 && (
               <p className="text-xs text-secondary italic text-center py-4">No active chauffeur dispatches.</p>
             )}
           </div>

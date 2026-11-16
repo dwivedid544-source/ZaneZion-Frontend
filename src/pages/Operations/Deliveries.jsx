@@ -430,9 +430,7 @@ const Deliveries = () => {
       (matchedOrder.client && c.label.toLowerCase().includes(String(matchedOrder.client).toLowerCase()))
     );
 
-    const isChauf = String(matchedOrder.orderType || matchedOrder.type || matchedOrder.missionType || matchedOrder.mission_type || '').toUpperCase().includes('CHAUFFEUR') ||
-      String(matchedOrder.orderType || '').toLowerCase() === 'service' ||
-      Boolean(matchedOrder.isChauffeur);
+    const isChauf = String(matchedOrder.orderType || matchedOrder.type || matchedOrder.missionType || '').toUpperCase().includes('CHAUFFEUR');
 
     let existingDistance =
       matchedOrder.totalDistance ||
@@ -486,7 +484,6 @@ const Deliveries = () => {
       customerId: foundClientOpt?.customerId || prev.customerId,
       clientUserId: foundClientOpt?.clientUserId || prev.clientUserId,
       missionType: isChauf ? 'Chauffeur' : (prev.missionType || 'Delivery'),
-      mission_type: isChauf ? 'Chauffeur' : (prev.mission_type || prev.missionType || 'Delivery'),
       pickupLocation: pick || prev.pickupLocation,
       dropLocation: drop || prev.dropLocation,
       location: drop || prev.location,
@@ -601,10 +598,7 @@ const Deliveries = () => {
   }, [locationState]);
 
   const logisticsOnlyDeliveries = deliveries.filter((d) => {
-    const isChauffeur = String(d.mission_type || d.missionType || '').toLowerCase() === 'chauffeur' ||
-      String(d.orderType || d.order?.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
-      String(d.orderType || d.order?.orderType || '').toLowerCase() === 'service';
-    const isNotChauffeur = !isChauffeur;
+    const isNotChauffeur = String(d.mission_type || '').toLowerCase() !== 'chauffeur';
     if (portalRole === 'concierge') {
       return isNotChauffeur && isOrderVisibleToConcierge(d, clients);
     }
@@ -649,10 +643,7 @@ const Deliveries = () => {
     } : {}));
 
     // Extract passenger & luggage info from remarks, delivery metadata, or orders
-    const isChauffeurMission = (del.missionType || del.mission_type || type) === 'Chauffeur' ||
-      String(del.order?.orderType || del.orderType || '').toUpperCase() === 'CHAUFFEUR' ||
-      String(del.order?.orderType || del.orderType || '').toLowerCase() === 'service' ||
-      Boolean(del.isChauffeur);
+    const isChauffeurMission = (del.missionType || type) === 'Chauffeur' || String(del.order?.orderType || '').toUpperCase() === 'CHAUFFEUR';
     const resolvedPassengerName = parsedRemarks.passengerInfo?.name || del.passengerInfo?.name || del.passenger_name || del.customer_name || del.clientName || (typeof del.client === 'object' ? del.client?.companyName : del.client) || '';
     const resolvedPassengerCount = parsedRemarks.passengerInfo?.count || del.passengerInfo?.count || del.guestCount || del.guest_count || del.passengers || del.pax || 1;
     const resolvedLuggage = parsedRemarks.luggage || del.luggage || del.luggageOption || del.luggage_option || (isChauffeurMission ? 'Standard' : 'No');
@@ -695,7 +686,6 @@ const Deliveries = () => {
     } : {
       items: Array.isArray(del?.items) && del.items.length ? del.items : [{ name: isChauffeurMission ? 'VIP Chauffeur Service' : '', qty: 1, weight: '', length: '', width: '', height: '' }],
       missionType: isChauffeurMission ? 'Chauffeur' : 'Delivery',
-      mission_type: isChauffeurMission ? 'Chauffeur' : 'Delivery',
       passengerInfo: { name: resolvedPassengerName, count: resolvedPassengerCount, phone: '' },
       packageDetails: { weight: '', dimensions: '', type: isChauffeurMission ? 'CONCIERGE' : 'General' },
       luggage: resolvedLuggage,
@@ -821,8 +811,7 @@ const Deliveries = () => {
         items: validDbDeliveryItems.length > 0 ? validDbDeliveryItems : undefined,
         warehouseId: resolvedWarehouseId,
         remarks: JSON.stringify(manifestMeta),
-        missionType: finalData.missionType || finalData.mission_type || 'Delivery',
-        mission_type: finalData.mission_type || finalData.missionType || 'Delivery',
+        missionType: finalData.missionType || 'Delivery',
         transportMode: finalData.mode || 'Road',
         vehicleRef: finalData.vehicle || finalData.vesselOrFlight || null,
         etaSchedule: finalData.eta || null,
@@ -876,8 +865,7 @@ const Deliveries = () => {
       };
 
       const updatePayload = {
-        missionType: finalData.missionType || finalData.mission_type,
-        mission_type: finalData.mission_type || finalData.missionType,
+        missionType: finalData.missionType,
         transportMode: finalData.mode,
         vehicleRef: finalData.vehicle || finalData.vesselOrFlight || null,
         assignedTo: finalData.assigned_driver ? Number(finalData.assigned_driver) : (finalData.assignedTo ? Number(finalData.assignedTo) : undefined),

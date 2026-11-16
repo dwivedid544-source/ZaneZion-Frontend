@@ -14,6 +14,7 @@ import StatusBadge from '../../components/StatusBadge';
 import { displayOrderStatus, isoDateSlice, formatDateDisplayDMY } from '../../utils/orderWorkflow';
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
 import { useUpdateOrder } from '../../hooks/api/useOrders';
+import { compareOrdersNewestFirst } from '../../utils/apiHelpers';
 
 const CATEGORY_CONFIG = {
     'Marketplace Order': { label: 'Marketplace Order', icon: ShoppingBag, color: 'bg-info/10 text-info border-info/20' },
@@ -95,32 +96,36 @@ const ClientOrders = () => {
     const myClient = useMemo(() => {
         return (clients || []).find(c => {
             const cId = String(c.id).replace('CLT-', '');
-            const uId = String(currentUser?.clientId || currentUser?.company_id || currentUser?.id).replace('CLT-', '');
-            return (currentUser?.email && c.email?.toLowerCase() === currentUser?.email?.toLowerCase()) ||
-                (currentUser?.clientId && cId === uId) ||
-                String(c.id) === String(currentUser?.company_id) ||
-                (currentUser?.name && c.name?.toLowerCase() === currentUser?.name?.toLowerCase());
+            const uClientId = currentUser?.clientId ? String(currentUser.clientId).replace('CLT-', '') : null;
+            if (currentUser?.email && c.email?.toLowerCase() === currentUser?.email?.toLowerCase()) return true;
+            if (uClientId && uClientId !== '1' && cId === uClientId) return true;
+            if (currentUser?.name && c.name?.toLowerCase() === currentUser?.name?.toLowerCase() && c.name?.toLowerCase() !== 'zanezion') return true;
+            return false;
         });
     }, [clients, currentUser]);
 
-    const myClientId = myClient?.id || currentUser?.clientId || currentUser?.company_id || currentUser?.id;
-    const myName = (myClient?.name || currentUser?.name || '').toLowerCase();
-    const myEmail = (currentUser?.email || myClient?.email || '').toLowerCase();
+    const myClientId = (myClient?.id && String(myClient.id) !== '1')
+        ? String(myClient.id)
+        : (currentUser?.clientId && String(currentUser.clientId) !== '1' ? String(currentUser.clientId) : null);
+    const myName = (currentUser?.name || myClient?.name || '').toLowerCase().trim();
+    const myEmail = (currentUser?.email || myClient?.email || '').toLowerCase().trim();
+    const myUserId = String(currentUser?.id || '').trim();
 
-    // Helper to check ownership of any record strictly by ID or email
+    // Helper to check ownership of any record strictly by ID, email, or client association (NEVER generic companyId 1)
     const isMyRecord = (item) => {
         if (!item) return false;
-        const itemClientId = String(item.clientId || item.client_id || item.companyId || item.company_id || '');
-        const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || item.metadata?.customer_id || item.metadata?.user_id || item.metadata?.userId || '');
-        const itemEmail = String(item.email || item.client_email || item.customer_email || item.metadata?.email || item.metadata?.customer_email || item.client?.email || '').toLowerCase();
-
-        const myUserId = String(currentUser?.id || '');
-        const myClientIdStr = String(myClientId || '');
-        const myEmailStr = String(myEmail || '').toLowerCase();
+        const itemClientId = String(item.clientId || item.client_id || item.metadata?.clientId || item.metadata?.client_id || '').trim();
+        const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || item.metadata?.customer_id || item.metadata?.user_id || item.metadata?.userId || '').trim();
+        const itemEmail = String(item.email || item.client_email || item.customer_email || item.metadata?.email || item.metadata?.customer_email || item.metadata?.client_email || item.client?.email || '').toLowerCase().trim();
 
         if (myUserId && itemCustId && itemCustId === myUserId) return true;
-        if (myClientIdStr && itemClientId && itemClientId === myClientIdStr) return true;
-        if (myEmailStr && itemEmail && itemEmail === myEmailStr) return true;
+        if (myClientId && myClientId !== '1' && itemClientId && myClientId === itemClientId) return true;
+        if (myEmail && itemEmail && (itemEmail === myEmail || itemEmail.includes(myEmail) || myEmail.includes(itemEmail))) return true;
+
+        if (myName && myName !== 'zanezion') {
+            const itemOwner = String(item.owner || item.owner_name || item.clientName || item.client_name || item.customer_name || item.client?.name || item.client?.companyName || item.metadata?.clientName || item.metadata?.client_name || '').toLowerCase().trim();
+            if (itemOwner && (itemOwner === myName || itemOwner.includes(myName) || myName.includes(itemOwner))) return true;
+        }
 
         return false;
     };
@@ -324,10 +329,10 @@ const ClientOrders = () => {
                 status: effectiveStatus,
                 location: linkedDelivery?.dropLocation || o.deliveryAddress || o.location || o.dropLocation || 'Client Address',
                 pickupLocation: linkedDelivery?.pickupLocation || o.pickupLocation || o.pickup_location || null,
-                deliveryType: (o.deliveryType && o.deliveryType !== 'Road') ? o.deliveryType : (o.delivery_mode || o.mode || meta?.delivery_mode || meta?.deliveryType || o.deliveryType || 'Road'),
-                transport_asset: o.transport_asset || o.transportAsset || o.metadata?.transport_asset || o.metadata?.transportAsset || null,
-                transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || o.charterDetails || o.metadata?.transport_asset_custom || o.metadata?.charter_details || null,
-                island_location: o.island_location || o.islandLocation || o.metadata?.island_location || null,
+                deliveryType: (o.deliveryType && o.deliveryType !== 'Road') ? o.deliveryType : (o.delivery_mode || o.mode || meta?.delivery_mode || meta?.deliveryType || meta?.delivery_type || o.deliveryType || 'Road'),
+                transport_asset: o.transport_asset || o.transportAsset || meta?.transport_asset || meta?.transportAsset || null,
+                transport_asset_custom: o.transport_asset_custom || o.transportAssetCustom || o.charterDetails || meta?.transport_asset_custom || meta?.charter_details || meta?.transportAssetCustom || null,
+                island_location: o.island_location || o.islandLocation || meta?.island_location || meta?.islandLocation || null,
                 driverName: linkedDelivery?.driver || o.driverName || null,
                 source: 'orders',
                 originalRecord: o
@@ -427,28 +432,6 @@ const ClientOrders = () => {
             });
         });
 
-        // Deduplicate and sort newest first (strictly by order placement / creation date, then ID descending)
-        const getTimeScore = (tx) => {
-            const raw = tx.createdAt || tx.created_at || tx.originalRecord?.createdAt || tx.originalRecord?.created_at || tx.requestDate || tx.date;
-            if (raw) {
-                const t = new Date(raw).getTime();
-                if (!isNaN(t) && t > 0) return t;
-
-                if (typeof raw === 'string' && /^\d{1,2}[-/]\d{1,2}[-/]\d{4}/.test(raw.trim())) {
-                    const [d, m, y] = raw.trim().split(/[-/]/).map(n => parseInt(n, 10));
-                    const parsed = new Date(y, m - 1, d).getTime();
-                    if (!isNaN(parsed)) return parsed;
-                }
-            }
-            return 0;
-        };
-
-        const getIdScore = (tx) => {
-            const rawId = tx.rawId || tx.id;
-            const num = parseInt(String(rawId).replace(/\D/g, ''), 10);
-            return !isNaN(num) ? num : 0;
-        };
-
         const seen = new Set();
         return unified.filter(tx => {
             const numId = tx.rawId ? String(tx.rawId).replace(/\D/g, '') : '';
@@ -456,26 +439,7 @@ const ClientOrders = () => {
             if (seen.has(key)) return false;
             seen.add(key);
             return true;
-        }).sort((a, b) => {
-            // 1. Primary sort: actual order placement / creation timestamp descending (newest order ALWAYS at the top)
-            const timeA = getTimeScore(a);
-            const timeB = getTimeScore(b);
-            if (timeA > 0 && timeB > 0 && timeB !== timeA) {
-                return timeB - timeA;
-            }
-
-            // 2. If timestamps are equal or from the same source, compare database autoincrement ID descending
-            if (a.source === b.source) {
-                const idA = getIdScore(a);
-                const idB = getIdScore(b);
-                if (idA > 0 && idB > 0 && idA !== idB) {
-                    return idB - idA;
-                }
-            }
-
-            // 3. Fallback to ID score descending
-            return getIdScore(b) - getIdScore(a);
-        });
+        }).sort(compareOrdersNewestFirst);
     }, [orders, chauffeurRequests, events, guestRequests, luxuryItems, myClientId, myName, myEmail, portalRole]);
 
     // Filter transactions based on category, status, and search query
@@ -523,10 +487,17 @@ const ClientOrders = () => {
                 const cfg = CATEGORY_CONFIG[tx.category] || CATEGORY_CONFIG['Custom Order'];
                 const Icon = cfg.icon;
                 return (
-                    <span className={`inline-flex items-center gap-1.5 px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-wider italic ${cfg.color}`}>
-                        <Icon size={12} />
-                        {tx.category}
-                    </span>
+                    <div className="flex flex-col gap-1 items-start">
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-wider italic ${cfg.color}`}>
+                            <Icon size={12} />
+                            {tx.category}
+                        </span>
+                        {tx.deliveryType && tx.category !== 'Chauffeur Booking' && (
+                            <span className="text-[9px] font-bold text-muted/70 tracking-wider uppercase">
+                                {tx.deliveryType === 'Air' ? '✈ Air Protocol' : tx.deliveryType === 'Sea' ? '🛥 Sea Protocol' : '🚚 Road Protocol'}
+                            </span>
+                        )}
+                    </div>
                 );
             }
         },
@@ -706,6 +677,7 @@ const ClientOrders = () => {
                 <p>${tx.dueDate ? new Date(tx.dueDate).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : '—'}</p>
             </div>
             ${tx.location ? `<div class="info-cell" style="grid-column:span 3;"><label>Service / Delivery Location</label><p>${tx.location}</p></div>` : ''}
+            ${tx.deliveryType && tx.category !== 'Chauffeur Booking' ? `<div class="info-cell" style="grid-column:span 3;"><label>Logistics Mode & Protocol</label><p>${tx.deliveryType === 'Air' ? '✈ Air Charter Protocol' : tx.deliveryType === 'Sea' ? '🛥 Sea Marine Protocol' : '🚚 Road Courier & Ground Transport Protocol'}${tx.transport_asset ? ` — ${tx.transport_asset}` : ''}${tx.island_location ? ` (Location: ${tx.island_location})` : ''}</p></div>` : ''}
         </div>
     </div>
 
@@ -1059,43 +1031,69 @@ const ClientOrders = () => {
                                         </div>
                                     )}
 
-                                    {/* Logistics Transport & Air Charter Details */}
+                                    {/* Logistics Transport & Delivery Protocol Details */}
                                     {(() => {
-                                        const orig = selectedTransaction.originalRecord || {};
-                                        const origMeta = typeof orig.metadata === 'string' ? JSON.parse(orig.metadata) : (orig.metadata || {});
-                                        const delType = (selectedTransaction.deliveryType && selectedTransaction.deliveryType !== 'Road') ? selectedTransaction.deliveryType : (orig.delivery_mode || origMeta.delivery_mode || orig.deliveryType || origMeta.deliveryType || selectedTransaction.deliveryType || 'Road');
-                                        const tAsset = selectedTransaction.transport_asset || orig.transport_asset || orig.transportAsset || origMeta.transport_asset || origMeta.transportAsset;
-                                        const tAssetCustom = selectedTransaction.transport_asset_custom || orig.transport_asset_custom || orig.transportAssetCustom || orig.charterDetails || origMeta.transport_asset_custom || origMeta.charter_details;
-                                        const islLoc = selectedTransaction.island_location || orig.island_location || orig.islandLocation || origMeta.island_location || origMeta.islandLocation;
+                                        const isChauffeur = selectedTransaction.category === 'Chauffeur Booking' || String(selectedTransaction.id || '').startsWith('CH-');
+                                        if (isChauffeur) return null;
 
-                                        if (delType !== 'Air' && delType !== 'Sea' && !tAsset && !tAssetCustom && !islLoc) {
-                                            return null;
+                                        const orig = selectedTransaction.originalRecord || {};
+                                        let origMeta = orig.metadata;
+                                        if (typeof origMeta === 'string') {
+                                            try { origMeta = JSON.parse(origMeta); } catch { origMeta = {}; }
                                         }
+                                        origMeta = origMeta || {};
+
+                                        const rawMode = (selectedTransaction.deliveryType && selectedTransaction.deliveryType !== 'Road')
+                                            ? selectedTransaction.deliveryType
+                                            : (origMeta.delivery_mode || origMeta.deliveryType || origMeta.delivery_type || orig.delivery_mode || orig.deliveryType || selectedTransaction.deliveryType || 'Road');
+
+                                        const isAir = String(rawMode).toLowerCase().includes('air');
+                                        const isSea = String(rawMode).toLowerCase().includes('sea');
+                                        const delType = isAir ? 'Air' : isSea ? 'Sea' : 'Road';
+
+                                        const tAsset = selectedTransaction.transport_asset || orig.transport_asset || orig.transportAsset || origMeta.transport_asset || origMeta.transportAsset;
+                                        const tAssetCustom = selectedTransaction.transport_asset_custom || orig.transport_asset_custom || orig.transportAssetCustom || orig.charterDetails || origMeta.transport_asset_custom || origMeta.charter_details || origMeta.transportAssetCustom;
+                                        const islLoc = selectedTransaction.island_location || orig.island_location || orig.islandLocation || origMeta.island_location || origMeta.islandLocation;
 
                                         return (
                                             <div className="p-4 rounded-2xl bg-accent/5 border border-accent/20 space-y-3">
                                                 <div className="flex items-center justify-between">
                                                     <p className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-1.5">
-                                                        {delType === 'Air' ? '✈ Logistics Mode: Air Charter Protocol' : '🛥 Logistics Mode: Sea Marine Protocol'}
+                                                        {delType === 'Air' && '✈ Logistics Mode: Air Charter Protocol'}
+                                                        {delType === 'Sea' && '🛥 Logistics Mode: Sea Marine Protocol'}
+                                                        {delType === 'Road' && '🚚 Logistics Mode: Road Courier & Ground Transport Protocol'}
                                                     </p>
                                                     <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-accent/20 text-accent border border-accent/30">
-                                                        {tAsset || (delType === 'Air' ? 'Charter Jet' : 'Sea Vessel')}
+                                                        {tAsset || (delType === 'Air' ? 'Air Charter' : delType === 'Sea' ? 'Marine Fleet' : 'Ground Courier')}
                                                     </span>
                                                 </div>
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                                                     <div>
                                                         <p className="text-[9px] font-bold text-muted uppercase">Fleet / Asset Type</p>
-                                                        <p className="font-bold text-white">{tAsset || (delType === 'Air' ? 'Charter Jet' : 'Sea Vessel')}</p>
+                                                        <p className="font-bold text-white">
+                                                            {tAsset || (delType === 'Air' ? 'Charter Jet / Cargo Aircraft' : delType === 'Sea' ? 'Sea Cargo / Marine Vessel' : 'Standard Road Fleet / Courier')}
+                                                        </p>
                                                     </div>
-                                                    {islLoc && (
+                                                    {islLoc ? (
                                                         <div>
-                                                            <p className="text-[9px] font-bold text-muted uppercase">Island / Airstrip Location</p>
+                                                            <p className="text-[9px] font-bold text-muted uppercase">
+                                                                {delType === 'Air' ? 'Island / Airstrip Location' : delType === 'Sea' ? 'Island / Marina Location' : 'Dispatch Terminal Location'}
+                                                            </p>
                                                             <p className="font-bold text-white">{islLoc}</p>
+                                                        </div>
+                                                    ) : (
+                                                        <div>
+                                                            <p className="text-[9px] font-bold text-muted uppercase">Dispatch Protocol</p>
+                                                            <p className="font-bold text-white">
+                                                                {selectedTransaction.driverName ? `Assigned Courier: ${selectedTransaction.driverName}` : `${delType} Transit Priority Protocol`}
+                                                            </p>
                                                         </div>
                                                     )}
                                                     {tAssetCustom && (
                                                         <div className="sm:col-span-2">
-                                                            <p className="text-[9px] font-bold text-muted uppercase">Charter Specs / Tail Number / Instructions</p>
+                                                            <p className="text-[9px] font-bold text-muted uppercase">
+                                                                {delType === 'Air' ? 'Charter Specs / Tail Number / Instructions' : delType === 'Sea' ? 'Vessel Specs / Marina Details / Instructions' : 'Ground Logistics Notes / Instructions'}
+                                                            </p>
                                                             <p className="font-black text-accent">{tAssetCustom}</p>
                                                         </div>
                                                     )}

@@ -11,7 +11,7 @@ import OrderModal from '../../components/OrderModal';
 import InvoiceGenerationModal from '../../components/InvoiceGenerationModal';
 import OrderTimeline from '../../components/OrderTimeline';
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
-import { formatClientDisplayName } from '../../utils/apiHelpers';
+import { formatClientDisplayName, compareOrdersNewestFirst } from '../../utils/apiHelpers';
 import { isOrderVisibleToConcierge } from '../../utils/conciergeVisibility';
 import api from '../../services/api/setupAxios';
 import { setUpdatedChauffeurItem } from '../../utils/stateSyncHelper';
@@ -287,14 +287,7 @@ const Orders = () => {
       list = list.filter(o => !isOrderHeldFromFieldStaff(o, clients));
     }
 
-    return [...list].sort((a, b) => {
-      const timeA = new Date(a.createdAt || a.created_at || a.order_date || a.date || 0).getTime();
-      const timeB = new Date(b.createdAt || b.created_at || b.order_date || b.date || 0).getTime();
-      if (!isNaN(timeA) && !isNaN(timeB) && timeA !== timeB) return timeB - timeA;
-      const numA = parseInt(String(a.rawId || a.id || 0).replace(/\D/g, ''), 10) || 0;
-      const numB = parseInt(String(b.rawId || b.id || 0).replace(/\D/g, ''), 10) || 0;
-      return numB - numA;
-    });
+    return [...list].sort(compareOrdersNewestFirst);
   })();
 
   const pagination = React.useMemo(() => {
@@ -386,9 +379,12 @@ const Orders = () => {
                 )}
               </div>
             ) : (
+              /* Personal Client / Auto-Routed badge commented out as requested
               <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 w-fit">
-                Personal • Auto-Routed
+                Personal Client
               </span>
+              */
+              null
             )}
           </div>
         );

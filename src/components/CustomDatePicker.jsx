@@ -15,10 +15,24 @@ const isoToParts = (iso) => {
     return { dd: d || '', mm: m || '', yyyy: y || '' };
 };
 
-/** { dd, mm, yyyy }  →  yyyy-mm-dd  (returns '' if incomplete) */
+/** { dd, mm, yyyy }  →  yyyy-mm-dd  (returns null if incomplete or invalid) */
 const partsToIso = (dd, mm, yyyy) => {
-    if (dd.length === 2 && mm.length === 2 && yyyy.length === 4) {
-        return `${yyyy}-${mm}-${dd}`;
+    const dStr = String(dd || '').trim();
+    const mStr = String(mm || '').trim();
+    const yStr = String(yyyy || '').trim();
+
+    if (!dStr || !mStr || yStr.length !== 4) return null;
+
+    const dNum = parseInt(dStr, 10);
+    const mNum = parseInt(mStr, 10);
+    const yNum = parseInt(yStr, 10);
+
+    if (
+        !isNaN(dNum) && dNum >= 1 && dNum <= 31 &&
+        !isNaN(mNum) && mNum >= 1 && mNum <= 12 &&
+        !isNaN(yNum) && yNum >= 1900 && yNum <= 2100
+    ) {
+        return `${yNum}-${pad2(mNum)}-${pad2(dNum)}`;
     }
     return null;
 };
@@ -103,6 +117,22 @@ const CustomDatePicker = ({
         let v = e.target.value.replace(/\D/g, '').slice(0, 4);
         setYyyy(v);
         tryEmit(dd, mm, v);
+    };
+
+    const handleDdBlur = () => {
+        if (dd && dd.length === 1) {
+            const padded = pad2(dd);
+            setDd(padded);
+            tryEmit(padded, mm, yyyy);
+        }
+    };
+
+    const handleMmBlur = () => {
+        if (mm && mm.length === 1) {
+            const padded = pad2(mm);
+            setMm(padded);
+            tryEmit(dd, padded, yyyy);
+        }
     };
 
     /* Backspace on mm → jump back to dd */
@@ -314,6 +344,7 @@ const CustomDatePicker = ({
                         disabled={disabled}
                         value={dd}
                         onChange={handleDd}
+                        onBlur={handleDdBlur}
                         onFocus={e => e.target.select()}
                         className="w-7 bg-transparent text-center text-sm font-bold text-white placeholder-muted outline-none border-none p-0 leading-none"
                     />
@@ -327,6 +358,7 @@ const CustomDatePicker = ({
                         disabled={disabled}
                         value={mm}
                         onChange={handleMm}
+                        onBlur={handleMmBlur}
                         onKeyDown={handleMmKey}
                         onFocus={e => e.target.select()}
                         className="w-7 bg-transparent text-center text-sm font-bold text-white placeholder-muted outline-none border-none p-0 leading-none"

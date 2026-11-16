@@ -13,25 +13,25 @@ import { toAbsoluteImageUrl } from '../../utils/apiHelpers.js';
 import { Image as ImageIcon } from 'lucide-react';
 
 const ProductImage = ({ src, alt, className, iconSize = 64 }) => {
-  const [hasError, setHasError] = useState(false);
-  const imageUrl = toAbsoluteImageUrl(src);
+    const [hasError, setHasError] = useState(false);
+    const imageUrl = toAbsoluteImageUrl(src);
 
-  React.useEffect(() => {
-    setHasError(false);
-  }, [src]);
+    React.useEffect(() => {
+        setHasError(false);
+    }, [src]);
 
-  if (!imageUrl || hasError) {
-    return <Package size={iconSize} className="text-accent/10 group-hover:text-accent/20 group-hover:scale-110 transition-all duration-700" />;
-  }
+    if (!imageUrl || hasError) {
+        return <Package size={iconSize} className="text-accent/10 group-hover:text-accent/20 group-hover:scale-110 transition-all duration-700" />;
+    }
 
-  return (
-    <img
-      src={imageUrl}
-      alt={alt || "Product"}
-      className={className || "w-full h-full object-cover group-hover:scale-110 transition-all duration-700"}
-      onError={() => setHasError(true)}
-    />
-  );
+    return (
+        <img
+            src={imageUrl}
+            alt={alt || "Product"}
+            className={className || "w-full h-full object-cover group-hover:scale-110 transition-all duration-700"}
+            onError={() => setHasError(true)}
+        />
+    );
 };
 
 const DEFAULT_TRANSPORT_EXTRA_FEE = {
@@ -50,6 +50,14 @@ const CHAUFFEUR_BILLING_MODE = String(import.meta.env?.VITE_CHAUFFEUR_BILLING_MO
     ? 'included'
     : 'separate';
 
+const getTodayUsDate = () => {
+    try {
+        return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(new Date());
+    } catch (_) {
+        return new Date().toISOString().slice(0, 10);
+    }
+};
+
 const ClientStore = () => {
     const { inventory, cart, addToCart, removeFromCart, clearCart, addOrder, currentUser, clients, vendors, marketplaceVendors, shippingModePricing, fetchInventory, fetchVendors, systemSettings, fetchSystemSettings, deliveryPricing, fetchOrders, syncGlobalState } = useData();
     const location = useLocation();
@@ -60,16 +68,16 @@ const ClientStore = () => {
     const [isPlacingOrder, setIsPlacingOrder] = useState(false);
     const [isCartOpen, setIsCartOpen] = useState(false);
     const [customItems, setCustomItems] = useState([{ name: '', qty: 1, price: 0 }]);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [destination, setDestination] = useState(currentUser?.location || 'Port Hercule');
+    const [destination, setDestination] = useState(currentUser?.location || currentUser?.deliveryAddress || currentUser?.address || '');
     const [deliveryMode, setDeliveryMode] = useState('Road');
-    const [catalogDeliveryAddress, setCatalogDeliveryAddress] = useState(currentUser?.location || '');
+    const [catalogDeliveryAddress, setCatalogDeliveryAddress] = useState(currentUser?.location || currentUser?.deliveryAddress || currentUser?.address || '');
     const [checkoutVendorId, setCheckoutVendorId] = useState('');
     const [bookChauffeur, setBookChauffeur] = useState(false);
     const [transportAsset, setTransportAsset] = useState('');
     const [islandLocation, setIslandLocation] = useState('');
-    const [orderPlacementDate, setOrderPlacementDate] = useState(() => localDateISO());
+    const [orderPlacementDate, setOrderPlacementDate] = useState(() => getTodayUsDate());
     const [customRequestSubtype, setCustomRequestSubtype] = useState('');
+    const [searchTerm, setSearchTerm] = useState('');
     /** 'all' | store group key from inventoryByStore */
     const [catalogStoreFilter, setCatalogStoreFilter] = useState('all');
     const [productCategoryFilter, setProductCategoryFilter] = useState('all');
@@ -89,6 +97,14 @@ const ClientStore = () => {
     const [personalPickupAddress, setPersonalPickupAddress] = useState('');
     const [personalDropAddress, setPersonalDropAddress] = useState('');
 
+    React.useEffect(() => {
+        const clientLoc = currentUser?.location || currentUser?.deliveryAddress || currentUser?.address || '';
+        if (clientLoc) {
+            setDestination(prev => prev || clientLoc);
+            setCatalogDeliveryAddress(prev => prev || clientLoc);
+        }
+    }, [currentUser]);
+
     const handleAddItemToOrder = (item, group, openDrawer = false) => {
         const itemId = item?.itemId ?? item?.item_id ?? item?.id ?? item?._id;
         if (itemId == null) return;
@@ -100,11 +116,11 @@ const ClientStore = () => {
             vendorName: item?.vendorName || item?.vendor_name || group?.label || 'General',
             vendor_id: item?.vendor_id ?? item?.vendorId ?? group?.vendorId ?? null,
         };
-        const isInCart = cart.some(i => 
+        const isInCart = cart.some(i =>
             String(i.id ?? i.itemId ?? i._id ?? i.item_id) === String(itemId)
         );
         addToCart(itemPayload);
-        
+
         if (isInCart) {
             Toast.fire({
                 icon: 'success',
@@ -527,7 +543,9 @@ const ClientStore = () => {
             return;
         }
 
-        const deliveryAddress = isBespoke ? destination : catalogDeliveryAddress;
+        const deliveryAddress = isBespoke
+            ? (isRetailPersonal ? (personalDropAddress || destination) : (destination || personalDropAddress))
+            : catalogDeliveryAddress;
         if (!deliveryAddress || !deliveryAddress.trim()) {
             swalWarning('Address Required', 'Please enter a delivery address before confirming.');
             return;
@@ -840,132 +858,131 @@ const ClientStore = () => {
                                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 sm:gap-8">
                                     {group.items.map((item) => {
                                         const itmId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
-                                        const cartItem = cart.find(i => 
+                                        const cartItem = cart.find(i =>
                                             String(i.id ?? i.itemId ?? i._id ?? i.item_id) === String(itmId)
                                         );
                                         return (
-                                        <div
-                                            key={itmId}
-                                            className={`bg-white/[0.02] border ${cartItem ? 'border-accent/40 bg-accent/[0.02]' : 'border-white/5'} rounded-[2.5rem] overflow-hidden group hover:border-accent/30 transition-all duration-500 shadow-2xl flex flex-col`}
-                                        >
-                                            <div className="aspect-square bg-white/5 border-b border-white/5 flex items-center justify-center relative overflow-hidden">
-                                                <ProductImage src={item.image || item.image_url || item.imageUrl} alt={item.name} iconSize={64} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-700" />
-                                                <div className="absolute top-6 right-6 px-4 py-2 bg-background/90 backdrop-blur-md border border-accent/20 rounded-2xl text-sm font-black text-accent shadow-2xl z-10">
-                                                    ${parseFloat(item.price).toLocaleString()}
-                                                </div>
-                                                {item.category && (
-                                                    <div className="absolute top-6 left-6 px-3 py-1 bg-white/10 backdrop-blur-md border border-white/10 rounded-xl text-[9px] font-black text-white uppercase tracking-widest z-10">
-                                                        {item.category}
+                                            <div
+                                                key={itmId}
+                                                className={`bg-white/[0.02] border ${cartItem ? 'border-accent/40 bg-accent/[0.02]' : 'border-white/5'} rounded-[2.5rem] overflow-hidden group hover:border-accent/30 transition-all duration-500 shadow-2xl flex flex-col`}
+                                            >
+                                                <div className="aspect-square bg-white/5 border-b border-white/5 flex items-center justify-center relative overflow-hidden">
+                                                    <ProductImage src={item.image || item.image_url || item.imageUrl} alt={item.name} iconSize={64} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-700" />
+                                                    <div className="absolute top-6 right-6 px-4 py-2 bg-background/90 backdrop-blur-md border border-accent/20 rounded-2xl text-sm font-black text-accent shadow-2xl z-10">
+                                                        ${parseFloat(item.price).toLocaleString()}
                                                     </div>
-                                                )}
-                                            </div>
-
-                                            <div className="p-6 flex-1 flex flex-col">
-                                                <div className="flex-1 space-y-4">
-                                                    <div>
-                                                        <h3 className="font-black text-white text-lg group-hover:text-accent transition-colors italic leading-tight">{item.name}</h3>
-                                                        {item.description && (
-                                                             <p className="text-[11px] text-secondary mt-2 line-clamp-2 leading-relaxed font-medium">
-                                                                {item.description}
-                                                            </p>
-                                                        )}
-                                                    </div>
-
-                                                    {(item.size || item.color || item.material) && (
-                                                        <div className="grid grid-cols-2 gap-3 py-3 border-y border-white/5">
-                                                            {item.size && (
-                                                                <div className="space-y-0.5">
-                                                                    <p className="text-[8px] font-black text-muted uppercase tracking-widest">Size</p>
-                                                                    <p className="text-[10px] font-bold text-white uppercase">{item.size}</p>
-                                                                </div>
-                                                            )}
-                                                            {item.color && (
-                                                                <div className="space-y-0.5">
-                                                                    <p className="text-[8px] font-black text-muted uppercase tracking-widest">Color</p>
-                                                                    <p className="text-[10px] font-bold text-white uppercase">{item.color}</p>
-                                                                </div>
-                                                            )}
-                                                            {item.material && (
-                                                                <div className="space-y-0.5 col-span-2">
-                                                                    <p className="text-[8px] font-black text-muted uppercase tracking-widest">Material</p>
-                                                                    <p className="text-[10px] font-bold text-white uppercase">{item.material}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    )}
-
-                                                    {item.specifications && (
-                                                        <div className="flex items-center gap-2">
-                                                            <Zap size={10} className="text-accent" />
-                                                            <p className="text-[9px] font-black text-accent uppercase tracking-widest truncate">
-                                                                {item.specifications}
-                                                            </p>
+                                                    {item.category && (
+                                                        <div className="absolute top-6 left-6 px-3 py-1 bg-white/10 backdrop-blur-md border border-white/10 rounded-xl text-[9px] font-black text-white uppercase tracking-widest z-10">
+                                                            {item.category}
                                                         </div>
                                                     )}
                                                 </div>
 
-                                                {cartItem ? (
-                                                    <div className="w-full mt-6 flex items-center justify-between bg-accent/15 border border-accent/40 rounded-2xl p-1 shadow-lg shadow-black/20">
-                                                        <button
-                                                            type="button"
-                                                            title={cartItem.qty <= 1 ? "Deselect item / remove from order" : "Decrease quantity"}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                removeFromCart(itmId);
-                                                                setAddedItems(prev => {
-                                                                    const next = { ...prev };
-                                                                    delete next[itmId];
-                                                                    return next;
-                                                                });
-                                                                Toast.fire({
-                                                                    icon: 'info',
-                                                                    title: cartItem.qty <= 1 ? 'Removed from Order' : 'Quantity Decreased',
-                                                                });
-                                                            }}
-                                                            className="w-9 h-9 flex items-center justify-center hover:bg-danger/20 hover:text-danger text-accent rounded-xl transition-all cursor-pointer"
-                                                        >
-                                                            {cartItem.qty <= 1 ? <Trash2 size={14} /> : <Minus size={14} />}
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => setIsCartOpen(true)}
-                                                            className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1 text-center hover:opacity-80 transition-opacity cursor-pointer"
-                                                            title="Click to view cart"
-                                                        >
-                                                            <span className="text-[10px] font-black text-accent uppercase tracking-widest">{cartItem.qty} in order</span>
-                                                        </button>
-                                                        <button
-                                                            type="button"
-                                                            title="Increase quantity"
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleAddItemToOrder(item, group, false);
-                                                            }}
-                                                            className="w-9 h-9 flex items-center justify-center hover:bg-success/20 hover:text-success text-accent rounded-xl transition-all cursor-pointer"
-                                                        >
-                                                            <Plus size={14} />
-                                                        </button>
-                                                    </div>
-                                                ) : (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => handleAddItemToOrder(item, group, false)}
-                                                        className={`w-full mt-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] transition-all flex items-center justify-center gap-3 active:scale-[0.98] shadow-lg shadow-black/20 ${
-                                                            addedItems[itmId]
-                                                                ? 'bg-success text-white border-success scale-[1.03] duration-300'
-                                                                : 'bg-white/[0.03] border border-white/10 text-white hover:bg-accent hover:text-black hover:border-accent duration-200'
-                                                        }`}
-                                                    >
-                                                        {addedItems[itmId] ? (
-                                                            <>✓ Added</>
-                                                        ) : (
-                                                            <><Plus size={14} /> {isRetailPersonal ? 'Add to order' : 'Add to Manifest'}</>
+                                                <div className="p-6 flex-1 flex flex-col">
+                                                    <div className="flex-1 space-y-4">
+                                                        <div>
+                                                            <h3 className="font-black text-white text-lg group-hover:text-accent transition-colors italic leading-tight">{item.name}</h3>
+                                                            {item.description && (
+                                                                <p className="text-[11px] text-secondary mt-2 line-clamp-2 leading-relaxed font-medium">
+                                                                    {item.description}
+                                                                </p>
+                                                            )}
+                                                        </div>
+
+                                                        {(item.size || item.color || item.material) && (
+                                                            <div className="grid grid-cols-2 gap-3 py-3 border-y border-white/5">
+                                                                {item.size && (
+                                                                    <div className="space-y-0.5">
+                                                                        <p className="text-[8px] font-black text-muted uppercase tracking-widest">Size</p>
+                                                                        <p className="text-[10px] font-bold text-white uppercase">{item.size}</p>
+                                                                    </div>
+                                                                )}
+                                                                {item.color && (
+                                                                    <div className="space-y-0.5">
+                                                                        <p className="text-[8px] font-black text-muted uppercase tracking-widest">Color</p>
+                                                                        <p className="text-[10px] font-bold text-white uppercase">{item.color}</p>
+                                                                    </div>
+                                                                )}
+                                                                {item.material && (
+                                                                    <div className="space-y-0.5 col-span-2">
+                                                                        <p className="text-[8px] font-black text-muted uppercase tracking-widest">Material</p>
+                                                                        <p className="text-[10px] font-bold text-white uppercase">{item.material}</p>
+                                                                    </div>
+                                                                )}
+                                                            </div>
                                                         )}
-                                                    </button>
-                                                )}
+
+                                                        {item.specifications && (
+                                                            <div className="flex items-center gap-2">
+                                                                <Zap size={10} className="text-accent" />
+                                                                <p className="text-[9px] font-black text-accent uppercase tracking-widest truncate">
+                                                                    {item.specifications}
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+
+                                                    {cartItem ? (
+                                                        <div className="w-full mt-6 flex items-center justify-between bg-accent/15 border border-accent/40 rounded-2xl p-1 shadow-lg shadow-black/20">
+                                                            <button
+                                                                type="button"
+                                                                title={cartItem.qty <= 1 ? "Deselect item / remove from order" : "Decrease quantity"}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    removeFromCart(itmId);
+                                                                    setAddedItems(prev => {
+                                                                        const next = { ...prev };
+                                                                        delete next[itmId];
+                                                                        return next;
+                                                                    });
+                                                                    Toast.fire({
+                                                                        icon: 'info',
+                                                                        title: cartItem.qty <= 1 ? 'Removed from Order' : 'Quantity Decreased',
+                                                                    });
+                                                                }}
+                                                                className="w-9 h-9 flex items-center justify-center hover:bg-danger/20 hover:text-danger text-accent rounded-xl transition-all cursor-pointer"
+                                                            >
+                                                                {cartItem.qty <= 1 ? <Trash2 size={14} /> : <Minus size={14} />}
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setIsCartOpen(true)}
+                                                                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-1 text-center hover:opacity-80 transition-opacity cursor-pointer"
+                                                                title="Click to view cart"
+                                                            >
+                                                                <span className="text-[10px] font-black text-accent uppercase tracking-widest">{cartItem.qty} in order</span>
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                title="Increase quantity"
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleAddItemToOrder(item, group, false);
+                                                                }}
+                                                                className="w-9 h-9 flex items-center justify-center hover:bg-success/20 hover:text-success text-accent rounded-xl transition-all cursor-pointer"
+                                                            >
+                                                                <Plus size={14} />
+                                                            </button>
+                                                        </div>
+                                                    ) : (
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => handleAddItemToOrder(item, group, false)}
+                                                            className={`w-full mt-6 py-4 rounded-2xl text-[10px] font-black uppercase tracking-[0.25em] transition-all flex items-center justify-center gap-3 active:scale-[0.98] shadow-lg shadow-black/20 ${addedItems[itmId]
+                                                                    ? 'bg-success text-white border-success scale-[1.03] duration-300'
+                                                                    : 'bg-white/[0.03] border border-white/10 text-white hover:bg-accent hover:text-black hover:border-accent duration-200'
+                                                                }`}
+                                                        >
+                                                            {addedItems[itmId] ? (
+                                                                <>✓ Added</>
+                                                            ) : (
+                                                                <><Plus size={14} /> {isRetailPersonal ? 'Add to order' : 'Add to Manifest'}</>
+                                                            )}
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    );
+                                        );
                                     })}
                                 </div>
                             </div>
@@ -1054,10 +1071,10 @@ const ClientStore = () => {
                                             />
                                         </div>
                                         <div className="space-y-2">
-                                            <label className="text-[10px] font-black text-muted uppercase tracking-widest">Destination Address / Drop Location</label>
+                                            <label className="text-[10px] font-black text-muted uppercase tracking-widest">Delivery Address *</label>
                                             <input
                                                 type="text"
-                                                placeholder="Enter drop address..."
+                                                placeholder="Enter delivery address..."
                                                 value={personalDropAddress}
                                                 onChange={(e) => setPersonalDropAddress(e.target.value)}
                                                 className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold"
@@ -1066,14 +1083,11 @@ const ClientStore = () => {
                                         <div className="space-y-2">
                                             <label className="text-[10px] font-black text-muted uppercase tracking-widest">Estimated distance (km)</label>
                                             <input
-                                                type="number"
-                                                min="0"
-                                                step="0.1"
-                                                inputMode="decimal"
+                                                type="text"
                                                 value={customRequestDistanceKm}
-                                                onChange={(e) => setCustomRequestDistanceKm(e.target.value)}
-                                                placeholder="e.g. 12"
-                                                className="w-full max-w-xs bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold"
+                                                readOnly
+                                                placeholder="Distance auto-calculated..."
+                                                className="w-full max-w-xs bg-background/50 border border-white/10 rounded-2xl px-4 py-3 text-sm text-muted cursor-not-allowed outline-none font-bold"
                                             />
                                         </div>
                                         <p className="text-[10px] text-secondary font-bold leading-relaxed">
@@ -1183,12 +1197,12 @@ const ClientStore = () => {
                                             onChange={(e) => setCustomPickupAddress(e.target.value)}
                                         />
                                     </div>
-                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Destination Address / Port</label>
+                                    <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1">Delivery Address *</label>
                                     <div className="relative">
                                         <MapPin className="absolute left-4 top-1/2 -translate-y-1/2 text-accent" size={16} />
                                         <input
                                             type="text"
-                                            placeholder="Enter secure drop location..."
+                                            placeholder="Enter delivery address..."
                                             className="w-full bg-background border border-white/10 rounded-3xl pl-12 pr-4 py-4 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all shadow-inner"
                                             value={destination}
                                             onChange={(e) => setDestination(e.target.value)}
@@ -1199,9 +1213,9 @@ const ClientStore = () => {
                                         <input
                                             type="text"
                                             placeholder="Distance auto-calculated..."
-                                            className="w-full bg-background border border-white/10 rounded-3xl px-4 py-4 text-sm text-accent focus:border-accent/50 outline-none font-black transition-all shadow-inner"
+                                            className="w-full bg-background/50 border border-white/10 rounded-3xl px-4 py-4 text-sm text-muted cursor-not-allowed outline-none font-black transition-all shadow-inner"
                                             value={customDistanceKm}
-                                            onChange={(e) => setCustomDistanceKm(e.target.value)}
+                                            readOnly
                                         />
                                     </div>
                                 </>
@@ -1209,7 +1223,7 @@ const ClientStore = () => {
                             <CustomDatePicker
                                 label="Order placement date"
                                 selectedDate={orderPlacementDate}
-                                onChange={(d) => setOrderPlacementDate(d)}
+                                disabled={true}
                             />
                             <div className="space-y-2">
                                 <label className="text-[10px] font-black text-muted uppercase tracking-widest ml-1 flex items-center gap-2">
@@ -1408,344 +1422,344 @@ const ClientStore = () => {
                         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                         className="fixed inset-y-0 right-0 w-full sm:max-w-[450px] bg-sidebar border-l border-white/5 z-[101] flex flex-col shadow-[0_0_100px_rgba(0,0,0,0.8)] h-[100dvh] max-h-[100dvh] overflow-hidden"
                     >
-                            <div className="p-6 sm:p-8 border-b border-white/5 flex items-center justify-between shrink-0 bg-gradient-to-br from-white/[0.02] to-transparent">
-                                <div className="space-y-1">
-                                    <h3 className="text-xl font-extrabold flex items-center gap-3 text-white">
-                                        <ShoppingCart size={22} className="text-accent" />{' '}
-                                        {isRetailPersonal ? (
-                                            <>Create <span className="text-accent">order</span></>
-                                        ) : (
-                                            <>Checkout <span className="text-accent">Manifest</span></>
-                                        )}
-                                    </h3>
-                                    <p className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">
-                                        {isRetailPersonal ? 'Review cart & vendor, then place order' : 'Institutional Procurement'}
-                                    </p>
-                                </div>
-                                <button onClick={() => setIsCartOpen(false)} className="w-12 h-12 flex items-center justify-center hover:bg-white/5 rounded-2xl text-muted transition-all border border-transparent hover:border-white/10 hover:text-white">
-                                    <X size={24} />
-                                </button>
+                        <div className="p-6 sm:p-8 border-b border-white/5 flex items-center justify-between shrink-0 bg-gradient-to-br from-white/[0.02] to-transparent">
+                            <div className="space-y-1">
+                                <h3 className="text-xl font-extrabold flex items-center gap-3 text-white">
+                                    <ShoppingCart size={22} className="text-accent" />{' '}
+                                    {isRetailPersonal ? (
+                                        <>Create <span className="text-accent">order</span></>
+                                    ) : (
+                                        <>Checkout <span className="text-accent">Manifest</span></>
+                                    )}
+                                </h3>
+                                <p className="text-[9px] font-black text-muted uppercase tracking-[0.3em]">
+                                    {isRetailPersonal ? 'Review cart & vendor, then place order' : 'Institutional Procurement'}
+                                </p>
                             </div>
+                            <button onClick={() => setIsCartOpen(false)} className="w-12 h-12 flex items-center justify-center hover:bg-white/5 rounded-2xl text-muted transition-all border border-transparent hover:border-white/10 hover:text-white">
+                                <X size={24} />
+                            </button>
+                        </div>
 
-                            {/* Single scroll region: cart lines + checkout controls (footer was stealing flex space and clipping items) */}
-                            <div className="flex-1 min-h-0 max-h-[calc(100vh-120px)] overflow-y-auto overscroll-contain p-5 sm:p-8 pb-36 space-y-6 custom-scrollbar bg-[radial-gradient(circle_at_top_right,rgba(200,169,106,0.03),transparent)] border-t border-transparent">
-                                {cart.length > 0 && checkoutVendorOptions.length > 0 && (
-                                    <div className="p-4 rounded-2xl border border-accent/25 bg-accent/[0.06] space-y-3 shrink-0">
-                                        <div className="flex items-center gap-2">
-                                            <Store size={18} className="text-accent shrink-0" />
-                                            <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em]">
-                                                {isRetailPersonal ? 'Vendor for this order' : 'Fulfilment store — confirm on this screen'}
-                                            </p>
-                                        </div>
-                                        {(cartVendorIds.length > 1 || cartStoreKeys.length > 1) ? (
-                                            <p className="text-[10px] text-warning font-bold leading-relaxed">
-                                                Your cart mixes multiple stores. Choose which vendor fulfils this order before you continue.
-                                            </p>
-                                        ) : (
-                                            <p className="text-[10px] text-muted font-bold leading-relaxed">
-                                                {isRetailPersonal
-                                                    ? 'Pick the partner you want to fulfil this order, or leave as default to match your catalogue store.'
-                                                    : 'Adjust only if your team assigns a different fulfilment partner.'}
-                                            </p>
-                                        )}
-                                        <label className="text-[9px] font-black text-muted uppercase tracking-widest block">Vendor / store</label>
-                                        <select
-                                            value={checkoutVendorId}
-                                            onChange={(e) => setCheckoutVendorId(e.target.value)}
-                                            className="w-full bg-background border border-white/15 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold"
-                                        >
-                                            <option value="">
-                                                {(cartVendorIds.length > 1 || cartStoreKeys.length > 1) ? 'Choose vendor for this order…' : (isRetailPersonal ? 'Use catalogue store (default)' : 'Platform assigns best partner (optional)')}
-                                            </option>
-                                            {checkoutVendorOptions.map((v) => (
-                                                <option key={v.id} value={String(v.id)}>{v.name || 'Partner'}{v.category ? ` — ${v.category}` : ''}</option>
-                                            ))}
-                                        </select>
+                        {/* Single scroll region: cart lines + checkout controls (footer was stealing flex space and clipping items) */}
+                        <div className="flex-1 min-h-0 max-h-[calc(100vh-120px)] overflow-y-auto overscroll-contain p-5 sm:p-8 pb-36 space-y-6 custom-scrollbar bg-[radial-gradient(circle_at_top_right,rgba(200,169,106,0.03),transparent)] border-t border-transparent">
+                            {cart.length > 0 && checkoutVendorOptions.length > 0 && (
+                                <div className="p-4 rounded-2xl border border-accent/25 bg-accent/[0.06] space-y-3 shrink-0">
+                                    <div className="flex items-center gap-2">
+                                        <Store size={18} className="text-accent shrink-0" />
+                                        <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em]">
+                                            {isRetailPersonal ? 'Vendor for this order' : 'Fulfilment store — confirm on this screen'}
+                                        </p>
                                     </div>
-                                )}
-                                <div className="space-y-5">
-                                    <p className="text-[10px] font-black text-muted uppercase tracking-widest">Line items</p>
-                                    {cart.length > 0 ? cart.map((item) => (
-                                        <motion.div
-                                            layout
-                                            key={item.id}
-                                            className="p-4 bg-white/[0.03] border border-white/5 rounded-2xl flex items-center justify-between gap-4 group hover:border-accent/20 transition-all shadow-xl"
-                                        >
-                                            <div className="flex items-center gap-4 flex-1 min-w-0">
-                                                <div className="w-12 h-12 bg-background border border-white/5 rounded-xl flex items-center justify-center text-accent/40 group-hover:text-accent shrink-0 transition-colors">
-                                                    <Package size={20} />
+                                    {(cartVendorIds.length > 1 || cartStoreKeys.length > 1) ? (
+                                        <p className="text-[10px] text-warning font-bold leading-relaxed">
+                                            Your cart mixes multiple stores. Choose which vendor fulfils this order before you continue.
+                                        </p>
+                                    ) : (
+                                        <p className="text-[10px] text-muted font-bold leading-relaxed">
+                                            {isRetailPersonal
+                                                ? 'Pick the partner you want to fulfil this order, or leave as default to match your catalogue store.'
+                                                : 'Adjust only if your team assigns a different fulfilment partner.'}
+                                        </p>
+                                    )}
+                                    <label className="text-[9px] font-black text-muted uppercase tracking-widest block">Vendor / store</label>
+                                    <select
+                                        value={checkoutVendorId}
+                                        onChange={(e) => setCheckoutVendorId(e.target.value)}
+                                        className="w-full bg-background border border-white/15 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold"
+                                    >
+                                        <option value="">
+                                            {(cartVendorIds.length > 1 || cartStoreKeys.length > 1) ? 'Choose vendor for this order…' : (isRetailPersonal ? 'Use catalogue store (default)' : 'Platform assigns best partner (optional)')}
+                                        </option>
+                                        {checkoutVendorOptions.map((v) => (
+                                            <option key={v.id} value={String(v.id)}>{v.name || 'Partner'}{v.category ? ` — ${v.category}` : ''}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            )}
+                            <div className="space-y-5">
+                                <p className="text-[10px] font-black text-muted uppercase tracking-widest">Line items</p>
+                                {cart.length > 0 ? cart.map((item) => (
+                                    <motion.div
+                                        layout
+                                        key={item.id}
+                                        className="p-4 bg-white/[0.03] border border-white/5 rounded-2xl flex items-center justify-between gap-4 group hover:border-accent/20 transition-all shadow-xl"
+                                    >
+                                        <div className="flex items-center gap-4 flex-1 min-w-0">
+                                            <div className="w-12 h-12 bg-background border border-white/5 rounded-xl flex items-center justify-center text-accent/40 group-hover:text-accent shrink-0 transition-colors">
+                                                <Package size={20} />
+                                            </div>
+                                            <div className="flex-1 min-w-0">
+                                                <h4 className="text-[13px] font-bold text-white break-words group-hover:text-accent transition-colors">{item.name}</h4>
+                                                <p className="text-[9px] text-muted/60 uppercase font-black tracking-widest truncate mt-0.5">{item.vendorName}</p>
+                                                <div className="flex items-center gap-2 mt-1.5">
+                                                    <span className="text-[11px] font-black text-accent bg-accent/10 px-2 py-0.5 rounded-md self-start font-mono">${item.price.toLocaleString()}</span>
                                                 </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <h4 className="text-[13px] font-bold text-white break-words group-hover:text-accent transition-colors">{item.name}</h4>
-                                                    <p className="text-[9px] text-muted/60 uppercase font-black tracking-widest truncate mt-0.5">{item.vendorName}</p>
-                                                    <div className="flex items-center gap-2 mt-1.5">
-                                                        <span className="text-[11px] font-black text-accent bg-accent/10 px-2 py-0.5 rounded-md self-start font-mono">${item.price.toLocaleString()}</span>
-                                                    </div>
-                                                </div>
                                             </div>
-                                            <div className="flex items-center gap-1.5 bg-background/80 p-1 rounded-xl border border-white/10 shadow-inner shrink-0">
-                                                <button
-                                                    type="button"
-                                                    title="Decrease quantity"
-                                                    onClick={() => {
-                                                        const lineId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
-                                                        removeFromCart(lineId);
-                                                        Toast.fire({
-                                                            icon: 'info',
-                                                            title: Number(item?.qty || 1) <= 1 ? 'Removed from Order' : 'Quantity Decreased',
-                                                        });
-                                                    }}
-                                                    className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/40 cursor-pointer"
-                                                >
-                                                    <Minus size={14} />
-                                                </button>
-                                                <span className="text-[11px] font-black w-6 text-center text-white">{item.qty}</span>
-                                                <button
-                                                    type="button"
-                                                    title="Increase quantity"
-                                                    onClick={() => addToCart(item)}
-                                                    className="w-8 h-8 flex items-center justify-center hover:bg-success/20 hover:text-success rounded-lg transition-all text-muted/40 cursor-pointer"
-                                                >
-                                                    <Plus size={14} />
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    title="Remove item"
-                                                    onClick={() => {
-                                                        const lineId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
-                                                        removeFromCart(lineId, true);
-                                                        Toast.fire({
-                                                            icon: 'info',
-                                                            title: 'Removed from Order',
-                                                        });
-                                                    }}
-                                                    className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/30 ml-0.5 cursor-pointer"
-                                                >
-                                                    <Trash2 size={13} />
-                                                </button>
-                                            </div>
-                                        </motion.div>
-                                    )) : (
-                                        <div className="py-12 flex flex-col items-center justify-center text-center space-y-6">
-                                            <div className="w-24 h-24 bg-white/[0.02] border border-white/5 rounded-full flex items-center justify-center text-muted/20">
-                                                <Package size={48} strokeWidth={1} />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <p className="text-[10px] font-black uppercase tracking-[0.4em] text-muted italic">{isRetailPersonal ? 'Cart is empty' : 'Manifest is Empty'}</p>
-                                                <p className="text-[10px] text-muted/40 uppercase tracking-widest max-w-[180px]">{isRetailPersonal ? 'Add items from the catalogue to create an order.' : 'Requisition required to proceed with logistics portal.'}</p>
-                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 bg-background/80 p-1 rounded-xl border border-white/10 shadow-inner shrink-0">
                                             <button
                                                 type="button"
-                                                onClick={() => setIsCartOpen(false)}
-                                                className="px-6 py-2.5 rounded-xl bg-accent text-black text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all shadow-lg shadow-accent/20 cursor-pointer"
+                                                title="Decrease quantity"
+                                                onClick={() => {
+                                                    const lineId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
+                                                    removeFromCart(lineId);
+                                                    Toast.fire({
+                                                        icon: 'info',
+                                                        title: Number(item?.qty || 1) <= 1 ? 'Removed from Order' : 'Quantity Decreased',
+                                                    });
+                                                }}
+                                                className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/40 cursor-pointer"
                                             >
-                                                Browse Catalogue
+                                                <Minus size={14} />
+                                            </button>
+                                            <span className="text-[11px] font-black w-6 text-center text-white">{item.qty}</span>
+                                            <button
+                                                type="button"
+                                                title="Increase quantity"
+                                                onClick={() => addToCart(item)}
+                                                className="w-8 h-8 flex items-center justify-center hover:bg-success/20 hover:text-success rounded-lg transition-all text-muted/40 cursor-pointer"
+                                            >
+                                                <Plus size={14} />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                title="Remove item"
+                                                onClick={() => {
+                                                    const lineId = item?.id ?? item?.itemId ?? item?._id ?? item?.item_id;
+                                                    removeFromCart(lineId, true);
+                                                    Toast.fire({
+                                                        icon: 'info',
+                                                        title: 'Removed from Order',
+                                                    });
+                                                }}
+                                                className="w-8 h-8 flex items-center justify-center hover:bg-danger/20 hover:text-danger rounded-lg transition-all text-muted/30 ml-0.5 cursor-pointer"
+                                            >
+                                                <Trash2 size={13} />
                                             </button>
                                         </div>
-                                    )}
-                                </div>
-
-                                <div className="border-t border-white/10 pt-6 space-y-6 relative">
-                                    <div className="absolute top-0 right-0 w-40 h-40 bg-accent/5 blur-[80px] -mr-20 -mt-20 pointer-events-none" />
-
-                                    <div className="space-y-4 relative">
-                                        <div className="flex items-center justify-between ml-1">
-                                            <p className="text-[10px] font-black text-accent uppercase tracking-[0.3em]">Logistics Protocol</p>
-                                            <span className="text-[8px] text-muted font-black uppercase tracking-widest">{deliveryMode} Selected</span>
+                                    </motion.div>
+                                )) : (
+                                    <div className="py-12 flex flex-col items-center justify-center text-center space-y-6">
+                                        <div className="w-24 h-24 bg-white/[0.02] border border-white/5 rounded-full flex items-center justify-center text-muted/20">
+                                            <Package size={48} strokeWidth={1} />
                                         </div>
-                                        <div className="grid grid-cols-3 gap-2 text-white">
-                                            {['Road', 'Sea', 'Air'].map(mode => (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-black uppercase tracking-[0.4em] text-muted italic">{isRetailPersonal ? 'Cart is empty' : 'Manifest is Empty'}</p>
+                                            <p className="text-[10px] text-muted/40 uppercase tracking-widest max-w-[180px]">{isRetailPersonal ? 'Add items from the catalogue to create an order.' : 'Requisition required to proceed with logistics portal.'}</p>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCartOpen(false)}
+                                            className="px-6 py-2.5 rounded-xl bg-accent text-black text-[10px] font-black uppercase tracking-widest hover:bg-white transition-all shadow-lg shadow-accent/20 cursor-pointer"
+                                        >
+                                            Browse Catalogue
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="border-t border-white/10 pt-6 space-y-6 relative">
+                                <div className="absolute top-0 right-0 w-40 h-40 bg-accent/5 blur-[80px] -mr-20 -mt-20 pointer-events-none" />
+
+                                <div className="space-y-4 relative">
+                                    <div className="flex items-center justify-between ml-1">
+                                        <p className="text-[10px] font-black text-accent uppercase tracking-[0.3em]">Logistics Protocol</p>
+                                        <span className="text-[8px] text-muted font-black uppercase tracking-widest">{deliveryMode} Selected</span>
+                                    </div>
+                                    <div className="grid grid-cols-3 gap-2 text-white">
+                                        {['Road', 'Sea', 'Air'].map(mode => (
+                                            <button
+                                                key={mode}
+                                                onClick={() => setDeliveryMode(mode)}
+                                                className={`py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all relative overflow-hidden ${deliveryMode === mode
+                                                    ? 'bg-accent text-black border-accent'
+                                                    : 'bg-white/[0.03] border-white/5 text-muted hover:border-white/10 hover:text-white'
+                                                    }`}
+                                            >
+                                                {mode}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                {(deliveryMode === 'Sea' || deliveryMode === 'Air') && (
+                                    <div className="space-y-3">
+                                        <p className="text-[9px] font-black text-muted uppercase tracking-widest">Select {deliveryMode === 'Sea' ? 'boat' : 'airplane'}</p>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {(TRANSPORT_ASSET_OPTIONS[deliveryMode] || []).map((opt) => (
                                                 <button
-                                                    key={mode}
-                                                    onClick={() => setDeliveryMode(mode)}
-                                                    className={`py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest border transition-all relative overflow-hidden ${deliveryMode === mode
-                                                        ? 'bg-accent text-black border-accent'
-                                                        : 'bg-white/[0.03] border-white/5 text-muted hover:border-white/10 hover:text-white'
-                                                        }`}
+                                                    key={opt}
+                                                    type="button"
+                                                    onClick={() => setTransportAsset(opt)}
+                                                    className={`py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${transportAsset === opt ? 'bg-accent/10 border-accent text-accent' : 'bg-white/[0.03] border-white/10 text-muted hover:text-white'}`}
                                                 >
-                                                    {mode}
+                                                    {opt}
                                                 </button>
                                             ))}
                                         </div>
-                                    </div>
-                                    {(deliveryMode === 'Sea' || deliveryMode === 'Air') && (
-                                        <div className="space-y-3">
-                                            <p className="text-[9px] font-black text-muted uppercase tracking-widest">Select {deliveryMode === 'Sea' ? 'boat' : 'airplane'}</p>
-                                            <div className="grid grid-cols-1 gap-2">
-                                                {(TRANSPORT_ASSET_OPTIONS[deliveryMode] || []).map((opt) => (
-                                                    <button
-                                                        key={opt}
-                                                        type="button"
-                                                        onClick={() => setTransportAsset(opt)}
-                                                        className={`py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest border transition-all ${transportAsset === opt ? 'bg-accent/10 border-accent text-accent' : 'bg-white/[0.03] border-white/10 text-muted hover:text-white'}`}
-                                                    >
-                                                        {opt}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[9px] font-black text-accent uppercase tracking-widest ml-1 flex items-center gap-2">
-                                                    <MapPin size={12} /> Island / Location (Optional)
-                                                </label>
-                                                <input
-                                                    type="text"
-                                                    placeholder={deliveryMode === 'Sea' ? 'e.g. Paradise Island Jetty' : 'e.g. Staniel Cay Airstrip'}
-                                                    value={islandLocation}
-                                                    onChange={(e) => setIslandLocation(e.target.value)}
-                                                    className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40"
-                                                />
-                                            </div>
-                                            <div className="space-y-2">
-                                                <label className="text-[9px] font-black text-muted uppercase tracking-widest ml-1">Custom vessel or aircraft (optional)</label>
-                                                <input
-                                                    type="text"
-                                                    placeholder={deliveryMode === 'Sea' ? 'Named boat, tender, or special instructions' : 'Aircraft type, charter, or tail number'}
-                                                    value={transportAssetCustom}
-                                                    onChange={(e) => setTransportAssetCustom(e.target.value)}
-                                                    className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40"
-                                                />
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <CustomDatePicker
-                                        label="Order placement date"
-                                        selectedDate={orderPlacementDate}
-                                        onChange={(d) => setOrderPlacementDate(d)}
-                                    />
-
-
-
-                                    {isRetailPersonal && (
-                                        <div className="p-4 rounded-2xl border border-accent/25 bg-accent/[0.06] space-y-3">
-                                            <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em]">Payment checkout</p>
-                                            <p className="text-[10px] text-muted leading-relaxed">
-                                                Personal orders are auto-charged immediately after order creation. Select funding source and confirm authorization.
-                                            </p>
-                                            <div className="grid w-full min-w-0 gap-2 [grid-template-columns:repeat(auto-fit,minmax(7.25rem,1fr))]">
-                                                {[
-                                                    { id: 'wallet', label: 'Wallet' },
-                                                    { id: 'card', label: 'Card' },
-                                                    { id: 'bank', label: 'Bank' },
-                                                ].map((m) => (
-                                                    <button
-                                                        key={m.id}
-                                                        type="button"
-                                                        onClick={() => setPaymentMethod(m.id)}
-                                                        className={`w-full min-w-0 max-w-full min-h-[44px] box-border inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-normal text-center whitespace-normal leading-snug border transition-all break-words [overflow-wrap:anywhere] ${paymentMethod === m.id ? 'bg-accent text-black border-accent' : 'bg-white/[0.03] border-white/10 text-muted hover:text-white'}`}
-                                                    >
-                                                        {m.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            <label className="flex items-start gap-3 cursor-pointer">
-                                                <input
-                                                    type="checkbox"
-                                                    className="w-4 h-4 rounded border-border accent-accent mt-0.5"
-                                                    checked={authorizeCharge}
-                                                    onChange={(e) => setAuthorizeCharge(e.target.checked)}
-                                                />
-                                                <span className="text-[10px] text-secondary font-bold leading-relaxed">
-                                                    I authorize immediate charge for this order total and understand payment is captured automatically once order is submitted.
-                                                </span>
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black text-accent uppercase tracking-widest ml-1 flex items-center gap-2">
+                                                <MapPin size={12} /> Island / Location (Optional)
                                             </label>
+                                            <input
+                                                type="text"
+                                                placeholder={deliveryMode === 'Sea' ? 'e.g. Paradise Island Jetty' : 'e.g. Staniel Cay Airstrip'}
+                                                value={islandLocation}
+                                                onChange={(e) => setIslandLocation(e.target.value)}
+                                                className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40"
+                                            />
                                         </div>
-                                    )}
+                                        <div className="space-y-2">
+                                            <label className="text-[9px] font-black text-muted uppercase tracking-widest ml-1">Custom vessel or aircraft (optional)</label>
+                                            <input
+                                                type="text"
+                                                placeholder={deliveryMode === 'Sea' ? 'Named boat, tender, or special instructions' : 'Aircraft type, charter, or tail number'}
+                                                value={transportAssetCustom}
+                                                onChange={(e) => setTransportAssetCustom(e.target.value)}
+                                                className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40"
+                                            />
+                                        </div>
+                                    </div>
+                                )}
 
-                                    {/* Delivery address required for catalog orders */}
-                                    <div className="space-y-2">
-                                        <label className="text-[9px] font-black text-accent uppercase tracking-widest ml-1 flex items-center gap-2">
-                                            <MapPin size={12} /> Pickup Location / Origin Address
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Enter pickup/origin address..."
-                                            value={catalogPickupAddress}
-                                            onChange={(e) => setCatalogPickupAddress(e.target.value)}
-                                            className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[9px] font-black text-accent uppercase tracking-widest ml-1 flex items-center gap-2">
-                                            <MapPin size={12} /> Delivery Address *
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Enter delivery address..."
-                                            value={catalogDeliveryAddress}
-                                            onChange={(e) => setCatalogDeliveryAddress(e.target.value)}
-                                            className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40"
-                                        />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <label className="text-[9px] font-black text-accent uppercase tracking-widest ml-1 flex items-center gap-2">
-                                            <MapPin size={12} /> Total Distance (km)
-                                        </label>
-                                        <input
-                                            type="text"
-                                            placeholder="Distance auto-calculated..."
-                                            value={catalogDistanceKm}
-                                            onChange={(e) => setCatalogDistanceKm(e.target.value)}
-                                            className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-accent focus:border-accent/50 outline-none font-black transition-all"
-                                        />
-                                    </div>
+                                <CustomDatePicker
+                                    label="Order placement date"
+                                    selectedDate={orderPlacementDate}
+                                    disabled={true}
+                                />
 
-                                    <div className="space-y-2">
-                                        <label className="text-[9px] font-black text-muted uppercase tracking-widest ml-1 flex items-center gap-2">
-                                            <FileText size={12} /> Delivery instructions (optional)
+
+
+                                {isRetailPersonal && (
+                                    <div className="p-4 rounded-2xl border border-accent/25 bg-accent/[0.06] space-y-3">
+                                        <p className="text-[10px] font-black text-accent uppercase tracking-[0.2em]">Payment checkout</p>
+                                        <p className="text-[10px] text-muted leading-relaxed">
+                                            Personal orders are auto-charged immediately after order creation. Select funding source and confirm authorization.
+                                        </p>
+                                        <div className="grid w-full min-w-0 gap-2 [grid-template-columns:repeat(auto-fit,minmax(7.25rem,1fr))]">
+                                            {[
+                                                { id: 'wallet', label: 'Wallet' },
+                                                { id: 'card', label: 'Card' },
+                                                { id: 'bank', label: 'Bank' },
+                                            ].map((m) => (
+                                                <button
+                                                    key={m.id}
+                                                    type="button"
+                                                    onClick={() => setPaymentMethod(m.id)}
+                                                    className={`w-full min-w-0 max-w-full min-h-[44px] box-border inline-flex items-center justify-center px-4 py-2.5 rounded-xl text-[11px] font-bold uppercase tracking-normal text-center whitespace-normal leading-snug border transition-all break-words [overflow-wrap:anywhere] ${paymentMethod === m.id ? 'bg-accent text-black border-accent' : 'bg-white/[0.03] border-white/10 text-muted hover:text-white'}`}
+                                                >
+                                                    {m.label}
+                                                </button>
+                                            ))}
+                                        </div>
+                                        <label className="flex items-start gap-3 cursor-pointer">
+                                            <input
+                                                type="checkbox"
+                                                className="w-4 h-4 rounded border-border accent-accent mt-0.5"
+                                                checked={authorizeCharge}
+                                                onChange={(e) => setAuthorizeCharge(e.target.checked)}
+                                            />
+                                            <span className="text-[10px] text-secondary font-bold leading-relaxed">
+                                                I authorize immediate charge for this order total and understand payment is captured automatically once order is submitted.
+                                            </span>
                                         </label>
-                                        <textarea
-                                            rows={3}
-                                            placeholder="Gate codes, dock slip, contact on arrival, time windows…"
-                                            value={deliveryInstructions}
-                                            onChange={(e) => setDeliveryInstructions(e.target.value)}
-                                            className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40 resize-none"
-                                        />
                                     </div>
+                                )}
+
+                                {/* Delivery address required for catalog orders */}
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-accent uppercase tracking-widest ml-1 flex items-center gap-2">
+                                        <MapPin size={12} /> Pickup Location / Origin Address
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter pickup/origin address..."
+                                        value={catalogPickupAddress}
+                                        onChange={(e) => setCatalogPickupAddress(e.target.value)}
+                                        className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-accent uppercase tracking-widest ml-1 flex items-center gap-2">
+                                        <MapPin size={12} /> Delivery Address *
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Enter delivery address..."
+                                        value={catalogDeliveryAddress}
+                                        onChange={(e) => setCatalogDeliveryAddress(e.target.value)}
+                                        className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40"
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-accent uppercase tracking-widest ml-1 flex items-center gap-2">
+                                        <MapPin size={12} /> Total Distance (km)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        placeholder="Distance auto-calculated..."
+                                        value={catalogDistanceKm}
+                                        onChange={(e) => setCatalogDistanceKm(e.target.value)}
+                                        className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-accent focus:border-accent/50 outline-none font-black transition-all"
+                                    />
+                                </div>
+
+                                <div className="space-y-2">
+                                    <label className="text-[9px] font-black text-muted uppercase tracking-widest ml-1 flex items-center gap-2">
+                                        <FileText size={12} /> Delivery instructions (optional)
+                                    </label>
+                                    <textarea
+                                        rows={3}
+                                        placeholder="Gate codes, dock slip, contact on arrival, time windows…"
+                                        value={deliveryInstructions}
+                                        onChange={(e) => setDeliveryInstructions(e.target.value)}
+                                        className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-white focus:border-accent/50 outline-none font-bold transition-all placeholder:text-muted/40 resize-none"
+                                    />
                                 </div>
                             </div>
+                        </div>
 
-                            {/* Sticky Drawer Footer */}
-                            <div className="p-6 border-t border-white/5 bg-sidebar shrink-0 space-y-4">
-                                <div className="flex justify-between items-center bg-white/[0.03] p-5 rounded-3xl border border-white/5 shadow-inner">
-                                    <div className="space-y-1">
-                                        <span className="text-muted text-[9px] uppercase font-black tracking-[0.3em] ml-1">{isRetailPersonal ? 'Order total' : 'Manifest Valuation'}</span>
-                                        <div className="flex items-center gap-1.5 text-success font-bold text-[10px] ml-1">
-                                            <Zap size={10} className="fill-success" /> Items ${cartSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                        </div>
-                                        {tierDeliveryFee > 0 && (
-                                            <div className="flex items-center gap-1.5 text-accent font-black text-[10px] mt-1 uppercase tracking-wide ml-1">
-                                                <Truck size={10} /> Delivery ({catalogDistanceKm || '?'} km) ${tierDeliveryFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </div>
-                                        )}
-                                        {transportExtraFee > 0 && (
-                                            <div className="text-[10px] text-warning font-black mt-1 uppercase tracking-wide ml-1">
-                                                + {deliveryMode} fee ${transportExtraFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                            </div>
-                                        )}
+                        {/* Sticky Drawer Footer */}
+                        <div className="p-6 border-t border-white/5 bg-sidebar shrink-0 space-y-4">
+                            <div className="flex justify-between items-center bg-white/[0.03] p-5 rounded-3xl border border-white/5 shadow-inner">
+                                <div className="space-y-1">
+                                    <span className="text-muted text-[9px] uppercase font-black tracking-[0.3em] ml-1">{isRetailPersonal ? 'Order total' : 'Manifest Valuation'}</span>
+                                    <div className="flex items-center gap-1.5 text-success font-bold text-[10px] ml-1">
+                                        <Zap size={10} className="fill-success" /> Items ${cartSubtotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                     </div>
-                                    <span className="text-3xl font-black text-white tracking-tight">${estimatedGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                                </div>
-
-                                <button
-                                    type="button"
-                                    onClick={handleCheckout}
-                                    disabled={isPlacingOrder || cart.length === 0 || !String(catalogDeliveryAddress || '').trim() || (isRetailPersonal && !authorizeCharge)}
-                                    className="w-full py-5 bg-accent text-black rounded-[1.8rem] font-black uppercase tracking-[0.3em] text-[11px] hover:shadow-[0_20px_40px_-10px_rgba(200,169,106,0.4)] transition-all disabled:opacity-20 active:scale-[0.98] flex items-center justify-center gap-4 group"
-                                >
-                                    {isPlacingOrder ? (
-                                        <>
-                                            <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                                            Placing Order...
-                                        </>
-                                    ) : (
-                                        <>
-                                            {isRetailPersonal ? 'Place order & pay' : 'Confirm dispatch'} <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                                        </>
+                                    {tierDeliveryFee > 0 && (
+                                        <div className="flex items-center gap-1.5 text-accent font-black text-[10px] mt-1 uppercase tracking-wide ml-1">
+                                            <Truck size={10} /> Delivery ({catalogDistanceKm || '?'} km) ${tierDeliveryFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </div>
                                     )}
-                                </button>
+                                    {transportExtraFee > 0 && (
+                                        <div className="text-[10px] text-warning font-black mt-1 uppercase tracking-wide ml-1">
+                                            + {deliveryMode} fee ${transportExtraFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                        </div>
+                                    )}
+                                </div>
+                                <span className="text-3xl font-black text-white tracking-tight">${estimatedGrandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
                             </div>
-                        </motion.div>
+
+                            <button
+                                type="button"
+                                onClick={handleCheckout}
+                                disabled={isPlacingOrder || cart.length === 0 || !String(catalogDeliveryAddress || '').trim() || (isRetailPersonal && !authorizeCharge)}
+                                className="w-full py-5 bg-accent text-black rounded-[1.8rem] font-black uppercase tracking-[0.3em] text-[11px] hover:shadow-[0_20px_40px_-10px_rgba(200,169,106,0.4)] transition-all disabled:opacity-20 active:scale-[0.98] flex items-center justify-center gap-4 group"
+                            >
+                                {isPlacingOrder ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                                        Placing Order...
+                                    </>
+                                ) : (
+                                    <>
+                                        {isRetailPersonal ? 'Place order & pay' : 'Confirm dispatch'} <ChevronRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                    </>
+                                )}
+                            </button>
+                        </div>
+                    </motion.div>
                 )}
             </AnimatePresence>
 

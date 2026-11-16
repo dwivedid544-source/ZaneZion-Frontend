@@ -28,7 +28,8 @@ const Dashboard = () => {
     fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs,
     deliveries, projects, dashboardStats, currentUser,
     hasMenuPermission,
-    clients, fetchClients, customerUsers = [], fetchCustomerUsers
+    clients, fetchClients, customerUsers = [], fetchCustomerUsers,
+    chauffeurRequests = [], fetchChauffeurRequests
   } = useData();
   const isSuperAdmin = ['super_admin', 'superadmin', 'super admin'].includes(normalizeRole(currentUser?.role));
   const isB2BClient = normalizeRole(currentUser?.role) === 'client';
@@ -47,13 +48,14 @@ const Dashboard = () => {
         fetchProjects(),
         fetchDashboardStats(revenueFilter),
         fetchDashboardLogs(),
+        ...(fetchChauffeurRequests ? [fetchChauffeurRequests()] : []),
         ...(fetchTickets ? [fetchTickets()] : []),
         ...(fetchClients ? [fetchClients()] : []),
         ...(fetchCustomerUsers ? [fetchCustomerUsers()] : [])
       ]);
     };
     loadDashboard();
-  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs, fetchTickets, fetchClients, fetchCustomerUsers]);
+  }, [fetchOrders, fetchFinance, fetchInventory, fetchStaff, fetchFleet, fetchDeliveries, fetchProjects, fetchDashboardStats, fetchDashboardLogs, fetchTickets, fetchClients, fetchCustomerUsers, fetchChauffeurRequests]);
 
   const navigate = useNavigate();
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -101,6 +103,29 @@ const Dashboard = () => {
     await fetchDashboardStats(option);
   };
 
+  // Dedicated active chauffeur calculation — accurately reflects active requests
+  const activeChauffeursCount = useMemo(() => {
+    const DONE_STATUSES = ['completed', 'delivered', 'cancelled', 'canceled', 'rejected', 'done'];
+    const isDone = (st) => DONE_STATUSES.includes(String(st || '').toLowerCase().replace(/[\s_]+/g, ''));
+
+    if (Array.isArray(chauffeurRequests) && chauffeurRequests.length > 0) {
+      const activeFromRequests = chauffeurRequests.filter(r => !isDone(r.status || r.chauffeur_status));
+      return activeFromRequests.length;
+    }
+
+    if (Array.isArray(orders) && orders.length > 0) {
+      const chauffeurFromOrders = orders.filter(o =>
+        String(o.orderType || o.type || '').toUpperCase() === 'CHAUFFEUR' &&
+        !isDone(o.status)
+      );
+      if (chauffeurFromOrders.length > 0) {
+        return chauffeurFromOrders.length;
+      }
+    }
+
+    return dashboardStats.chauffeurRequests || 0;
+  }, [chauffeurRequests, orders, dashboardStats.chauffeurRequests]);
+
   // --- Dashboard Intelligence Calibration ---
   const stats = useMemo(() => {
     return {
@@ -119,7 +144,7 @@ const Dashboard = () => {
       onlineStaff: dashboardStats.onlineStaff || 0,
       totalUsers: dashboardStats.totalPersonnel || dashboardStats.activeStaff || 0,
       birthdayStaff: [],
-      activeChauffeurs: dashboardStats.chauffeurRequests || 0,
+      activeChauffeurs: activeChauffeursCount,
       activeEvents: dashboardStats.activeEvents || 0,
       openTickets: dashboardStats.openTickets || 0,
       activeClients: dashboardStats.activeClients || 0,
@@ -127,7 +152,7 @@ const Dashboard = () => {
       activeProjects: dashboardStats.activeProjects || 0,
       revenueChartData: dashboardStats.revenueChartData || [],
     };
-  }, [dashboardStats]);
+  }, [dashboardStats, activeChauffeursCount]);
 
   const columns = [
     { header: "Order ID", accessor: "id" },
@@ -267,7 +292,7 @@ const Dashboard = () => {
           { label: isB2BClient ? 'Revenue Flow' : 'Global Revenue flow', value: `$${(stats.relevantRevenue / 1000).toFixed(1)}K`, icon: DollarSign, color: 'text-success', trend: stats.revenueTrend, detail: `${revenueFilter} Settlements`, show: hasMenuPermission('Invoices', 'can_view') || hasMenuPermission('Payments', 'can_view') },
           { label: 'Active Operations', value: stats.openOrders, icon: ShoppingCart, color: 'text-info', trend: stats.ordersTrend, detail: 'Mission Pipeline', show: hasMenuPermission('Orders', 'can_view') },
           { label: isB2BClient ? 'Total Personnel' : 'Global Personnel', value: stats.totalUsers, icon: Users, color: 'text-primary', trend: stats.onlineStaff > 0 ? `${stats.onlineStaff} Online` : 'Active', detail: isB2BClient ? 'Active Team Members' : 'Total HQ Staff', show: hasMenuPermission('Staff Management', 'can_view') || hasMenuPermission('HQ Personnel', 'can_view') },
-          { label: 'Chauffeur Requests', value: stats.activeChauffeurs, icon: Truck, color: 'text-accent', trend: stats.activeChauffeurs > 0 ? 'Active' : 'None', detail: 'Pending Rides', show: hasMenuPermission('Chauffeur', 'can_view') || hasMenuPermission('Chauffeur Protocol', 'can_view') },
+          { label: 'Chauffeur Requests', value: stats.activeChauffeurs, icon: Truck, color: 'text-accent', trend: stats.activeChauffeurs > 0 ? 'Active' : 'None', detail: 'Pending Rides', link: '/dashboard/chauffeur', show: hasMenuPermission('Chauffeur', 'can_view') || hasMenuPermission('Chauffeur Protocol', 'can_view') },
           { label: 'Active Events', value: stats.activeEvents, icon: Calendar, color: 'text-info', trend: stats.activeEvents > 0 ? 'Scheduled' : 'None', detail: 'Concierge Events', show: hasMenuPermission('Events', 'can_view') },
           { label: 'Open Support Cases', value: (supportTickets || []).filter(t => ['open', 'pending', 'new', 'inprogress', 'assigned', 'investigating', 'in_progress'].includes(String(t.status || '').toLowerCase().replace(/[\s_]+/g, ''))).length || stats.openTickets || 0, icon: AlertTriangle, color: 'text-warning', trend: ((supportTickets || []).filter(t => ['open', 'pending', 'new', 'inprogress', 'assigned', 'investigating', 'in_progress'].includes(String(t.status || '').toLowerCase().replace(/[\s_]+/g, ''))).length || stats.openTickets) > 0 ? 'Need Attention' : 'All Clear', detail: 'Support Tickets', link: '/dashboard/support-tickets', show: hasMenuPermission('Support', 'can_view') }
         ].filter(s => s.show || hasAccess).map((stat, idx) => (

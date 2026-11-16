@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import Table from '../../components/Table';
 import Modal from '../../components/Modal';
+import SearchableClientSelect from '../../components/SearchableClientSelect';
 import { Shield, Plus, Search, DollarSign, User, Anchor, Lock, RefreshCw, Filter, CheckCircle2 } from 'lucide-react';
 import { useData } from '../../context/GlobalDataContext';
 import { normalizeRole } from '../../utils/authUtils';
@@ -482,29 +483,21 @@ const LuxuryItems = () => {
                                                 </span>
                                             )}
                                         </label>
-                                        <select
+                                        <SearchableClientSelect
+                                            clients={availableClients}
                                             value={formData.clientId || ''}
-                                            onChange={(e) => {
-                                                const chosenId = e.target.value;
-                                                const chosen = availableClients.find(c => String(c.id) === String(chosenId));
+                                            onChange={(chosen) => {
                                                 setFormData({
                                                     ...formData,
-                                                    clientId: chosenId,
+                                                    clientId: chosen ? chosen.id : '',
                                                     clientName: chosen ? chosen.name : '',
                                                     owner: formData.owner || (chosen ? chosen.contactPerson : ''),
                                                 });
                                             }}
                                             disabled={modalType === 'view'}
-                                            className="w-full bg-background border border-border rounded-lg px-4 py-2.5 text-sm font-bold text-white focus:border-accent outline-none"
+                                            placeholder="-- Type client name or click arrow --"
                                             required
-                                        >
-                                            <option value="">-- Select Client --</option>
-                                            {availableClients.map((c) => (
-                                                <option key={c.id} value={c.id}>
-                                                    {c.name} ({c.type}) {c.email ? `• ${c.email}` : ''}
-                                                </option>
-                                            ))}
-                                        </select>
+                                        />
                                     </div>
                                 )}
 

@@ -12,7 +12,7 @@ const getCurrentUserContext = () => {
     const u = rawUser ? JSON.parse(rawUser) : null;
     return {
       userId: u?.id || null,
-      tenantId: u?.tenantId || null
+      tenantId: u?.tenantId ?? u?.tenant_id ?? u?.company_id ?? u?.companyId ?? null
     };
   } catch (_) {
     return { userId: null, tenantId: null };

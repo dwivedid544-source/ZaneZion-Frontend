@@ -18,6 +18,7 @@ import StatusBadge from '../../components/StatusBadge';
 import CustomDatePicker from '../../components/CustomDatePicker';
 import { normalizeRole } from '../../utils/authUtils';
 import { useChauffeurMissions, useUpdateChauffeurMission } from '../../hooks/api/useChauffeur';
+import { useDeliveries } from '../../hooks/api/useLogistics';
 import { useQueryClient } from '@tanstack/react-query';
 import { notifyStateChanged, setUpdatedChauffeurItem } from '../../utils/stateSyncHelper';
 import api from '../../services/api/setupAxios';
@@ -362,16 +363,27 @@ const EmployeePortal = () => {
         return merged;
     }, [deliveries, allChauffeurOrders, chauffeurRequests, currentUser]);
 
-    const openDeliveryQueue = deliveries.filter((d) => {
+    const openDeliveryQueue = (deliveries || []).filter((d) => {
         const isLogisticsMission = String(d.mission_type || d.missionType || '').toLowerCase() !== 'chauffeur';
         const s = String(d.status || '').toLowerCase().replace(/\s+/g, '_');
-        const isAssignedOrFinished = ['assigned', 'accepted', 'en_route', 'in_transit', 'dispatched', 'delivered', 'completed', 'logistics'].includes(s);
-        const isOpenStatus = ['pending', 'pending_pickup', 'pending_review', 'unassigned', ''].includes(s);
-        const hasAssignedDriver = !!(d.assignedTo || d.assigned_driver || d.driverId || d.driver_id || (typeof d.driver === 'string' && d.driver.trim()));
-        
-        // Business Account Protocol: Orders from Business clients are kept under Account Manager control and NOT visible in open field driver queue
-        const isHeldBusinessOrder = isOrderHeldFromFieldStaff(d, clients);
-        return isLogisticsMission && isOpenStatus && !hasAssignedDriver && !isAssignedOrFinished && !isHeldBusinessOrder;
+        const isAssignedOrFinished = ['assigned', 'accepted', 'en_route', 'in_transit', 'dispatched', 'delivered', 'completed'].includes(s);
+        const isOpenStatus = ['pending', 'pending_pickup', 'pending_review', 'ready_for_delivery', 'unassigned', 'open', 'logistics', ''].includes(s);
+        const hasAssignedDriver = !!(
+            d.assignedTo || 
+            d.assigned_driver || 
+            d.driverId || 
+            d.driver_id || 
+            (typeof d.driver === 'string' && d.driver.trim() && !['unassigned', 'null', 'undefined', 'n/a', 'assign personnel...'].includes(d.driver.trim().toLowerCase()))
+        );
+
+        // Strict tenant isolation: SaaS staff only sees their tenant's open delivery missions
+        const currentTenantId = currentUser?.tenantId ?? currentUser?.company_id ?? currentUser?.companyId ?? currentUser?.tenant_id;
+        const dTenantId = d.tenantId ?? d.tenant_id ?? d.company_id ?? d.companyId;
+        if (currentTenantId && Number(currentTenantId) !== 1) {
+            if (dTenantId != null && Number(dTenantId) !== Number(currentTenantId)) return false;
+        }
+
+        return isLogisticsMission && isOpenStatus && !hasAssignedDriver && !isAssignedOrFinished;
     });
 
     const pendingAssignments = staffAssignments.filter(a => a.status === 'Pending' && !a.assigneeId);

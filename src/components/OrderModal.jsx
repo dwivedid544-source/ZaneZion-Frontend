@@ -1240,8 +1240,8 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 <input
                                                     type="text"
                                                     value={formData.totalDistance}
-                                                    onChange={(e) => setFormData({ ...formData, totalDistance: e.target.value })}
-                                                    className="w-full bg-background border border-border rounded-lg px-4 py-2 text-sm text-accent font-black focus:border-accent outline-none"
+                                                    readOnly
+                                                    className="w-full bg-background/50 border border-border rounded-lg px-4 py-2 text-sm text-accent font-black cursor-not-allowed outline-none shadow-inner select-none"
                                                     disabled={currentModalType === 'view'}
                                                     placeholder={isCalculatingDistance ? "Calculating route distance..." : "Distance auto-calculated..."}
                                                 />

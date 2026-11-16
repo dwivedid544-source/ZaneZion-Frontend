@@ -1699,8 +1699,8 @@ const ClientStore = () => {
                                         type="text"
                                         placeholder="Distance auto-calculated..."
                                         value={catalogDistanceKm}
-                                        onChange={(e) => setCatalogDistanceKm(e.target.value)}
-                                        className="w-full bg-background border border-white/10 rounded-2xl px-4 py-3 text-sm text-accent focus:border-accent/50 outline-none font-black transition-all"
+                                        readOnly
+                                        className="w-full bg-background/50 border border-white/10 rounded-2xl px-4 py-3 text-sm text-accent cursor-not-allowed outline-none font-black transition-all shadow-inner select-none"
                                     />
                                 </div>
 

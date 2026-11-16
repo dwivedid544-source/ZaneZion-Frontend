@@ -925,19 +925,9 @@ const Chauffeur = () => {
                 }
                 if (isAccepted) {
                     return (
-                        <div className="flex items-center gap-1.5">
-                            <span className="text-[10px] font-black text-success uppercase tracking-widest px-2.5 py-1 bg-success/10 border border-success/30 rounded-lg">
-                                Accepted
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => handleRejectBooking(row)}
-                                className="text-[10px] font-black text-rose-400 uppercase tracking-wider bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500 hover:text-white px-2.5 py-1 rounded-lg transition-all"
-                                title="Reject / Cancel Chauffeur Booking"
-                            >
-                                Reject
-                            </button>
-                        </div>
+                        <span className="text-[10px] font-black text-success uppercase tracking-widest px-2.5 py-1 bg-success/10 border border-success/30 rounded-lg">
+                            Accepted
+                        </span>
                     );
                 }
                 return (

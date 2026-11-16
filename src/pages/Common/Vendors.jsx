@@ -47,10 +47,22 @@ const Vendors = () => {
   };
   
   const autoMarketplaceVendors = useMemo(() => {
+    const rawRole = typeof currentUser?.role === 'string'
+      ? currentUser.role
+      : (currentUser?.role?.name || currentUser?.roleName || '');
+    const r = rawRole.toLowerCase().replace(/[-\s]/g, '_');
+    const isSaasRole = r === 'saas_client' || r === 'saas_admin';
+    if (isSaasRole) return [];
     return getAutoSyncedMarketplaceVendors();
-  }, [syncVersion]);
+  }, [syncVersion, currentUser?.role]);
 
-  const rawVendors = realVendors.length > 0 ? realVendors : mockVendors;
+  const rawVendors = realVendors.length > 0 ? realVendors : ((() => {
+    const rawRole = typeof currentUser?.role === 'string'
+      ? currentUser.role
+      : (currentUser?.role?.name || currentUser?.roleName || '');
+    const r = rawRole.toLowerCase().replace(/[-\s]/g, '_');
+    return (r === 'saas_client' || r === 'saas_admin') ? [] : mockVendors;
+  })());
 
   const vendors = useMemo(() => {
     const merged = [...rawVendors];

@@ -174,7 +174,18 @@ const Inventory = () => {
   }, [deletedItemIds]);
 
   // Merge items from server with any bulk imported marketplace items
+  // SaaS clients must NEVER see the hardcoded seed/demo items — they start with a clean slate
+  const _isSaasClientRole = (() => {
+    const rawRole = typeof currentUser?.role === 'string'
+      ? currentUser.role
+      : (currentUser?.role?.name || currentUser?.roleName || '');
+    const r = rawRole.toLowerCase().replace(/[-\s]/g, '_');
+    return r === 'saas_client' || r === 'saas_admin';
+  })();
+
   const localBulkItems = useMemo(() => {
+    // SaaS tenants get an empty list — no cross-tenant seed data
+    if (_isSaasClientRole) return [];
     try {
       const hasKey = localStorage.getItem('bulk_uploaded_marketplace_items') !== null;
       const saved = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
@@ -183,7 +194,7 @@ const Inventory = () => {
     } catch {
       return DEFAULT_MARKETPLACE_TEST_ITEMS.filter(i => !isItemDeleted(i));
     }
-  }, [bulkUploadVersion, isItemDeleted]);
+  }, [bulkUploadVersion, isItemDeleted, _isSaasClientRole]);
 
   const combinedItems = useMemo(() => {
     const list = [...realInventoryItems].filter(i => !isItemDeleted(i));

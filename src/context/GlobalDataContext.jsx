@@ -1398,12 +1398,17 @@ export const GlobalDataProvider = ({ children }) => {
           90,
       }));
       // Server status is source of truth (pending/inactive until super-admin approval).
-      const autoMarketplace = getAutoSyncedMarketplaceVendors();
-      autoMarketplace.forEach((mv) => {
-        if (!mapped.some(v => (v.name || v.companyName || '').toLowerCase() === (mv.name || '').toLowerCase())) {
-          mapped.push(mv);
-        }
-      });
+      // SaaS tenants must NOT have hardcoded seed vendors injected into their vendor state
+      const _rawRole = typeof currentUser?.role === 'string' ? currentUser.role : (currentUser?.role?.name || currentUser?.roleName || '');
+      const _isSaas = _rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_client' || _rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_admin';
+      if (!_isSaas) {
+        const autoMarketplace = getAutoSyncedMarketplaceVendors();
+        autoMarketplace.forEach((mv) => {
+          if (!mapped.some(v => (v.name || v.companyName || '').toLowerCase() === (mv.name || '').toLowerCase())) {
+            mapped.push(mv);
+          }
+        });
+      }
       setVendors(vendorsVisibleInDirectory(mapped, currentUser?.role));
     } catch (e) {
       console.error("Fetch vendors failed", e);
@@ -1425,12 +1430,14 @@ export const GlobalDataProvider = ({ children }) => {
             Math.round((v.rating || 0) * 100)) ||
           90,
       }));
-      const autoMarketplace = getAutoSyncedMarketplaceVendors();
-      autoMarketplace.forEach((mv) => {
-        if (!seed.some(v => (v.name || v.companyName || '').toLowerCase() === (mv.name || '').toLowerCase())) {
-          seed.push(mv);
-        }
-      });
+      if (!_isSaas) {
+        const autoMarketplace = getAutoSyncedMarketplaceVendors();
+        autoMarketplace.forEach((mv) => {
+          if (!seed.some(v => (v.name || v.companyName || '').toLowerCase() === (mv.name || '').toLowerCase())) {
+            seed.push(mv);
+          }
+        });
+      }
       setVendors(vendorsVisibleInDirectory(seed, currentUser?.role));
     }
   }, [currentUser?.role, currentUser?.id]);
@@ -1453,16 +1460,24 @@ export const GlobalDataProvider = ({ children }) => {
     const list = (vendors || []).filter(
       (v) => String(v?.status || "").trim().toLowerCase() === "active",
     );
-    try {
-      const autoStores = getAutoSyncedMarketplaceVendors();
-      autoStores.forEach(s => {
-        if (!list.some(v => (v.name || v.companyName || '').toLowerCase() === s.name.toLowerCase())) {
-          list.push(s);
-        }
-      });
-    } catch {}
+    // SaaS clients must NOT see hardcoded seed/demo vendors in any dropdown
+    const rawRole = typeof currentUser?.role === 'string'
+      ? currentUser.role
+      : (currentUser?.role?.name || currentUser?.roleName || '');
+    const isSaasRole = rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_client'
+      || rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_admin';
+    if (!isSaasRole) {
+      try {
+        const autoStores = getAutoSyncedMarketplaceVendors();
+        autoStores.forEach(s => {
+          if (!list.some(v => (v.name || v.companyName || '').toLowerCase() === s.name.toLowerCase())) {
+            list.push(s);
+          }
+        });
+      } catch {}
+    }
     return list;
-  }, [vendors, bulkDataVersion]);
+  }, [vendors, bulkDataVersion, currentUser?.role]);
 
   const fetchInventory = React.useCallback(async () => {
     let itemsArr = [];

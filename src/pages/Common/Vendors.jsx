@@ -47,10 +47,17 @@ const Vendors = () => {
   };
   
   const autoMarketplaceVendors = useMemo(() => {
+    // SaaS clients must NOT see the global hardcoded marketplace vendor seed data
+    const r = (currentUser?.role || '').toLowerCase().replace(/[-\s]/g, '_');
+    const isSaasRole = r === 'saas_client' || r === 'saas_admin';
+    if (isSaasRole) return [];
     return getAutoSyncedMarketplaceVendors();
-  }, [syncVersion]);
+  }, [syncVersion, currentUser?.role]);
 
-  const rawVendors = realVendors.length > 0 ? realVendors : mockVendors;
+  const rawVendors = realVendors.length > 0 ? realVendors : ((() => {
+    const r = (currentUser?.role || '').toLowerCase().replace(/[-\s]/g, '_');
+    return (r === 'saas_client' || r === 'saas_admin') ? [] : mockVendors;
+  })());
 
   const vendors = useMemo(() => {
     const merged = [...rawVendors];

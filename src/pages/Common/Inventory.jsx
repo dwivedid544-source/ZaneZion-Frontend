@@ -185,16 +185,16 @@ const Inventory = () => {
 
   const localBulkItems = useMemo(() => {
     try {
-      const hasKey = localStorage.getItem('bulk_uploaded_marketplace_items') !== null;
       const saved = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
-      const source = (Array.isArray(saved) && (saved.length > 0 || hasKey))
-        ? saved
-        : (_isSaasClientRole ? [] : DEFAULT_MARKETPLACE_TEST_ITEMS);
-      return source.filter(i => !isItemDeleted(i));
+      const nonSeed = (Array.isArray(saved) ? saved : []).filter(i => {
+        const id = String(i.id || i.itemId || '');
+        return !id.startsWith('bulk-seed-');
+      });
+      return nonSeed.filter(i => !isItemDeleted(i));
     } catch {
-      return _isSaasClientRole ? [] : DEFAULT_MARKETPLACE_TEST_ITEMS.filter(i => !isItemDeleted(i));
+      return [];
     }
-  }, [bulkUploadVersion, isItemDeleted, _isSaasClientRole]);
+  }, [bulkUploadVersion, isItemDeleted]);
 
   const combinedItems = useMemo(() => {
     const list = [...realInventoryItems].filter(i => !isItemDeleted(i));

@@ -1620,15 +1620,16 @@ export const GlobalDataProvider = ({ children }) => {
     if (!isSaasUser) {
       try {
         let savedBulk = [];
-        const hasKey = localStorage.getItem('bulk_uploaded_marketplace_items') !== null;
         try {
           savedBulk = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
         } catch {
           savedBulk = [];
         }
-        if (!Array.isArray(savedBulk) || (!hasKey && savedBulk.length === 0)) {
-          savedBulk = DEFAULT_MARKETPLACE_TEST_ITEMS;
-          localStorage.setItem('bulk_uploaded_marketplace_items', JSON.stringify(DEFAULT_MARKETPLACE_TEST_ITEMS));
+        // Filter out any seed items that start with 'bulk-seed-'
+        if (Array.isArray(savedBulk)) {
+          savedBulk = savedBulk.filter(bItem => !String(bItem.id || bItem.itemId || '').startsWith('bulk-seed-'));
+        } else {
+          savedBulk = [];
         }
 
         // Filter out deleted items from savedBulk

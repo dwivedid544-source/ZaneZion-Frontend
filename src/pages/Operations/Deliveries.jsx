@@ -10,6 +10,7 @@ import {
 import { Link } from 'react-router-dom';
 import Pagination from '../../components/Common/Pagination';
 import { useDeliveries, useCreateDelivery, useUpdateDelivery, useCancelDelivery, useDeleteDelivery, useCreateMission, useStartMission, useSubmitPOD } from '../../hooks/api/useLogistics';
+import { useUsers } from '../../hooks/api/useCRM';
 import { useQueryClient } from '@tanstack/react-query';
 import api from '../../services/api/setupAxios';
 import { notifyStateChanged } from '../../utils/stateSyncHelper';
@@ -22,10 +23,28 @@ import { calculateOSRMRouteDistance } from '../../utils/distanceHelper';
 import { isOrderVisibleToConcierge } from '../../utils/conciergeVisibility';
 
 /** Roles that can be chosen as delivery / field drivers (not only `staff`). */
-function isAssignableDeliveryRole(roleRaw) {
-  const roleName = typeof roleRaw === 'object' && roleRaw !== null ? roleRaw.name : roleRaw;
-  const r = String(roleName || '').toLowerCase().replace(/\s+/g, '_');
-  return ['staff', 'logistics', 'operations', 'operation', 'driver', 'field_staff', 'concierge'].includes(r);
+function isAssignableDeliveryRole(roleRaw, userObj = {}) {
+  const roleName = typeof roleRaw === 'object' && roleRaw !== null
+    ? (roleRaw.name || roleRaw.roleName || roleRaw.role_name || '')
+    : String(roleRaw || userObj.roleName || userObj.role_name || userObj.role || '');
+  const r = String(roleName || '').toLowerCase().replace(/[\s-]+/g, '_');
+
+  // Never assign customers or external client accounts as internal drivers
+  if (['customer', 'individual_client', 'business_client', 'client'].includes(r)) {
+    return false;
+  }
+
+  // Match standard delivery / field operational roles
+  const matched = ['staff', 'logistics', 'operations', 'operation', 'driver', 'field_staff', 'concierge', 'employee', 'courier'].some(
+    allowed => r.includes(allowed)
+  );
+  if (matched) return true;
+
+  // If user has driving / vehicle attributes, allow assignment
+  if (userObj.vehiclePlate || userObj.vehicleType || userObj.hasLicense) return true;
+
+  // Disallow Super Admin and external customers from driver assignments
+  return !['super_admin', 'superadmin', 'customer', 'business_client', 'client'].includes(r);
 }
 
 function displayDeliveryStatus(raw) {
@@ -68,6 +87,51 @@ const Deliveries = () => {
     totalPages: deliveriesData?.data?.totalPages || deliveriesData?.totalPages || 1,
     totalItems: deliveriesData?.data?.total || deliveriesData?.total || deliveries.length
   };
+
+  // Dedicated staff query with strict tenant isolation
+  const { data: usersQueryData } = useUsers(1, 100);
+  const queryUsers = Array.isArray(usersQueryData?.data)
+    ? usersQueryData.data
+    : (Array.isArray(usersQueryData?.data?.users) ? usersQueryData.data.users : (Array.isArray(usersQueryData) ? usersQueryData : []));
+
+  const combinedCandidates = React.useMemo(() => {
+    const list = [
+      ...(Array.isArray(queryUsers) ? queryUsers : []),
+      ...(Array.isArray(users) ? users : []),
+      ...(Array.isArray(customerUsers) ? customerUsers : [])
+    ];
+    const seen = new Set();
+    return list.filter(u => {
+      if (!u || (!u.id && !u.name)) return false;
+      const key = u.id || u.name;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [queryUsers, users, customerUsers]);
+
+  // Strict tenant isolation: SaaS client only sees staff of their tenant; HQ sees HQ staff
+  const tenantStaff = React.useMemo(() => {
+    const currentTenantId = currentUser?.tenantId ?? currentUser?.company_id ?? currentUser?.companyId ?? currentUser?.tenant_id;
+    return combinedCandidates.filter(u => {
+      const uTenantId = u.tenantId ?? u.tenant_id ?? u.company_id ?? u.companyId;
+      if (currentTenantId && Number(currentTenantId) !== 1) {
+        return uTenantId == null || Number(uTenantId) === Number(currentTenantId);
+      }
+      if (currentTenantId && Number(currentTenantId) === 1) {
+        return uTenantId == null || Number(uTenantId) === 1;
+      }
+      return true;
+    });
+  }, [combinedCandidates, currentUser]);
+
+  const assignableStaff = React.useMemo(() => {
+    return tenantStaff.filter(u => isAssignableDeliveryRole(u.role, u));
+  }, [tenantStaff]);
+
+  const displayStaffList = React.useMemo(() => {
+    return assignableStaff.length > 0 ? assignableStaff : tenantStaff;
+  }, [assignableStaff, tenantStaff]);
 
   const createDeliveryMutation = useCreateDelivery();
   const updateDeliveryMutation = useUpdateDelivery();
@@ -1752,22 +1816,27 @@ const Deliveries = () => {
                     <label className="text-[10px] font-bold text-muted uppercase">Staff / Delivery Personnel</label>
                     <select
                       className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold appearance-none cursor-pointer"
-                      value={formData.driver}
+                      value={formData.driver || ''}
                       onChange={(e) => {
                         const name = e.target.value;
-                        const user = (users || []).find((u) => u.name === name);
+                        const user = displayStaffList.find((u) => u.name === name || String(u.id) === String(name));
                         setFormData({
                           ...formData,
-                          driver: name,
+                          driver: user ? user.name : name,
                           assigned_driver: user?.id != null ? user.id : null,
                         });
                       }}
                       disabled={modalType === 'view'}
                     >
                       <option value="">Assign Personnel...</option>
-                      {(users || []).filter((u) => isAssignableDeliveryRole(u.role)).map((u) => (
-                        <option key={u.id} value={u.name}>{u.name} ({String(u.role?.name || u.role || '')})</option>
-                      ))}
+                      {displayStaffList.map((u) => {
+                        const roleLabel = typeof u.role === 'object' ? (u.role?.name || 'Staff') : (u.role || u.roleName || 'Staff');
+                        return (
+                          <option key={u.id} value={u.name}>
+                            {u.name} ({roleLabel})
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                   <div className="space-y-1">

@@ -3098,8 +3098,8 @@ export const GlobalDataProvider = ({ children }) => {
 
     try {
       const role = normalizeRole(currentUser?.role);
-      const canAccessUsers = ["superadmin", "admin", "saas_client", "operations"].includes(role);
-      const canAccessRoles = ["superadmin", "admin", "saas_client"].includes(role);
+      const canAccessUsers = ["superadmin", "admin", "saas_client", "operations", "logistics"].includes(role);
+      const canAccessRoles = ["superadmin", "admin", "saas_client", "logistics"].includes(role);
 
       // Fetch primary dashboard essentials in background
       Promise.allSettled([

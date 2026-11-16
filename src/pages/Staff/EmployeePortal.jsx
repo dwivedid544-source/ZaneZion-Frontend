@@ -327,16 +327,36 @@ const EmployeePortal = () => {
 
         const merged = [...fromChauffeur];
         fromDeliveries.forEach(dItem => {
-            const dId = String(dItem.db_id || dItem.order_id_raw || dItem.id || '').replace(/\D/g, '');
-            const exists = merged.some(m => {
-                const mId = String(m.db_id || m.rawId || m.id || '').replace(/\D/g, '');
-                return (mId && dId && mId === dId) ||
-                       String(m.orderId) === String(dItem.orderId) ||
-                       String(m.orderNumber) === String(dItem.orderId) ||
-                       String(m.id) === String(dItem.id);
+            const dOrderId = String(dItem.order_id_raw || dItem.order?.id || '').replace(/\D/g, '');
+            const dOrderNum = String(dItem.orderNumber || dItem.orderId || dItem.order?.orderNumber || '').replace(/\D/g, '');
+            const dText = String(dItem.orderNumber || dItem.orderId || dItem.order?.orderNumber || '').trim().toLowerCase();
+
+            const existingIdx = merged.findIndex(m => {
+                const mOrderId = String(m.order_id_raw || m.rawId || m.db_id || m.id || '').replace(/\D/g, '');
+                const mOrderNum = String(m.orderNumber || m.orderId || '').replace(/\D/g, '');
+                const mText = String(m.orderNumber || m.orderId || '').trim().toLowerCase();
+
+                const isIdMatch = (dOrderId && mOrderId && (dOrderId === mOrderId || dOrderId.endsWith(mOrderId) || mOrderId.endsWith(dOrderId)));
+                const isNumMatch = (dOrderNum && mOrderNum && (dOrderNum === mOrderNum || dOrderNum.endsWith(mOrderNum) || mOrderNum.endsWith(dOrderNum)));
+                const isTextMatch = (dText && mText && dText === mText);
+                const isDirectMatch = String(m.id) === String(dItem.id);
+
+                return isIdMatch || isNumMatch || isTextMatch || isDirectMatch;
             });
-            if (!exists) {
+
+            if (existingIdx === -1) {
                 merged.push(dItem);
+            } else {
+                // Merge in any delivery specifics if missing on chauffeur order
+                merged[existingIdx] = {
+                    ...dItem,
+                    ...merged[existingIdx],
+                    vehicle: merged[existingIdx].vehicle || dItem.vehicle || dItem.vehicleRef,
+                    vehicleRef: merged[existingIdx].vehicleRef || dItem.vehicleRef || dItem.vehicle,
+                    plateNumber: merged[existingIdx].plateNumber || dItem.plateNumber || dItem.vehicleRef || dItem.vehicle,
+                    driver: merged[existingIdx].driver || dItem.driver || dItem.driverName,
+                    driverName: merged[existingIdx].driverName || dItem.driverName || dItem.driver
+                };
             }
         });
         return merged;

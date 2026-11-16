@@ -1950,7 +1950,7 @@ export const GlobalDataProvider = ({ children }) => {
           const transportMode = extractTransportModeFromOrder(d);
           // Support both real DB (orderId) and mock (order_id)
           const rawOrderId = d.orderId ?? d.order_id ?? null;
-          const orderRef = rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null;
+          const orderRef = d.order?.orderNumber || (rawOrderId ? `ORD-${String(rawOrderId).padStart(3, "0")}` : null);
           const rawClientId = d.clientId ?? d.client_id ?? d.customer_id ?? null;
           const rawMissionType = d.missionType ?? d.mission_type ?? null;
           const rawDriverName = d.driverName ?? d.driver_name ?? (d.assignee ? `${d.assignee.firstName || ''} ${d.assignee.lastName || ''}`.trim() : null) ?? d.driver ?? null;
@@ -2022,7 +2022,7 @@ export const GlobalDataProvider = ({ children }) => {
           ? resChauffeur.data.data
           : (resChauffeur.data.data?.orders || []);
 
-        combined.push(...chauffeurOrders.map((order) => {
+        chauffeurOrders.forEach((order) => {
           let meta = order.metadata;
           if (typeof meta === 'string') {
             try { meta = JSON.parse(meta); } catch { meta = {}; }
@@ -2115,10 +2115,11 @@ export const GlobalDataProvider = ({ children }) => {
             120
           ) || 120;
 
-          return {
+          const chauffeurObj = {
             id: `CH-ORD-${String(order.id).padStart(3, "0")}`,
             db_id: order.id,
             orderId: order.orderNumber || `ORD-${String(order.id).padStart(3, "0")}`,
+            orderNumber: order.orderNumber || `ORD-${String(order.id).padStart(3, "0")}`,
             order_id_raw: order.id,
             company_id: compId,
             companyId: compId,
@@ -2139,6 +2140,7 @@ export const GlobalDataProvider = ({ children }) => {
             package_details: JSON.stringify(detail),
             order_instructions: detail.instructions || null,
             status: order.status,
+            chauffeur_status: order.status,
             driverId: resolvedDriverId,
             driver_user_id: resolvedDriverId,
             driver: resolvedDriverName,
@@ -2176,7 +2178,41 @@ export const GlobalDataProvider = ({ children }) => {
             payout_ready_at: (order.status === 'Delivered' || order.status === 'Completed' || order.status === 'completed') ? new Date(new Date(order.updatedAt || Date.now()).getTime() + 48 * 60 * 60 * 1000).toISOString() : null,
             remarks: JSON.stringify(detail)
           };
-        }));
+
+          // Find if this order is already in combined (from deliveries table)
+          const existingIdx = combined.findIndex(ex => {
+            const exRawId = String(ex.order_id_raw || '').trim();
+            const exOrdNum = String(ex.orderId || ex.orderNumber || '').trim().toLowerCase();
+            const ordNum = String(order.orderNumber || '').trim().toLowerCase();
+            const ordIdStr = String(order.id).trim();
+            return (exRawId && ordIdStr && exRawId === ordIdStr) ||
+                   (ordNum && exOrdNum && (ordNum === exOrdNum || exOrdNum.endsWith(ordIdStr) || ordNum.endsWith(exRawId)));
+          });
+
+          if (existingIdx !== -1) {
+            // Deduplicate: merge onto existing entry without duplicating
+            combined[existingIdx] = {
+              ...chauffeurObj,
+              ...combined[existingIdx],
+              status: order.status || combined[existingIdx].status,
+              chauffeur_status: order.status || combined[existingIdx].chauffeur_status,
+              orderId: order.orderNumber || combined[existingIdx].orderId,
+              orderNumber: order.orderNumber || combined[existingIdx].orderNumber,
+              order_id_raw: order.id,
+              driverName: resolvedDriverName || combined[existingIdx].driverName,
+              driver: resolvedDriverName || combined[existingIdx].driver,
+              driverId: resolvedDriverId || combined[existingIdx].driverId,
+              driver_user_id: resolvedDriverId || combined[existingIdx].driver_user_id,
+              vehicle: resolvedVehicle || combined[existingIdx].vehicle,
+              vehicleId: resolvedVehicle || combined[existingIdx].vehicleId,
+              plateNumber: resolvedVehicle || combined[existingIdx].plateNumber,
+              pickupLocation: resolvedPickup || combined[existingIdx].pickupLocation,
+              dropLocation: resolvedDrop || combined[existingIdx].dropLocation
+            };
+          } else {
+            combined.push(chauffeurObj);
+          }
+        });
       }
 
       setDeliveries(combined);

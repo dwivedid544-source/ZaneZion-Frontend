@@ -140,7 +140,7 @@ const Inventory = () => {
     return merged;
   }, [clients]);
 
-  const { data: itemsData, isLoading, error } = useItems(page, 10, searchTerm);
+  const { data: itemsData, isLoading, error } = useItems(page, 50, searchTerm);
   const realInventoryItems = Array.isArray(itemsData) ? itemsData : (itemsData?.items || itemsData?.data || []);
 
   const [bulkUploadVersion, setBulkUploadVersion] = useState(0);
@@ -184,15 +184,15 @@ const Inventory = () => {
   })();
 
   const localBulkItems = useMemo(() => {
-    // SaaS tenants get an empty list — no cross-tenant seed data
-    if (_isSaasClientRole) return [];
     try {
       const hasKey = localStorage.getItem('bulk_uploaded_marketplace_items') !== null;
       const saved = JSON.parse(localStorage.getItem('bulk_uploaded_marketplace_items') || '[]');
-      const source = (Array.isArray(saved) && (saved.length > 0 || hasKey)) ? saved : DEFAULT_MARKETPLACE_TEST_ITEMS;
+      const source = (Array.isArray(saved) && (saved.length > 0 || hasKey))
+        ? saved
+        : (_isSaasClientRole ? [] : DEFAULT_MARKETPLACE_TEST_ITEMS);
       return source.filter(i => !isItemDeleted(i));
     } catch {
-      return DEFAULT_MARKETPLACE_TEST_ITEMS.filter(i => !isItemDeleted(i));
+      return _isSaasClientRole ? [] : DEFAULT_MARKETPLACE_TEST_ITEMS.filter(i => !isItemDeleted(i));
     }
   }, [bulkUploadVersion, isItemDeleted, _isSaasClientRole]);
 
@@ -1500,6 +1500,15 @@ Artisan Italian Espresso Beans,Maxwell's Supermarket,Pantry,12.50,30,bags,MX-COF
                     </div>
                   ) : null}
                 />
+                {meta?.totalPages > 1 && (
+                  <div className="mt-6 border-t border-white/5 pt-6">
+                    <Pagination
+                      currentPage={page}
+                      totalPages={meta.totalPages}
+                      onPageChange={setPage}
+                    />
+                  </div>
+                )}
               </>
             )}
           </div>

@@ -23,13 +23,24 @@ const getCurrentUserContext = () => {
 
 export const useOrders = (page = 1, limit = 10, search = '', viewerRole = '') => {
   const { userId, tenantId } = getCurrentUserContext();
+  const isAdminViewer = ['admin', 'super_admin', 'superadmin'].includes(String(viewerRole).toLowerCase());
   return useQuery({
     queryKey: ['orders', userId, tenantId, page, limit, search, viewerRole],
     queryFn: async () => {
-      const response = await api.get('/orders', {
-        params: { page, limit, search, viewerRole }
-      });
-      return response.data;
+      try {
+        const response = await api.get('/orders', {
+          params: { page, limit, search, viewerRole, ...(isAdminViewer ? { allTenants: 'true' } : {}) }
+        });
+        return response.data;
+      } catch (err) {
+        if (err.response?.status === 500 && isAdminViewer) {
+          const fallback = await api.get('/orders', {
+            params: { page, limit, search, viewerRole, allTenants: 'true' }
+          });
+          return fallback.data;
+        }
+        throw err;
+      }
     },
     // Auto-refetch every 10 seconds so status changes from any portal reflect live
     refetchInterval: 10000,

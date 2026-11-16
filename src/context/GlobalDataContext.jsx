@@ -1453,16 +1453,24 @@ export const GlobalDataProvider = ({ children }) => {
     const list = (vendors || []).filter(
       (v) => String(v?.status || "").trim().toLowerCase() === "active",
     );
-    try {
-      const autoStores = getAutoSyncedMarketplaceVendors();
-      autoStores.forEach(s => {
-        if (!list.some(v => (v.name || v.companyName || '').toLowerCase() === s.name.toLowerCase())) {
-          list.push(s);
-        }
-      });
-    } catch {}
+    // SaaS clients must NOT see hardcoded seed/demo vendors in any dropdown
+    const rawRole = typeof currentUser?.role === 'string'
+      ? currentUser.role
+      : (currentUser?.role?.name || currentUser?.roleName || '');
+    const isSaasRole = rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_client'
+      || rawRole.toLowerCase().replace(/[-\s]/g, '_') === 'saas_admin';
+    if (!isSaasRole) {
+      try {
+        const autoStores = getAutoSyncedMarketplaceVendors();
+        autoStores.forEach(s => {
+          if (!list.some(v => (v.name || v.companyName || '').toLowerCase() === s.name.toLowerCase())) {
+            list.push(s);
+          }
+        });
+      } catch {}
+    }
     return list;
-  }, [vendors, bulkDataVersion]);
+  }, [vendors, bulkDataVersion, currentUser?.role]);
 
   const fetchInventory = React.useCallback(async () => {
     let itemsArr = [];

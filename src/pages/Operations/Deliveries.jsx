@@ -663,10 +663,26 @@ const Deliveries = () => {
 
   const logisticsOnlyDeliveries = deliveries.filter((d) => {
     const isNotChauffeur = String(d.mission_type || '').toLowerCase() !== 'chauffeur';
+    if (!isNotChauffeur) return false;
+
     if (portalRole === 'concierge') {
-      return isNotChauffeur && isOrderVisibleToConcierge(d, clients);
+      return isOrderVisibleToConcierge(d, clients);
     }
-    return isNotChauffeur;
+
+    // Strict multi-tenant isolation: Super Admin sees all; HQ Admin/Staff strictly sees Tenant 1; SaaS client strictly sees their tenant
+    const isSuperAdmin = ['super_admin', 'superadmin'].includes(portalRole);
+    if (!isSuperAdmin) {
+      const myTenantId = currentUser?.tenantId ?? currentUser?.company_id ?? currentUser?.companyId ?? currentUser?.tenant_id;
+      if (myTenantId && Number(myTenantId) !== 1) {
+        const dTenant = d.tenantId ?? d.tenant_id ?? d.companyId ?? d.company_id;
+        return dTenant == null || Number(dTenant) === Number(myTenantId);
+      } else if (myTenantId && Number(myTenantId) === 1) {
+        const dTenant = d.tenantId ?? d.tenant_id ?? d.companyId ?? d.company_id;
+        return dTenant == null || Number(dTenant) === 1;
+      }
+    }
+
+    return true;
   });
 
   const currentItems = logisticsOnlyDeliveries; // Pagination is server-side now

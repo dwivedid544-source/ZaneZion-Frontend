@@ -370,6 +370,16 @@ const Inventory = () => {
     );
     if (isCustomAdHoc) return false;
 
+    // Dynamic Multi-Tenant Isolation: Each user strictly views inventory belonging to their own tenant
+    const myTenantId = currentUser?.tenantId ?? currentUser?.company_id ?? currentUser?.companyId ?? currentUser?.tenant_id;
+    const isSuperAdmin = ['super_admin', 'superadmin'].includes(userRoleNorm);
+    if (!isSuperAdmin && myTenantId != null) {
+      const itemTenantId = i.tenantId ?? i.tenant_id ?? i.companyId ?? i.company_id;
+      if (itemTenantId != null && Number(itemTenantId) !== Number(myTenantId)) {
+        return false;
+      }
+    }
+
     if (isCustomer || isB2BClient) {
       // Customer / Business Client sees only their own company's assets in Warehouse Ledger
       const matchesClientId = myClient && (String(i.clientId) === String(myClient.id));

@@ -96,7 +96,7 @@ const Users = () => {
     }
   };
 
-  const { leaveRequests, updateLeaveRequest, staffAssignments, addStaffAssignment, updateAssignment, fetchStaff, reviewStaff, currentUser, payHistory, fetchPayHistory, clients, fetchClients, subscriptionRequests, updateSubscriptionRequest, hasMenuPermission, cancelPersonalMembership, roles } = useData();
+  const { leaveRequests, updateLeaveRequest, staffAssignments, addStaffAssignment, updateAssignment, fetchStaff, reviewStaff, currentUser, payHistory, fetchPayHistory, clients, fetchClients, subscriptionRequests, updateSubscriptionRequest, hasMenuPermission, cancelPersonalMembership, roles, fetchSupportingDocs } = useData();
   const getRoleFromStorage = () => {
     try {
       const saved = localStorage.getItem('user');
@@ -160,6 +160,7 @@ const Users = () => {
       } else {
         if (['availability', 'leave', 'documents', 'missions', 'timeLogs'].includes(activeTab)) {
           await fetchStaff();
+          if (fetchSupportingDocs) fetchSupportingDocs();
         }
       }
       if (fetchPayHistory) fetchPayHistory();
@@ -1284,10 +1285,11 @@ const Users = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border ${asg.status === 'Completed' ? 'bg-success/20 border-success/30 text-success' :
-                        asg.status === 'In Progress' ? 'bg-info/20 border-info/30 text-info' :
-                          'bg-warning/20 border-warning/30 text-warning'
-                        }`}>
+                      <span className={`px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest border ${
+                        String(asg.status || '').toLowerCase() === 'completed' ? 'bg-success/20 border-success/30 text-success' :
+                        ['in progress', 'in_progress', 'en route', 'en_route'].includes(String(asg.status || '').toLowerCase()) ? 'bg-info/20 border-info/30 text-info' :
+                        'bg-warning/20 border-warning/30 text-warning'
+                      }`}>
                         {asg.status}
                       </span>
                     </div>

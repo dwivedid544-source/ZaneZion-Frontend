@@ -219,11 +219,27 @@ const EmployeePortal = () => {
         return Boolean(matchId || matchName);
     };
 
-    // Filter assignments for the current user - prioritize ID
-    const myAssignments = staffAssignments.filter(a => 
-        (a.assigneeId && String(a.assigneeId) === String(currentUser?.id)) || 
-        (a.assignee === currentUser?.name)
-    );
+    // Filter assignments for the current user - prioritize ID and robust name matching
+    const myAssignments = staffAssignments.filter(a => {
+        const cId = String(currentUser?.id || '');
+        const cEmpId = String(currentUser?.employeeId || currentUser?.employee_id || '');
+        const asgId = String(a.assigneeId || '');
+        const asgEmpId = String(a.employeeId || '');
+        const matchId = (asgId && (asgId === cId || asgId === cEmpId)) || (asgEmpId && (asgEmpId === cId || asgEmpId === cEmpId));
+
+        const cNames = [
+            currentUser?.name,
+            currentUser?.fullName,
+            currentUser?.full_name,
+            currentUser?.username,
+            currentUser?.email
+        ].filter(Boolean).map(n => String(n).trim().toLowerCase());
+
+        const asgName = String(a.assignee || '').trim().toLowerCase();
+        const matchName = asgName && cNames.some(cn => cn === asgName || asgName.includes(cn) || cn.includes(asgName));
+
+        return Boolean(matchId || matchName);
+    });
 
     // Add real deliveries assigned to this driver
     const myDeliveries = deliveries.filter(d => {
@@ -386,7 +402,11 @@ const EmployeePortal = () => {
         return isLogisticsMission && isOpenStatus && !hasAssignedDriver && !isAssignedOrFinished;
     });
 
-    const pendingAssignments = staffAssignments.filter(a => a.status === 'Pending' && !a.assigneeId);
+    const pendingAssignments = staffAssignments.filter(a => 
+        String(a.status || '').toLowerCase() === 'pending' && 
+        !a.assigneeId && 
+        (!a.assignee || a.assignee === 'System' || a.assignee === 'Unassigned')
+    );
 
     const isMatchingUserLeave = React.useCallback((r) => {
         if (!currentUser || !r) return false;
@@ -1317,10 +1337,10 @@ const EmployeePortal = () => {
                                 <ClipboardList size={20} className="text-accent" /> My Active Tasks
                             </h3>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {filteredMyAssignments.filter(a => a.status !== 'Completed').map(asg => (
+                                {filteredMyAssignments.filter(a => String(a.status || '').toLowerCase() !== 'completed').map(asg => (
                                     <TaskCard key={asg.id} asg={asg} onAction={handleStatusChange} />
                                 ))}
-                                {filteredMyAssignments.filter(a => a.status !== 'Completed').length === 0 && (
+                                {filteredMyAssignments.filter(a => String(a.status || '').toLowerCase() !== 'completed').length === 0 && (
                                     <p className="col-span-2 text-center py-6 text-secondary italic border border-dashed border-border rounded-2xl">No active operational tasks assigned.</p>
                                 )}
                             </div>

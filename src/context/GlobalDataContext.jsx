@@ -2783,8 +2783,9 @@ export const GlobalDataProvider = ({ children }) => {
           source: 'mission',
           task: m.metadata?.task || m.missionType,
           location: m.metadata?.location || m.delivery?.dropLocation || m.delivery?.pickupLocation || (m.delivery?.client?.address ? [m.delivery.client.address, m.delivery.client.city, m.delivery.client.country].filter(Boolean).join(', ') : '') || 'N/A',
-          assignee: m.assignee ? `${m.assignee.firstName} ${m.assignee.lastName}` : 'System',
-          assigneeId: m.assignedEmployeeId,
+          assignee: m.assignee ? [m.assignee.firstName, m.assignee.lastName].filter(Boolean).join(' ').trim() : 'System',
+          assigneeId: m.assignee?.userId || m.assignedEmployeeId,
+          employeeId: m.assignedEmployeeId,
           priority: m.metadata?.priority || 'Normal',
           status: m.status
         }));

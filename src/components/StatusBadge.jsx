@@ -54,7 +54,11 @@ const StatusBadge = ({ status, className }) => {
       case 'rejected':
       case 'expired':
       case 'overdue':
+      case 'refunded':
         return 'bg-danger/10 text-danger border-danger/20';
+      case 'partially refunded':
+      case 'partially_refunded':
+        return 'bg-amber-500/15 text-amber-400 border-amber-500/30';
       case 'received':
         return 'bg-success/10 text-success border-success/20';
       case 'arrived':

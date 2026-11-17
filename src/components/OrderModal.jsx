@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import Modal from './Modal';
 import { Clock, MapPin, Plus, Trash2, Tag, DollarSign, Package, Printer, CheckCircle, Car, Navigation, User, Users, CheckCircle2, Calendar, Wifi, Coffee, Briefcase, ShieldCheck, ArrowRight } from 'lucide-react';
 import CustomDatePicker from './CustomDatePicker';
@@ -166,7 +166,22 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         amenities: ''
     });
 
+    const lastInitializedRef = useRef(null);
+    const lastCalculatedRouteRef = useRef('');
+
     useEffect(() => {
+        if (!isOpen) {
+            lastInitializedRef.current = null;
+            lastCalculatedRouteRef.current = '';
+            return;
+        }
+
+        const sessionKey = `${modalType}_${effectiveOrder?.id || selectedOrder?.id || 'new'}`;
+        if (lastInitializedRef.current === sessionKey) {
+            return;
+        }
+        lastInitializedRef.current = sessionKey;
+
         // For client/customer role, find their customer record by email for proper name
         const myCustomerRecord = (portalRole === 'client' || portalRole === 'customer')
             ? clients.find(c => c.email?.toLowerCase() === currentUser?.email?.toLowerCase()) || null
@@ -462,11 +477,14 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
 
             // If distance was missing, calculate it automatically in background
             if (!formattedDist && pickLoc && dropLoc) {
+                const currentRouteKey = `${pickLoc.toLowerCase().trim()}|${dropLoc.toLowerCase().trim()}|${(effectiveOrder.deliveryType || 'Road').toLowerCase().trim()}`;
                 calculateOSRMRouteDistance(pickLoc, dropLoc, effectiveOrder.deliveryType || 'Road').then(res => {
                     if (res && res.distanceKm != null) {
+                        const distFormatted = `${res.distanceKm} km`;
+                        lastCalculatedRouteRef.current = currentRouteKey;
                         setFormData(prev => ({
                             ...prev,
-                            totalDistance: `${res.distanceKm} km`
+                            totalDistance: distFormatted
                         }));
                     }
                 }).catch(() => {});
@@ -484,7 +502,9 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             try {
                 const res = await calculateOSRMRouteDistance(p.trim(), d.trim(), m);
                 if (res && res.distanceKm != null) {
-                    setFormData(prev => ({ ...prev, totalDistance: String(res.distanceKm) }));
+                    const formatted = `${res.distanceKm} km`;
+                    lastCalculatedRouteRef.current = `${p.toLowerCase().trim()}|${d.toLowerCase().trim()}|${m.toLowerCase().trim()}`;
+                    setFormData(prev => ({ ...prev, totalDistance: formatted }));
                 }
             } catch (err) {
                 console.warn('Distance calculation error:', err);
@@ -495,23 +515,19 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
     }, [formData.pickupLocation, formData.location, formData.deliveryType]);
 
     useEffect(() => {
-        // If we already have a loaded totalDistance from the database and locations haven't changed, keep it
-        if (effectiveOrder) {
-            const initialPickup = effectiveOrder.pickupLocation || effectiveOrder.pickup_location || '';
-            const initialLocation = effectiveOrder.location || effectiveOrder.deliveryAddress || effectiveOrder.delivery_address || '';
-            const initialMode = effectiveOrder.deliveryType || effectiveOrder.delivery_mode || effectiveOrder.deliveryMode || effectiveOrder.mode || 'Road';
-            const initialDistance = effectiveOrder.totalDistance || effectiveOrder.total_distance || '';
+        if (!isOpen) return;
 
-            if (
-                formData.pickupLocation === initialPickup &&
-                formData.location === initialLocation &&
-                formData.deliveryType === initialMode &&
-                String(formData.totalDistance) === String(initialDistance) &&
-                formData.totalDistance !== '' &&
-                formData.totalDistance != null
-            ) {
-                return;
-            }
+        const currentPick = (formData.pickupLocation || '').trim();
+        const currentDrop = (formData.location || '').trim();
+        const currentMode = (formData.deliveryType || 'Road').trim();
+
+        if (!currentPick || !currentDrop) return;
+
+        const currentRouteKey = `${currentPick.toLowerCase()}|${currentDrop.toLowerCase()}|${currentMode.toLowerCase()}`;
+
+        // If we already have a calculated distance for this route, don't trigger recalculation again
+        if (formData.totalDistance && lastCalculatedRouteRef.current === currentRouteKey) {
+            return;
         }
 
         // If in view mode and totalDistance is already present, no need to recalculate
@@ -520,12 +536,12 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
         }
 
         const timer = setTimeout(() => {
-            if (formData.pickupLocation && formData.location) {
-                triggerCalculateDistance(formData.pickupLocation, formData.location, formData.deliveryType);
+            if (currentPick && currentDrop) {
+                triggerCalculateDistance(currentPick, currentDrop, currentMode);
             }
-        }, currentModalType === 'view' ? 50 : 200);
+        }, currentModalType === 'view' ? 50 : 350);
         return () => clearTimeout(timer);
-    }, [formData.pickupLocation, formData.location, formData.deliveryType, currentModalType, triggerCalculateDistance]);
+    }, [formData.pickupLocation, formData.location, formData.deliveryType, currentModalType, isOpen, triggerCalculateDistance, formData.totalDistance]);
 
     const handleAddItem = () => {
         setFormData({ ...formData, items: [...formData.items, { name: '', qty: 1, price: '' }] });
@@ -650,7 +666,10 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
             charterDetails: formData.transportAssetCustom || '',
             charter_details: formData.transportAssetCustom || '',
             islandLocation: formData.islandLocation || '',
-            island_location: formData.islandLocation || ''
+            island_location: formData.islandLocation || '',
+            totalDistance: formData.totalDistance ? (String(formData.totalDistance).toLowerCase().includes('km') ? formData.totalDistance : `${formData.totalDistance} km`) : '',
+            total_distance: formData.totalDistance ? (String(formData.totalDistance).toLowerCase().includes('km') ? formData.totalDistance : `${formData.totalDistance} km`) : '',
+            distance: formData.totalDistance || ''
         };
         if (!canEditOrderStatus) {
             delete payload.status;
@@ -1229,7 +1248,10 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                         currentModalType !== 'view' && formData.pickupLocation && formData.location && (
                                                             <button
                                                                 type="button"
-                                                                onClick={() => triggerCalculateDistance()}
+                                                                onClick={() => {
+                                                                    lastCalculatedRouteRef.current = '';
+                                                                    triggerCalculateDistance();
+                                                                }}
                                                                 className="text-[9px] text-accent hover:underline font-bold"
                                                             >
                                                                 Recalculate
@@ -1239,7 +1261,7 @@ const OrderModal = ({ isOpen, onClose, modalType, selectedOrder, onSave, onDelet
                                                 </div>
                                                 <input
                                                     type="text"
-                                                    value={formData.totalDistance}
+                                                    value={formData.totalDistance ? (String(formData.totalDistance).toLowerCase().includes('km') ? formData.totalDistance : `${formData.totalDistance} km`) : ''}
                                                     readOnly
                                                     className="w-full bg-background/50 border border-border rounded-lg px-4 py-2 text-sm text-accent font-black cursor-not-allowed outline-none shadow-inner select-none"
                                                     disabled={currentModalType === 'view'}

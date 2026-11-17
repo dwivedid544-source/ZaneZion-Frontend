@@ -741,7 +741,14 @@ export const GlobalDataProvider = ({ children }) => {
   const [saasRequests, setSaasRequests] = useState([]);
   const [subscriptionRequests, setSubscriptionRequests] = useState([]);
   const [securityEvents, setSecurityEvents] = useState([]);
-  const [clients, setClients] = useState([]);
+  const [clients, setClients] = useState(() => {
+    try {
+      const cached = localStorage.getItem('app_clients_cache');
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
   const [vendors, setVendors] = useState([]);
   const [inventory, setInventory] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -1363,6 +1370,7 @@ export const GlobalDataProvider = ({ children }) => {
         const arr = normalizeClientsResponseBody(raw);
         const mapped = arr.map(mapClientFromApi).filter(Boolean);
         setClients(mapped);
+        try { localStorage.setItem('app_clients_cache', JSON.stringify(mapped)); } catch {}
       } catch (e) {
         console.error("Fetch clients failed", e);
         setClients([]);
@@ -2496,14 +2504,68 @@ export const GlobalDataProvider = ({ children }) => {
         const statusForUi = o.status;
         const transportMode = extractTransportModeFromOrder(o);
 
+        const clientEmail = (typeof o.client === 'object' && o.client?.email) || o.customer_email || o.client_email || meta.email || meta.customer_email || null;
+        const clientNameStr = typeof o.client === 'string' ? o.client : (o.customer_name || o.client_name || o.client?.companyName || o.client?.name || "");
+
+        const normalizeOrd = (val) => {
+          if (!val) return '';
+          const s = String(val).trim();
+          const d = s.replace(/\D/g, '');
+          const w = d.replace(/^202[0-9]/, '');
+          const c = (w || d).replace(/^0+/, '');
+          return c || d;
+        };
+        const oNorm = normalizeOrd(o.id || o.rawId || o.orderNumber);
+        const matchingTicket = (rawSupportTickets || supportTickets || []).find(t => {
+          if (!t) return false;
+          const tCandidates = [
+            t.order_id,
+            t.orderId,
+            t.dispute_data?.orderId,
+            t.dispute_data?.orderNumber,
+            t.orderNumber
+          ];
+          let isMatch = tCandidates.some(c => c && normalizeOrd(c) === oNorm);
+          if (!isMatch && (t.description || t.subject)) {
+            const desc = `${t.description || ''} ${t.subject || ''}`;
+            const m = desc.match(/Order:\s*([A-Za-z0-9-]+)/i) || desc.match(/ORD-[A-Za-z0-9-]+/i);
+            if (m && normalizeOrd(m[1] || m[0]) === oNorm) isMatch = true;
+          }
+          if (!isMatch) return false;
+
+          const dispSt = String(t.dispute_status || '').toLowerCase().trim();
+          const tSt = String(t.status || '').toLowerCase().trim();
+          const isAccepted = dispSt === 'accepted' || 
+                             ((tSt === 'resolved' || tSt === 'accepted') && (Number(t.refund_amount) > 0 || String(t.category || '').toLowerCase().includes('refund')));
+          return isAccepted;
+        });
+        const ticketRefund = matchingTicket ? parseFloat(matchingTicket.refund_amount || matchingTicket.dispute_data?.requestedRefundAmount || 0) : 0;
+        const refundAmt = Math.max(parseFloat(o.refunded_amount ?? meta.refunded_amount ?? 0) || 0, ticketRefund);
+        const refundSt = (refundAmt >= totalVal && totalVal > 0)
+          ? 'FULL'
+          : (refundAmt > 0 ? 'PARTIAL' : (o.refund_status || meta.refund_status || null));
+        const effectiveSt = refundSt === 'FULL'
+          ? 'Refunded'
+          : (refundSt === 'PARTIAL' ? 'Partially Refunded' : (statusForUi || o.status));
+
         return {
           ...meta,
           ...o,
           items: itemsArr,
+          refunded_amount: refundAmt,
+          refund_status: refundSt,
           clientId: o.customer_id || o.client_id || o.clientId,
+          client_id: o.customer_id || o.client_id || o.clientId,
           companyId: o.company_id || o.tenantId,
           vendorId: o.vendor_id || o.vendorId,
-          client: o.customer_name || o.client_name || o.client?.companyName || o.client?.name || "",
+          client: clientNameStr,
+          client_name: clientNameStr,
+          clientName: clientNameStr,
+          email: clientEmail || o.email,
+          client_email: clientEmail,
+          clientEmail: clientEmail,
+          customer_email: clientEmail,
+          clientObj: typeof o.client === 'object' ? o.client : null,
           vendor: o.vendor_name || o.vendor?.name || "",
           total: totalVal,
           total_amount: totalVal,
@@ -2514,8 +2576,8 @@ export const GlobalDataProvider = ({ children }) => {
           requestDate: displayDate,
           dueDate: dueDay,
           due_date: dueDay || o.due_date,
-          status: statusForUi || o.status,
-          statusLabel: displayOrderStatus(statusForUi || o.status),
+          status: effectiveSt,
+          statusLabel: displayOrderStatus(effectiveSt),
           delivery_instructions:
             o.delivery_instructions || o.deliveryInstructions || meta.delivery_instructions || meta.deliveryInstructions || null,
           location: o.delivery_address || o.location || o.deliveryAddress || meta.delivery_address || meta.location || meta.deliveryAddress || "",
@@ -2798,11 +2860,16 @@ export const GlobalDataProvider = ({ children }) => {
           const dbId = t.db_id || (typeof t.id === "number" ? t.id : null);
 
           return {
+            ...t,
             id: uniqueTicketId,
             ticketId: uniqueTicketId,
             db_id: dbId,
             tenantId: t.tenantId ?? t.tenant_id ?? null,
             tenant_id: t.tenantId ?? t.tenant_id ?? null,
+            order_id: t.order_id || t.orderId || t.dispute_data?.orderId || null,
+            orderId: t.order_id || t.orderId || t.dispute_data?.orderId || null,
+            dispute_data: typeof t.dispute_data === 'string' ? (() => { try { return JSON.parse(t.dispute_data); } catch { return null; } })() : (t.dispute_data || null),
+            description: t.description || "",
             // preserve original backend identification fields to satisfy global filters
             submitted_by: t.submitted_by ?? t.createdById ?? null,
             created_by: t.submitted_by ?? t.created_by ?? t.createdById ?? null,
@@ -2820,7 +2887,7 @@ export const GlobalDataProvider = ({ children }) => {
             status: formatStatus(t.status),
             date: t.created_at ? t.created_at.split("T")[0] : (t.createdAt ? t.createdAt.split("T")[0] : new Date().toISOString().split("T")[0]),
             dispute_status: t.dispute_status || "none",
-            refund_amount: t.refund_amount || 0,
+            refund_amount: Number(t.refund_amount) || 0,
             messages: msgs,
           };
         });
@@ -7769,7 +7836,7 @@ export const GlobalDataProvider = ({ children }) => {
         ticketId: generatedId,
         subject: ticket.subject,
         category: ticket.category || "General",
-        description: ticket.messages?.[0]?.text || "",
+        description: String(ticket.description || ticket.subject || (ticket.messages?.[0]?.text) || "Support request").slice(0, 150),
         messages: ticket.messages,
         priority: (ticket.priority || "medium").toLowerCase(),
         client_id:
@@ -7780,6 +7847,10 @@ export const GlobalDataProvider = ({ children }) => {
         created_by: ticket.createdById || currentUser?.id || null,
         createdByName: ticket.createdByName || currentUser?.name || null,
         createdByEmail: ticket.createdByEmail || currentUser?.email || null,
+        dispute_status: ticket.dispute_status || "none",
+        refund_amount: ticket.refund_amount || 0,
+        dispute_data: ticket.dispute_data || null,
+        order_id: ticket.order_id || ticket.dispute_data?.orderId || null,
       };
       const res = await api.post("/support/tickets", payload);
       if (res.data?.success) {
@@ -7798,6 +7869,10 @@ export const GlobalDataProvider = ({ children }) => {
           priority: (ticket.priority || "Medium").charAt(0).toUpperCase() + (ticket.priority || "Medium").slice(1),
           status: "Open",
           date: new Date().toISOString().split("T")[0],
+          dispute_status: ticket.dispute_status || createdTkt.dispute_status || "none",
+          refund_amount: ticket.refund_amount || createdTkt.refund_amount || 0,
+          dispute_data: ticket.dispute_data || createdTkt.dispute_data || null,
+          order_id: ticket.order_id || createdTkt.order_id || null,
           messages: ticket.messages || [],
         };
         setSupportTickets((prev) => [newTicket, ...prev.filter((t) => (t.ticketId || t.id) !== finalTicketId)]);
@@ -7828,7 +7903,9 @@ export const GlobalDataProvider = ({ children }) => {
           status: (ticketOrId.status || "open").toLowerCase().replace(/\s+/g, "_"),
           messages: ticketOrId.messages || ticketOrId.responses || [],
           dispute_status: ticketOrId.dispute_status || "none",
-          refund_amount: ticketOrId.refund_amount || 0,
+          refund_amount: ticketOrId.refund_amount !== undefined ? Number(ticketOrId.refund_amount) : 0,
+          dispute_data: ticketOrId.dispute_data || null,
+          order_id: ticketOrId.order_id || ticketOrId.dispute_data?.orderId || null,
         };
       } else {
         id = ticketOrId;
@@ -7873,6 +7950,62 @@ export const GlobalDataProvider = ({ children }) => {
       );
 
       const res = await api.put(`/support/tickets/${id}`, payload);
+
+      // Automatically sync refund deduction to the matching order if dispute is accepted
+      const linkedOrderId = ticketOrId?.order_id || ticketOrId?.dispute_data?.orderId || payload.order_id;
+      if (payload.dispute_status === 'accepted' && Number(payload.refund_amount) > 0 && linkedOrderId) {
+        try {
+          const matchOrder = (o) => {
+            const rawOId = String(o.id || o.rawId || '').replace(/\D/g, '');
+            const rawTargetId = String(linkedOrderId).replace(/\D/g, '');
+            return String(o.id) === String(linkedOrderId) || 
+              String(o.orderNumber) === String(linkedOrderId) || 
+              (rawOId && rawTargetId && rawOId === rawTargetId);
+          };
+
+          const matchedOrder = (orders || []).find(matchOrder);
+          const orderTotal = Number(matchedOrder?.total || matchedOrder?.totalAmount || matchedOrder?.total_amount || 0);
+          const isFull = Number(payload.refund_amount) >= orderTotal && orderTotal > 0;
+          const newOrderStatus = isFull ? 'Refunded' : 'Partially Refunded';
+          const newRefundStatus = isFull ? 'FULL' : 'PARTIAL';
+
+          setOrders(prev => prev.map(o => {
+            if (matchOrder(o)) {
+              return {
+                ...o,
+                status: newOrderStatus,
+                refund_status: newRefundStatus,
+                refunded_amount: Number(payload.refund_amount),
+                metadata: {
+                  ...(typeof o.metadata === 'object' ? o.metadata : {}),
+                  refund_status: newRefundStatus,
+                  refunded_amount: Number(payload.refund_amount),
+                  refundTicketId: id
+                }
+              };
+            }
+            return o;
+          }));
+
+          const targetOrderDbId = matchedOrder?.id || linkedOrderId;
+          const cleanNumericId = Number(String(targetOrderDbId).replace(/\D/g, ''));
+          if (cleanNumericId > 0) {
+            await api.put(`/orders/${cleanNumericId}`, {
+              status: newOrderStatus,
+              refunded_amount: Number(payload.refund_amount),
+              refund_status: newRefundStatus,
+              metadata: {
+                ...(matchedOrder?.metadata && typeof matchedOrder.metadata === 'object' ? matchedOrder.metadata : {}),
+                refund_status: newRefundStatus,
+                refunded_amount: Number(payload.refund_amount),
+                refundTicketId: id
+              }
+            }).catch(e => console.warn('Could not update order status on backend:', e?.message));
+          }
+        } catch (orderSyncErr) {
+          console.warn('Failed to sync refund to order:', orderSyncErr);
+        }
+      }
       await fetchTickets();
       window.dispatchEvent(new CustomEvent('app:state-changed'));
       addLog({
@@ -8551,6 +8684,7 @@ export const GlobalDataProvider = ({ children }) => {
         updateChauffeurRequest,
         deleteChauffeurRequest,
         supportTickets,
+        rawSupportTickets,
         addSupportTicket,
         updateSupportTicket,
         deleteSupportTicket,

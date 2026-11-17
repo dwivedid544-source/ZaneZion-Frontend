@@ -3,7 +3,7 @@ import {
     MessageSquare, Phone, Mail, ChevronRight, User, LifeBuoy,
     Clock, ShieldCheck, Plus, Send, X, AlertCircle, CheckCircle2,
     Paperclip, ArrowLeft, Smartphone, FileText, Truck, Download, ExternalLink, Image as ImageIcon,
-    Trash2
+    Trash2, Package, RotateCcw, DollarSign, Check
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useData } from '../../context/GlobalDataContext';
@@ -85,15 +85,19 @@ const ClientSupport = () => {
         deleteSupportTicket,
         currentUser, 
         fetchTickets, 
-        fetchTicketById 
+        fetchTicketById,
+        orders = [],
+        fetchOrders
     } = useData();
 
     // Global ticket polling & state listener
     React.useEffect(() => {
         if (fetchTickets) fetchTickets();
+        if (fetchOrders) fetchOrders();
 
         const handleStateChanged = () => {
             if (fetchTickets) fetchTickets();
+            if (fetchOrders) fetchOrders();
         };
         window.addEventListener('app:state-changed', handleStateChanged);
 
@@ -105,7 +109,7 @@ const ClientSupport = () => {
             window.removeEventListener('app:state-changed', handleStateChanged);
             clearInterval(interval);
         };
-    }, [fetchTickets]);
+    }, [fetchTickets, fetchOrders]);
 
     const [activeView, setActiveView] = useState('list'); // 'list' | 'chat' | 'new'
     const [selectedTicket, setSelectedTicket] = useState(null);
@@ -202,6 +206,116 @@ const ClientSupport = () => {
             deliveryProof: null
         }
     });
+
+    const [selectedOrderId, setSelectedOrderId] = useState('');
+    const [refundItemList, setRefundItemList] = useState([]);
+    const [isFullRefund, setIsFullRefund] = useState(false);
+    const [defectReason, setDefectReason] = useState('Defective / Damaged unit');
+
+    // Extract item details from any order format
+    const extractOrderItems = (order) => {
+        if (!order) return [];
+        let raw = order.items || order.order_items || order.orderItems || order.line_items || order.lineItems || [];
+        if (typeof raw === 'string') {
+            try { raw = JSON.parse(raw); } catch { raw = []; }
+        }
+        if (!Array.isArray(raw) || raw.length === 0) {
+            let meta = order.metadata;
+            if (typeof meta === 'string') {
+                try { meta = JSON.parse(meta); } catch { meta = {}; }
+            }
+            meta = meta || {};
+            raw = meta.items || meta.customItems || meta.custom_items || meta.manifestItems || meta.cart || [];
+        }
+        if (!Array.isArray(raw) || raw.length === 0) {
+            return [{
+                id: 1,
+                name: order.product || order.title || (order.vendor_name ? `${order.vendor_name} Order` : `Order #${order.orderNumber || order.id}`),
+                qty: 1,
+                price: parseFloat(order.totalAmount || order.total || order.total_amount || 0) || 0
+            }];
+        }
+        return raw.map((itm, idx) => ({
+            id: itm.id || itm.itemId || idx + 1,
+            name: itm.name || itm.itemName || itm.title || itm.item?.name || `Item ${idx + 1}`,
+            qty: parseInt(itm.qty || itm.quantity || 1, 10) || 1,
+            price: parseFloat(itm.unitPrice || itm.price || itm.unit_price || (itm.totalPrice ? itm.totalPrice / (itm.quantity || 1) : 0)) || 0
+        }));
+    };
+
+    // Filter customer's delivered / active orders for refund picker
+    const myOrdersForRefund = React.useMemo(() => {
+        const myUserId = String(currentUser?.id || '').trim();
+        const myEmail = String(currentUser?.email || '').toLowerCase().trim();
+        const myClientId = String(currentUser?.clientId || currentUser?.company_id || '').trim();
+
+        return (orders || []).filter(o => {
+            const oUserId = String(o.userId || o.user_id || o.created_by || o.createdById || o.metadata?.customer_id || '').trim();
+            const oEmail = String(o.email || o.customer_email || o.metadata?.email || '').toLowerCase().trim();
+            const oClientId = String(o.clientId || o.client_id || '').trim();
+
+            const isMine = (myUserId && oUserId && myUserId === oUserId) ||
+                (myEmail && oEmail && myEmail === oEmail) ||
+                (myClientId && myClientId !== '1' && oClientId && myClientId === oClientId);
+
+            if (!isMine) return false;
+
+            const st = String(o.status || '').toLowerCase();
+            return !['cancelled', 'rejected', 'canceled'].includes(st);
+        });
+    }, [orders, currentUser]);
+
+    // Handle order selection
+    const handleSelectOrder = (orderId) => {
+        setSelectedOrderId(orderId);
+        setIsFullRefund(false);
+        if (!orderId) {
+            setRefundItemList([]);
+            return;
+        }
+        const found = myOrdersForRefund.find(o => String(o.id) === String(orderId) || String(o.orderNumber) === String(orderId));
+        if (found) {
+            const items = extractOrderItems(found);
+            setRefundItemList(items.map((i, idx) => ({
+                ...i,
+                uid: `${i.id}-${idx}`,
+                maxQty: i.qty,
+                refundQty: 1,
+                selected: true
+            })));
+        } else {
+            setRefundItemList([]);
+        }
+    };
+
+    const handleToggleItem = (uid) => {
+        setRefundItemList(prev => {
+            const next = prev.map(item => item.uid === uid ? { ...item, selected: !item.selected } : item);
+            const allSelected = next.length > 0 && next.every(i => i.selected && i.refundQty === i.maxQty);
+            setIsFullRefund(allSelected);
+            return next;
+        });
+    };
+
+    const handleItemQtyChange = (uid, qty) => {
+        setRefundItemList(prev => prev.map(item => item.uid === uid ? { ...item, refundQty: qty } : item));
+    };
+
+    const handleToggleFullRefund = () => {
+        if (isFullRefund) {
+            setIsFullRefund(false);
+            setRefundItemList(prev => prev.map(i => ({ ...i, selected: false })));
+        } else {
+            setIsFullRefund(true);
+            setRefundItemList(prev => prev.map(i => ({ ...i, selected: true, refundQty: i.maxQty })));
+        }
+    };
+
+    const calculatedRefundTotal = React.useMemo(() => {
+        return refundItemList
+            .filter(i => i.selected)
+            .reduce((sum, i) => sum + (i.price * i.refundQty), 0);
+    }, [refundItemList]);
 
     const roleKey = normalizeRole(currentUser?.role);
     const isEndCustomerRole = ['customer', 'personal'].includes(roleKey);
@@ -302,6 +416,24 @@ const ClientSupport = () => {
         }
     }, [myTickets]);
 
+    // Handle incoming navigation from Orders page with ?orderId= or ?refundOrder=
+    React.useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const urlOrderId = params.get('orderId') || params.get('refundOrder');
+        const urlCat = params.get('category');
+        if (urlOrderId || urlCat === 'Return / Refund Request') {
+            setActiveView('new');
+            setNewTicket(prev => ({
+                ...prev,
+                category: 'Return / Refund Request',
+                subject: prev.subject || (urlOrderId ? `Return / Refund Request for #${urlOrderId}` : 'Return / Refund Request')
+            }));
+            if (urlOrderId && myOrdersForRefund.length > 0) {
+                handleSelectOrder(urlOrderId);
+            }
+        }
+    }, [myOrdersForRefund]);
+
     // Keep active chat in sync with background polls, STRICTLY matching by unique ticket ID
     React.useEffect(() => {
         if (selectedTicket) {
@@ -362,6 +494,19 @@ const ClientSupport = () => {
             return;
         }
 
+        const isRefundCase = newTicket.category === 'Return / Refund Request';
+        if (isRefundCase) {
+            if (!selectedOrderId) {
+                alert('Please select an order to request a return or refund.');
+                return;
+            }
+            const selectedItems = refundItemList.filter(i => i.selected);
+            if (selectedItems.length === 0) {
+                alert('Please select at least one item and quantity to refund.');
+                return;
+            }
+        }
+
         isSubmittingRef.current = true;
         setIsSubmitting(true);
 
@@ -377,6 +522,33 @@ const ClientSupport = () => {
                 deliveryProof: newTicket.attachments.deliveryProof || null
             };
 
+            const chosenOrder = isRefundCase ? myOrdersForRefund.find(o => String(o.id) === String(selectedOrderId) || String(o.orderNumber) === String(selectedOrderId)) : null;
+            const selectedItemsForDispute = isRefundCase ? refundItemList.filter(i => i.selected).map(i => ({
+                itemId: i.id,
+                name: i.name,
+                orderedQty: i.maxQty,
+                refundQty: i.refundQty,
+                unitPrice: i.price,
+                lineRefundTotal: Number((i.price * i.refundQty).toFixed(2))
+            })) : [];
+
+            const disputeData = isRefundCase ? {
+                orderId: chosenOrder?.id || selectedOrderId,
+                orderNumber: chosenOrder?.orderNumber || `ORD-${chosenOrder?.id || selectedOrderId}`,
+                orderTotal: Number(chosenOrder?.totalAmount || chosenOrder?.total || chosenOrder?.total_amount || 0),
+                isFullRefund,
+                refundReason: defectReason,
+                requestedRefundAmount: Number(calculatedRefundTotal.toFixed(2)),
+                items: selectedItemsForDispute
+            } : null;
+
+            let initialText = newTicket.message.trim();
+            if (isRefundCase && disputeData) {
+                const itemLines = disputeData.items.map(it => `• ${it.name} (Refund Qty: ${it.refundQty} of ${it.orderedQty} @ $${it.unitPrice.toFixed(2)}/unit = $${it.lineRefundTotal.toFixed(2)})`).join('\n');
+                const disputeSummary = `[RETURN / REFUND CLAIM]\nOrder: ${disputeData.orderNumber}\nRequested Amount: $${disputeData.requestedRefundAmount.toFixed(2)}\nReason: ${disputeData.refundReason}\nItems Claimed:\n${itemLines}\n\nClient Notes:\n${initialText}`;
+                initialText = disputeSummary;
+            }
+
             const ticket = {
                 id: uniqueTicketId,
                 ticketId: uniqueTicketId,
@@ -385,14 +557,19 @@ const ClientSupport = () => {
                 createdById: currentUser?.id || null,
                 createdByEmail: currentUser?.email || null,
                 createdByName: currentUser?.name || null,
-                subject: newTicket.subject.trim(),
+                subject: newTicket.subject.trim() || (isRefundCase ? `Refund Request: ${disputeData?.orderNumber} ($${calculatedRefundTotal.toFixed(2)})` : 'Support Request'),
+                description: String(newTicket.subject.trim() || (isRefundCase ? `Refund Request: ${disputeData?.orderNumber}` : 'Support Request')).slice(0, 150),
                 category: newTicket.category,
                 priority: newTicket.priority,
                 status: 'Open',
                 date: new Date().toISOString().split('T')[0],
+                dispute_status: isRefundCase ? 'pending' : 'none',
+                refund_amount: isRefundCase ? Number(calculatedRefundTotal.toFixed(2)) : 0,
+                dispute_data: disputeData,
+                order_id: chosenOrder?.id || selectedOrderId || null,
                 messages: [{ 
                     sender: 'client', 
-                    text: newTicket.message.trim(), 
+                    text: initialText, 
                     time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
                     createdAt: new Date().toISOString(),
                     attachments: ticketAttachments 
@@ -413,6 +590,9 @@ const ClientSupport = () => {
                 message: '', 
                 attachments: { screenshot: null, evidence: null, deliveryProof: null } 
             });
+            setSelectedOrderId('');
+            setRefundItemList([]);
+            setIsFullRefund(false);
             setActiveView('list');
             if (fetchTickets) await fetchTickets();
         } catch (err) {
@@ -616,6 +796,44 @@ const ClientSupport = () => {
                             </div>
                         </div>
 
+                        {/* Dispute & Refund Intel Banner */}
+                        {selectedTicket.dispute_data && (
+                            <div className="mx-4 sm:mx-6 mt-4 p-4 rounded-xl bg-accent/[0.05] border border-accent/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                                <div className="space-y-1">
+                                    <div className="flex items-center gap-2">
+                                        <Package size={14} className="text-accent" />
+                                        <span className="text-[10px] font-black uppercase tracking-wider text-accent">
+                                            Linked Order: {selectedTicket.dispute_data.orderNumber}
+                                        </span>
+                                        <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded ${
+                                            selectedTicket.dispute_status === 'accepted' ? 'bg-success text-white' :
+                                            selectedTicket.dispute_status === 'rejected' ? 'bg-danger text-white' : 'bg-warning text-black'
+                                        }`}>
+                                            {selectedTicket.dispute_status === 'accepted' ? 'Refund Approved' : selectedTicket.dispute_status === 'rejected' ? 'Dispute Rejected' : 'Under Investigation'}
+                                        </span>
+                                    </div>
+                                    <p className="text-xs font-bold text-white">
+                                        Reason: {selectedTicket.dispute_data.refundReason || 'Defective Item'}
+                                    </p>
+                                    {Array.isArray(selectedTicket.dispute_data.items) && (
+                                        <div className="flex flex-wrap gap-1.5 pt-1">
+                                            {selectedTicket.dispute_data.items.map((it, idx) => (
+                                                <span key={idx} className="text-[9px] font-medium bg-black/40 border border-white/10 px-2 py-0.5 rounded text-secondary">
+                                                    {it.name} (Refund Qty: {it.refundQty} of {it.orderedQty} @ ${it.unitPrice})
+                                                </span>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="text-right sm:self-center shrink-0">
+                                    <span className="text-[9px] font-black text-muted uppercase block">Claim Total</span>
+                                    <span className="text-base font-black text-accent font-heading">
+                                        ${(Number(selectedTicket.refund_amount) || Number(selectedTicket.dispute_data.requestedRefundAmount) || 0).toFixed(2)}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+
                         {/* Messages */}
                         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4" style={{ maxHeight: '50vh' }}>
                             {selectedTicket.messages?.map((msg, i) => (
@@ -806,15 +1024,24 @@ const ClientSupport = () => {
                                     <label className="text-[10px] font-black text-muted uppercase tracking-widest">Category</label>
                                     <select
                                         value={newTicket.category}
-                                        onChange={e => setNewTicket({ ...newTicket, category: e.target.value })}
-                                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none"
+                                        onChange={e => {
+                                            const cat = e.target.value;
+                                            setNewTicket({ ...newTicket, category: cat });
+                                            if (cat !== 'Return / Refund Request') {
+                                                setSelectedOrderId('');
+                                                setRefundItemList([]);
+                                                setIsFullRefund(false);
+                                            }
+                                        }}
+                                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold"
                                     >
-                                        <option>General</option>
-                                        <option>Logistics</option>
-                                        <option>Finance</option>
-                                        <option>Chauffeur</option>
-                                        <option>Inventory</option>
-                                        <option>Technical</option>
+                                        <option value="General">General Support</option>
+                                        <option value="Return / Refund Request">Return / Refund Request</option>
+                                        <option value="Logistics">Logistics & Delivery</option>
+                                        <option value="Finance">Billing & Invoices</option>
+                                        <option value="Chauffeur">Chauffeur Protocol</option>
+                                        <option value="Inventory">Inventory Inquiry</option>
+                                        <option value="Technical">Technical Issue</option>
                                     </select>
                                 </div>
                                 <div className="space-y-1">
@@ -822,7 +1049,7 @@ const ClientSupport = () => {
                                     <select
                                         value={newTicket.priority}
                                         onChange={e => setNewTicket({ ...newTicket, priority: e.target.value })}
-                                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none"
+                                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold"
                                     >
                                         <option>Low</option>
                                         <option>Medium</option>
@@ -830,6 +1057,127 @@ const ClientSupport = () => {
                                     </select>
                                 </div>
                             </div>
+
+                            {/* ── RETURN & REFUND ORDER / ITEM SELECTOR ── */}
+                            {newTicket.category === 'Return / Refund Request' && (
+                                <div className="p-4 sm:p-5 bg-accent/[0.04] border border-accent/30 rounded-2xl space-y-4">
+                                    <div className="flex items-center justify-between">
+                                        <label className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-2">
+                                            <Package size={15} /> Select Order for Refund / Dispute
+                                        </label>
+                                        <span className="text-[9px] font-bold text-muted uppercase">Linked Requisition</span>
+                                    </div>
+
+                                    <select
+                                        value={selectedOrderId}
+                                        onChange={(e) => handleSelectOrder(e.target.value)}
+                                        className="w-full bg-background border border-border rounded-xl px-4 py-3 text-sm focus:border-accent outline-none font-bold text-white cursor-pointer"
+                                    >
+                                        <option value="">-- Choose an Order from your history --</option>
+                                        {myOrdersForRefund.map(o => {
+                                            const oNum = o.orderNumber || `ORD-${o.id}`;
+                                            const oTotal = Number(o.totalAmount || o.total || o.total_amount || 0);
+                                            const oDate = o.createdAt?.split('T')[0] || o.order_date || 'Recent';
+                                            return (
+                                                <option key={o.id} value={o.id}>
+                                                    {oNum} — Total: ${oTotal.toFixed(2)} | Status: {o.status || 'Delivered'} | Date: {oDate}
+                                                </option>
+                                            );
+                                        })}
+                                    </select>
+
+                                    {selectedOrderId && refundItemList.length > 0 && (
+                                        <div className="space-y-3 pt-2">
+                                            <div className="flex items-center justify-between">
+                                                <label className="text-[10px] font-black text-white uppercase tracking-widest">
+                                                    Select Item(s) & Return Quantity
+                                                </label>
+                                                <button
+                                                    type="button"
+                                                    onClick={handleToggleFullRefund}
+                                                    className="text-[9px] font-black text-accent uppercase hover:underline cursor-pointer flex items-center gap-1"
+                                                >
+                                                    <RotateCcw size={11} /> {isFullRefund ? 'Deselect All' : 'Select Full Order Refund'}
+                                                </button>
+                                            </div>
+
+                                            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                                                {refundItemList.map((item) => (
+                                                    <div
+                                                        key={item.uid}
+                                                        className={`p-3 rounded-xl border transition-all flex items-center justify-between flex-wrap gap-2 ${
+                                                            item.selected ? 'bg-accent/10 border-accent/40' : 'bg-black/30 border-white/5 opacity-60'
+                                                        }`}
+                                                    >
+                                                        <div className="flex items-center gap-3">
+                                                            <input
+                                                                type="checkbox"
+                                                                checked={item.selected}
+                                                                onChange={() => handleToggleItem(item.uid)}
+                                                                className="w-4 h-4 accent-accent rounded cursor-pointer"
+                                                            />
+                                                            <div>
+                                                                <p className="text-xs font-bold text-white">{item.name}</p>
+                                                                <p className="text-[10px] text-muted">
+                                                                    Purchased: <strong className="text-white">{item.maxQty}</strong> unit(s) @ ${item.price.toFixed(2)}/unit
+                                                                </p>
+                                                            </div>
+                                                        </div>
+
+                                                        {item.selected && (
+                                                            <div className="flex items-center gap-2">
+                                                                <label className="text-[9px] font-black text-muted uppercase">Refund Qty:</label>
+                                                                <select
+                                                                    value={item.refundQty}
+                                                                    onChange={(e) => handleItemQtyChange(item.uid, parseInt(e.target.value, 10))}
+                                                                    className="bg-background border border-border rounded-lg px-2.5 py-1 text-xs font-bold text-white outline-none focus:border-accent cursor-pointer"
+                                                                >
+                                                                    {Array.from({ length: item.maxQty }, (_, i) => i + 1).map(q => (
+                                                                        <option key={q} value={q}>{q}</option>
+                                                                    ))}
+                                                                </select>
+                                                                <span className="text-xs font-black text-accent ml-2 min-w-[50px] text-right font-mono">
+                                                                    ${(item.price * item.refundQty).toFixed(2)}
+                                                                </span>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+
+                                            <div className="p-3 bg-black/40 border border-white/10 rounded-xl flex items-center justify-between">
+                                                <div>
+                                                    <p className="text-[9px] font-black text-muted uppercase tracking-wider">Calculated Refund Value</p>
+                                                    <p className="text-xs font-bold text-secondary">
+                                                        {refundItemList.filter(i => i.selected).length} item(s) selected
+                                                    </p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <span className="text-xl font-black text-accent font-heading font-mono">
+                                                        ${calculatedRefundTotal.toFixed(2)}
+                                                    </span>
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-1">
+                                                <label className="text-[10px] font-black text-muted uppercase tracking-widest">Defect / Dispute Reason</label>
+                                                <select
+                                                    value={defectReason}
+                                                    onChange={(e) => setDefectReason(e.target.value)}
+                                                    className="w-full bg-background border border-border rounded-xl px-4 py-2.5 text-xs focus:border-accent outline-none font-medium cursor-pointer"
+                                                >
+                                                    <option>Defective / Damaged unit</option>
+                                                    <option>Damaged during transit / delivery</option>
+                                                    <option>Incorrect item received</option>
+                                                    <option>Item not as described</option>
+                                                    <option>Missing parts or accessories</option>
+                                                    <option>Customer satisfaction / Changed mind</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             <div className="space-y-1">
                                 <label className="text-[10px] font-black text-muted uppercase tracking-widest">Describe Your Issue</label>

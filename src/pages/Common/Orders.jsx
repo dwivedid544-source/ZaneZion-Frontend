@@ -98,6 +98,15 @@ const Orders = () => {
     if (!o) return 'pending';
     const rawSt = String(o.status || '').toLowerCase().trim();
 
+    // 0. Explicit Refund Check
+    const meta = typeof o.metadata === 'string'
+      ? (() => { try { return JSON.parse(o.metadata); } catch { return {}; } })()
+      : (o.metadata || {});
+    const refundAmt = parseFloat(o.refunded_amount ?? meta.refunded_amount ?? 0);
+    const refundSt = o.refund_status || meta.refund_status;
+    if (refundSt === 'FULL' || rawSt === 'refunded') return 'refunded';
+    if (refundSt === 'PARTIAL' || rawSt === 'partially refunded' || rawSt === 'partially_refunded' || refundAmt > 0) return 'partially_refunded';
+
     // 1. Direct explicit database order status
     if (['completed', 'delivered', 'done'].includes(rawSt)) return 'completed';
     if (['cancelled', 'rejected', 'canceled'].includes(rawSt)) return 'cancelled';
@@ -497,7 +506,21 @@ const Orders = () => {
         if (total === 0 && Array.isArray(itms) && itms.length > 0) {
           total = itms.reduce((acc, i) => acc + (parseFloat(i.price || i.unitPrice || i.chauffeurFee || i.chauffeur_fee || 0) * parseInt(i.qty || i.quantity || 1)), 0);
         }
-        return <span className="font-black text-accent">${parseFloat(total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>;
+
+        const refundAmt = parseFloat(row.refunded_amount ?? meta.refunded_amount ?? 0);
+        const netTotal = Math.max(0, total - refundAmt);
+
+        return (
+          <div className="flex flex-col">
+            <span className="font-black text-accent">${parseFloat(refundAmt > 0 ? netTotal : total).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            {refundAmt > 0 && (
+              <span className="text-[9px] font-bold text-amber-400 font-mono">
+                <span className="line-through text-muted/60 mr-1">${total.toFixed(2)}</span>
+                -${refundAmt.toFixed(2)} refund
+              </span>
+            )}
+          </div>
+        );
       }
     },
     {

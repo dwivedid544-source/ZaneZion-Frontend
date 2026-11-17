@@ -224,6 +224,8 @@ export const isPortOrCoastalCity = (displayName) => {
     return false;
 };
 
+const distanceResultCache = new Map();
+
 /**
  * Calculates distance (in km) between pickup and drop queries based on the transport mode:
  * - 'Road': Actual driving distance following the road network via OSRM API (or fallback with road circuity).
@@ -233,7 +235,14 @@ export const isPortOrCoastalCity = (displayName) => {
 export const calculateOSRMRouteDistance = async (pickup, drop, mode = 'Road') => {
     if (!pickup || !String(pickup).trim() || !drop || !String(drop).trim()) return null;
 
+    const cleanPick = String(pickup).trim().toLowerCase();
+    const cleanDrop = String(drop).trim().toLowerCase();
     const transportMode = String(mode || 'Road').trim().toLowerCase();
+    const cacheKey = `${cleanPick}|${cleanDrop}|${transportMode}`;
+
+    if (distanceResultCache.has(cacheKey)) {
+        return distanceResultCache.get(cacheKey);
+    }
 
     try {
         // 1. Geocode Pickup & Drop
@@ -264,21 +273,25 @@ export const calculateOSRMRouteDistance = async (pickup, drop, mode = 'Road') =>
 
         if (transportMode === 'air') {
             const distanceKm = parseFloat(Math.max(1.0, straightLineKm).toFixed(2));
-            return {
+            const result = {
                 distanceKm,
                 durationMins: Math.max(5, Math.round((distanceKm / 800) * 60)),
                 pickupCoords,
                 dropCoords
             };
+            distanceResultCache.set(cacheKey, result);
+            return result;
         } else if (transportMode === 'sea') {
             const marineCircuityFactor = 1.4;
             const distanceKm = parseFloat(Math.max(2.0, straightLineKm * marineCircuityFactor).toFixed(2));
-            return {
+            const result = {
                 distanceKm,
                 durationMins: Math.max(15, Math.round((distanceKm / 37) * 60)),
                 pickupCoords,
                 dropCoords
             };
+            distanceResultCache.set(cacheKey, result);
+            return result;
         } else {
             // Road Transport: Try OSRM driving route first
             let data = null;
@@ -312,12 +325,14 @@ export const calculateOSRMRouteDistance = async (pickup, drop, mode = 'Road') =>
                 const avgSpeedKmh = distanceKm > 50 ? 55 : 40;
                 const durationMins = Math.max(5, Math.round((distanceKm / avgSpeedKmh) * 60));
 
-                return {
+                const result = {
                     distanceKm,
                     durationMins,
                     pickupCoords,
                     dropCoords
                 };
+                distanceResultCache.set(cacheKey, result);
+                return result;
             } else {
                 // Fallback to straight-line with road circuity
                 const roadCircuityFactor = straightLineKm > 500 ? 1.25 : 1.22;
@@ -325,12 +340,14 @@ export const calculateOSRMRouteDistance = async (pickup, drop, mode = 'Road') =>
                 const avgSpeedKmh = distanceKm > 50 ? 55 : 40;
                 const durationMins = Math.max(5, Math.round((distanceKm / avgSpeedKmh) * 60));
 
-                return {
+                const result = {
                     distanceKm,
                     durationMins,
                     pickupCoords,
                     dropCoords
                 };
+                distanceResultCache.set(cacheKey, result);
+                return result;
             }
         }
     } catch (error) {

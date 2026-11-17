@@ -229,7 +229,8 @@ const SupportDashboard = () => {
 
     const handleOpenTicket = (ticket) => {
         setSelectedTicket(ticket);
-        setRefundAmount(ticket.refund_amount || 0);
+        const autoAmount = Number(ticket.refund_amount) || Number(ticket.dispute_data?.requestedRefundAmount) || 0;
+        setRefundAmount(autoAmount);
         setIsModalOpen(true);
     };
 
@@ -866,6 +867,31 @@ const SupportDashboard = () => {
                                             Status: {selectedTicket.dispute_status || 'none'}
                                         </span>
                                     </div>
+
+                                    {/* Linked Order & Item Breakdown from Claim */}
+                                    {selectedTicket.dispute_data && (
+                                        <div className="p-3 bg-black/40 border border-white/5 rounded-xl space-y-2">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[9px] font-black uppercase text-accent">Linked Order</span>
+                                                <span className="text-xs font-bold text-white font-mono">{selectedTicket.dispute_data.orderNumber}</span>
+                                            </div>
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[9px] font-black uppercase text-muted">Claim Reason</span>
+                                                <span className="text-[10px] font-bold text-white">{selectedTicket.dispute_data.refundReason || 'Defective Item'}</span>
+                                            </div>
+                                            {Array.isArray(selectedTicket.dispute_data.items) && selectedTicket.dispute_data.items.length > 0 && (
+                                                <div className="space-y-1 pt-1.5 border-t border-white/5">
+                                                    <p className="text-[8px] font-black uppercase text-muted">Items Claimed for Refund:</p>
+                                                    {selectedTicket.dispute_data.items.map((it, idx) => (
+                                                        <div key={idx} className="flex items-center justify-between text-[10px] text-secondary">
+                                                            <span className="truncate max-w-[170px]">• {it.name} (Qty: {it.refundQty} of {it.orderedQty})</span>
+                                                            <span className="font-bold text-white font-mono">${(it.unitPrice * it.refundQty).toFixed(2)}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
                                     
                                     <div className="space-y-1.5">
                                         <div className="flex items-center justify-between">
@@ -881,7 +907,7 @@ const SupportDashboard = () => {
                                             value={refundAmount}
                                             disabled={isResolved}
                                             onChange={(e) => setRefundAmount(parseFloat(e.target.value) || 0)}
-                                            className={`w-full bg-background border border-border rounded-xl px-3.5 py-2 text-sm outline-none font-bold ${
+                                            className={`w-full bg-background border border-border rounded-xl px-3.5 py-2 text-sm outline-none font-bold font-mono ${
                                                 isResolved 
                                                     ? 'opacity-60 cursor-not-allowed bg-black/40 text-muted border-white/5' 
                                                     : 'focus:border-accent'

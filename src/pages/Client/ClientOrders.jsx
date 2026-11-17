@@ -4,7 +4,7 @@ import Table from '../../components/Table';
 import {
     ShoppingBag, Search, Filter, Download, Clock, CheckCircle2,
     FileCheck, Plus, ChevronRight, Zap, Car, Calendar, Users,
-    Sparkles, Printer, ShieldCheck, Eye, X, ArrowUpRight
+    Sparkles, Printer, ShieldCheck, Eye, X, ArrowUpRight, RotateCcw
 } from 'lucide-react';
 import { useData } from '../../context/GlobalDataContext';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -15,6 +15,16 @@ import { displayOrderStatus, isoDateSlice, formatDateDisplayDMY } from '../../ut
 import { normalizeRole, roleCanCreateInstitutionalOrder } from '../../utils/authUtils';
 import { useUpdateOrder } from '../../hooks/api/useOrders';
 import { compareOrdersNewestFirst } from '../../utils/apiHelpers';
+import api from '../../services/api/setupAxios.js';
+
+const normalizeOrderId = (val) => {
+    if (!val) return '';
+    const s = String(val).trim();
+    const digitsOnly = s.replace(/\D/g, '');
+    const withoutYear = digitsOnly.replace(/^202[0-9]/, '');
+    const clean = (withoutYear || digitsOnly).replace(/^0+/, '');
+    return clean || digitsOnly;
+};
 
 const CATEGORY_CONFIG = {
     'Marketplace Order': { label: 'Marketplace Order', icon: ShoppingBag, color: 'bg-info/10 text-info border-info/20' },
@@ -38,6 +48,8 @@ const ClientOrders = () => {
         deliveries = [],
         currentUser,
         clients = [],
+        supportTickets = [],
+        rawSupportTickets = [],
         addOrder,
         fetchOrders,
         fetchProjects,
@@ -56,32 +68,39 @@ const ClientOrders = () => {
     const canStaffCreateOrderHere = roleCanCreateInstitutionalOrder(portalRole);
     const isBusinessClient = portalRole === 'client' || portalRole === 'saas_client';
 
+    // Persist and restore cached summary stats to prevent flickering partial sums on initial load
+    const cachedStats = useMemo(() => {
+        try {
+            const raw = localStorage.getItem('client_orders_summary');
+            return raw ? JSON.parse(raw) : null;
+        } catch { return null; }
+    }, []);
+
     useEffect(() => {
-        fetchOrders();
-        fetchClients();
-        if (fetchProjects) fetchProjects();
-        if (fetchMissions) fetchMissions();
-        if (fetchDeliveries) fetchDeliveries();
+        if (fetchOrders) fetchOrders();
+        if (fetchClients) fetchClients();
         if (fetchChauffeurRequests) fetchChauffeurRequests();
-        if (fetchLuxuryItems) fetchLuxuryItems();
+        if (fetchDeliveries) fetchDeliveries();
         if (fetchTickets) fetchTickets();
 
         const handleStateChanged = () => {
-            fetchOrders();
-            if (fetchProjects) fetchProjects();
-            if (fetchMissions) fetchMissions();
+            if (fetchOrders) fetchOrders();
+            if (fetchClients) fetchClients();
+            if (fetchChauffeurRequests) fetchChauffeurRequests();
             if (fetchDeliveries) fetchDeliveries();
+            if (fetchTickets) fetchTickets();
         };
         window.addEventListener('app:state-changed', handleStateChanged);
 
         const interval = setInterval(() => {
             if (syncGlobalState) syncGlobalState();
         }, 3000);
+
         return () => {
             window.removeEventListener('app:state-changed', handleStateChanged);
             clearInterval(interval);
         };
-    }, [fetchOrders, fetchClients, fetchProjects, fetchMissions, fetchDeliveries, fetchChauffeurRequests, fetchLuxuryItems, fetchTickets, syncGlobalState]);
+    }, []);
 
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
@@ -91,10 +110,30 @@ const ClientOrders = () => {
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [selectedTransaction, setSelectedTransaction] = useState(null);
     const [isProofModalOpen, setIsProofModalOpen] = useState(false);
+    const [localTickets, setLocalTickets] = useState([]);
+
+    useEffect(() => {
+        let mounted = true;
+        api.get(`/support/tickets?_t=${Date.now()}`)
+            .then(res => {
+                if (!mounted) return;
+                const raw = res.data?.data ?? res.data;
+                if (Array.isArray(raw)) setLocalTickets(raw);
+            })
+            .catch(() => {});
+    return () => { mounted = false; };
+    }, []);
+
+    // Persist and restore cached client id to avoid cold-start delays before fetchClients completes
+    const cachedClientId = useMemo(() => {
+        try {
+            return localStorage.getItem('user_client_id') || localStorage.getItem('clientId') || null;
+        } catch { return null; }
+    }, []);
 
     // Match client/customer record for current user
     const myClient = useMemo(() => {
-        return (clients || []).find(c => {
+        const found = (clients || []).find(c => {
             const cId = String(c.id).replace('CLT-', '');
             const uClientId = currentUser?.clientId ? String(currentUser.clientId).replace('CLT-', '') : null;
             if (currentUser?.email && c.email?.toLowerCase() === currentUser?.email?.toLowerCase()) return true;
@@ -102,11 +141,17 @@ const ClientOrders = () => {
             if (currentUser?.name && c.name?.toLowerCase() === currentUser?.name?.toLowerCase() && c.name?.toLowerCase() !== 'zanezion') return true;
             return false;
         });
+        if (found?.id) {
+            try { localStorage.setItem('user_client_id', String(found.id)); } catch {}
+        }
+        return found;
     }, [clients, currentUser]);
 
     const myClientId = (myClient?.id && String(myClient.id) !== '1')
         ? String(myClient.id)
-        : (currentUser?.clientId && String(currentUser.clientId) !== '1' ? String(currentUser.clientId) : null);
+        : (currentUser?.clientId && String(currentUser.clientId) !== '1' 
+            ? String(currentUser.clientId) 
+            : (cachedClientId && String(cachedClientId) !== '1' ? String(cachedClientId) : null));
     const myName = (currentUser?.name || myClient?.name || '').toLowerCase().trim();
     const myEmail = (currentUser?.email || myClient?.email || '').toLowerCase().trim();
     const myUserId = String(currentUser?.id || '').trim();
@@ -114,16 +159,17 @@ const ClientOrders = () => {
     // Helper to check ownership of any record strictly by ID, email, or client association (NEVER generic companyId 1)
     const isMyRecord = (item) => {
         if (!item) return false;
-        const itemClientId = String(item.clientId || item.client_id || item.metadata?.clientId || item.metadata?.client_id || '').trim();
+        const itemClientId = String(item.clientId || item.client_id || item.metadata?.clientId || item.metadata?.client_id || item.client?.id || '').trim();
         const itemCustId = String(item.customer_id || item.customerId || item.created_by || item.createdById || item.userId || item.user_id || item.metadata?.customer_id || item.metadata?.user_id || item.metadata?.userId || '').trim();
-        const itemEmail = String(item.email || item.client_email || item.customer_email || item.metadata?.email || item.metadata?.customer_email || item.metadata?.client_email || item.client?.email || '').toLowerCase().trim();
+        const itemEmail = String(item.email || item.client_email || item.clientEmail || item.customer_email || item.customerEmail || item.metadata?.email || item.metadata?.customer_email || item.metadata?.client_email || item.client?.email || item.clientObj?.email || '').toLowerCase().trim();
 
         if (myUserId && itemCustId && itemCustId === myUserId) return true;
         if (myClientId && myClientId !== '1' && itemClientId && myClientId === itemClientId) return true;
         if (myEmail && itemEmail && (itemEmail === myEmail || itemEmail.includes(myEmail) || myEmail.includes(itemEmail))) return true;
 
         if (myName && myName !== 'zanezion') {
-            const itemOwner = String(item.owner || item.owner_name || item.clientName || item.client_name || item.customer_name || item.client?.name || item.client?.companyName || item.metadata?.clientName || item.metadata?.client_name || '').toLowerCase().trim();
+            const clientNameCandidate = typeof item.client === 'string' ? item.client : (item.client?.companyName || item.client?.name || '');
+            const itemOwner = String(item.owner || item.owner_name || item.clientName || item.client_name || item.customer_name || clientNameCandidate || item.metadata?.clientName || item.metadata?.client_name || '').toLowerCase().trim();
             if (itemOwner && (itemOwner === myName || itemOwner.includes(myName) || myName.includes(itemOwner))) return true;
         }
 
@@ -149,7 +195,7 @@ const ClientOrders = () => {
             const linkedProjects = (projects || []).filter(p => {
                 const pRef = String(p.orderRef || p.order_ref || p.orderId || p.order_id || p.metadata?.orderRef || p.metadata?.order_ref || p.metadata?.orderId || '');
                 const pId = String(p.id || '');
-                return (
+            return (
                     (pRef && (pRef === oIdStr || pRef === oRawIdStr || pRef === `ORD-${oIdStr}` || pRef === `ORD-${oRawIdStr}`)) ||
                     (pId && (pId === oIdStr || pId === oRawIdStr))
                 );
@@ -160,7 +206,7 @@ const ClientOrders = () => {
             const linkedMission = (missions || []).find(m => {
                 const mOrderId = String(m.orderId || m.order_id || m.order_id_raw || m.metadata?.orderId || m.metadata?.orderRef || '');
                 const mProjectId = String(m.projectId || m.project_id || m.metadata?.projectId || m.metadata?.projectRef || '');
-                return (
+            return (
                     mOrderId === oIdStr ||
                     mOrderId === oRawIdStr ||
                     mOrderId === `ORD-${oIdStr}` ||
@@ -174,7 +220,7 @@ const ClientOrders = () => {
             const linkedDelivery = (deliveries || []).find(d => {
                 const dOrderId = String(d.orderId || d.order_id_raw || d.order_id || '');
                 const dMissionId = String(d.mission_id || d.missionId || '');
-                return (
+            return (
                     dOrderId === oIdStr ||
                     dOrderId === oRawIdStr ||
                     dOrderId === `ORD-${oIdStr}` ||
@@ -283,7 +329,83 @@ const ClientOrders = () => {
             const dbSt = String(o.status || '').toLowerCase().trim();
             let effectiveStatus = dbSt || 'pending';
 
-            if (['completed', 'delivered', 'done'].includes(dbSt)) {
+            // Cross-reference any accepted / resolved dispute tickets for this order
+            const allAvailableTickets = [
+                ...(Array.isArray(supportTickets) ? supportTickets : []),
+                ...(Array.isArray(rawSupportTickets) ? rawSupportTickets : []),
+                ...(Array.isArray(localTickets) ? localTickets : [])
+            ];
+
+            const oNorm = normalizeOrderId(o.id || o.rawId || o.orderNumber);
+
+            const matchingAcceptedTickets = allAvailableTickets.filter(t => {
+                if (!t) return false;
+
+                // 1. Check all possible order IDs on the ticket
+                const tOrderCandidates = [
+                    t.order_id,
+                    t.orderId,
+                    t.dispute_data?.orderId,
+                    t.dispute_data?.orderNumber,
+                    t.orderNumber,
+                    t.order_number
+                ];
+                let isMatch = tOrderCandidates.some(c => c && normalizeOrderId(c) === oNorm);
+
+                // 2. Parse from description/subject/messages
+                const descText = `${t.description || ''} ${t.subject || ''} ${Array.isArray(t.messages) ? t.messages.map(m => m.text || '').join(' ') : ''}`;
+                if (!isMatch && descText) {
+                    const orderRegexMatch = descText.match(/Order:\s*([A-Za-z0-9-]+)/i) || descText.match(/ORD-[A-Za-z0-9-]+/i);
+                    if (orderRegexMatch && normalizeOrderId(orderRegexMatch[1] || orderRegexMatch[0]) === oNorm) {
+                        isMatch = true;
+                    }
+                }
+
+                if (!isMatch) return false;
+
+                const dispStatus = String(t.dispute_status || '').toLowerCase().trim();
+                const tStatus = String(t.status || '').toLowerCase().trim();
+                const isRejected = dispStatus === 'rejected' || tStatus === 'rejected';
+                if (isRejected) return false;
+
+                const isDisputeAccepted = dispStatus === 'accepted';
+                const isResolvedRefund = (tStatus === 'resolved' || tStatus === 'accepted' || tStatus === 'closed') && (
+                    Number(t.refund_amount) > 0 || 
+                    Number(t.dispute_data?.requestedRefundAmount) > 0 ||
+                    String(t.category || '').toLowerCase().includes('refund') ||
+                    descText.toLowerCase().includes('refund')
+                );
+
+                return isDisputeAccepted || isResolvedRefund;
+            });
+
+            const ticketRefundAmount = matchingAcceptedTickets.reduce((acc, t) => {
+                const descText = `${t.description || ''} ${t.subject || ''} ${Array.isArray(t.messages) ? t.messages.map(m => m.text || '').join(' ') : ''}`;
+                let descRefundAmt = 0;
+                const amtMatch = descText.match(/Requested Amount:\s*\$?([\d,]+(?:\.\d+)?)/i) || 
+                                 descText.match(/Refund Qty:.*?=\s*\$?([\d,]+(?:\.\d+)?)/i) ||
+                                 descText.match(/refund.*?\$?([\d,]+(?:\.\d+)?)/i);
+                if (amtMatch && amtMatch[1]) {
+                    descRefundAmt = parseFloat(amtMatch[1].replace(/,/g, '')) || 0;
+                }
+                const directAmt = parseFloat(t.refund_amount ?? t.dispute_data?.requestedRefundAmount ?? t.dispute_data?.refund_amount ?? 0) || 0;
+                const amt = directAmt > 0 ? directAmt : descRefundAmt;
+                return Math.max(acc, amt);
+            }, 0);
+
+            const directRefundAmount = parseFloat(o.refunded_amount ?? meta?.refunded_amount ?? 0) || 0;
+            const refundAmountVal = Math.max(directRefundAmount, ticketRefundAmount);
+
+            const refundStatusVal = (refundAmountVal >= orderTotal && orderTotal > 0)
+                ? 'FULL'
+                : (refundAmountVal > 0 ? 'PARTIAL' : (o.refund_status || meta?.refund_status || null));
+            const netOrderTotal = Math.max(0, orderTotal - refundAmountVal);
+
+            if (refundStatusVal === 'FULL' || ['refunded'].includes(dbSt)) {
+                effectiveStatus = 'Refunded';
+            } else if (refundStatusVal === 'PARTIAL' || ['partially refunded', 'partially_refunded'].includes(dbSt) || refundAmountVal > 0) {
+                effectiveStatus = 'Partially Refunded';
+            } else if (['completed', 'delivered', 'done'].includes(dbSt)) {
                 effectiveStatus = 'completed';
             } else if (['cancelled', 'rejected', 'canceled'].includes(dbSt)) {
                 effectiveStatus = 'cancelled';
@@ -322,6 +444,9 @@ const ClientOrders = () => {
                 serviceType: o.type || (isCustom ? 'Custom Requisition' : 'Marketplace Purchase'),
                 items: normalizedItems,
                 total: orderTotal,
+                netTotal: netOrderTotal,
+                refunded_amount: refundAmountVal,
+                refund_status: refundStatusVal,
                 createdAt: orderCreated,
                 created_at: orderCreated,
                 requestDate: orderCreated,
@@ -440,7 +565,7 @@ const ClientOrders = () => {
             seen.add(key);
             return true;
         }).sort(compareOrdersNewestFirst);
-    }, [orders, chauffeurRequests, events, guestRequests, luxuryItems, myClientId, myName, myEmail, portalRole]);
+    }, [orders, chauffeurRequests, events, guestRequests, luxuryItems, supportTickets, rawSupportTickets, localTickets, myClientId, myName, myEmail, portalRole]);
 
     // Filter transactions based on category, status, and search query
     const filteredTransactions = useMemo(() => {
@@ -450,8 +575,9 @@ const ClientOrders = () => {
 
             // Status Filter
             const st = String(tx.status || '').toLowerCase();
-            if (statusFilter === 'Active' && ['completed', 'delivered', 'cancelled', 'done'].includes(st)) return false;
-            if (statusFilter === 'Closed' && !['completed', 'delivered', 'done'].includes(st)) return false;
+            const isClosedStatus = ['completed', 'delivered', 'cancelled', 'canceled', 'done', 'refunded', 'partially refunded', 'partially_refunded'].includes(st);
+            if (statusFilter === 'Active' && isClosedStatus) return false;
+            if (statusFilter === 'Closed' && !isClosedStatus) return false;
 
             // Search Query
             if (searchTerm.trim() !== '') {
@@ -486,7 +612,7 @@ const ClientOrders = () => {
             render: (tx) => {
                 const cfg = CATEGORY_CONFIG[tx.category] || CATEGORY_CONFIG['Custom Order'];
                 const Icon = cfg.icon;
-                return (
+            return (
                     <div className="flex flex-col gap-1 items-start">
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 border rounded-lg text-[10px] font-black uppercase tracking-wider italic ${cfg.color}`}>
                             <Icon size={12} />
@@ -510,7 +636,7 @@ const ClientOrders = () => {
                 if (tx.items.length <= 1) {
                     return <span className="font-bold text-white text-xs truncate max-w-[220px] block">{primaryName}</span>;
                 }
-                return (
+            return (
                     <div className="flex items-center gap-2">
                         <span className="font-bold text-white text-xs truncate max-w-[180px]">{primaryName}</span>
                         <span className="px-2 py-0.5 bg-white/5 rounded-md text-[9px] font-black text-muted uppercase">+{tx.items.length - 1} More</span>
@@ -522,9 +648,17 @@ const ClientOrders = () => {
             header: "Total Value",
             accessor: "total",
             render: (tx) => (
-                <span className="font-black text-white italic tracking-tighter text-sm">
-                    ${tx.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </span>
+                <div className="flex flex-col">
+                    <span className="font-black text-white italic tracking-tighter text-sm font-mono">
+                        ${(tx.netTotal !== undefined ? tx.netTotal : tx.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                    {tx.refunded_amount > 0 && (
+                        <span className="text-[9px] font-bold text-amber-400 font-mono">
+                            <span className="line-through text-muted/60 mr-1">${tx.total.toFixed(2)}</span>
+                            -${tx.refunded_amount.toFixed(2)} refund
+                        </span>
+                    )}
+                </div>
             )
         },
         {
@@ -694,10 +828,21 @@ const ClientOrders = () => {
             </thead>
             <tbody>
                 ${itemsHtml}
+                ${tx.refunded_amount > 0 ? `
+                <tr style="background:#fffbeb;">
+                    <td colspan="3" style="text-align:right;color:#b45309;font-size:12px;font-weight:700;padding:8px 12px;">Dispute Refund Issued</td>
+                    <td style="text-align:right;color:#b45309;font-weight:700;padding:8px 12px;">-$${tx.refunded_amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+                <tr class="total-row">
+                    <td colspan="3" style="text-align:right;color:#111827;font-size:12px;font-weight:900;padding:14px 12px;">Net Settled Fiscal Amount</td>
+                    <td style="text-align:right;color:#111827;padding:14px 12px;">$${(tx.netTotal !== undefined ? tx.netTotal : tx.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+                ` : `
                 <tr class="total-row">
                     <td colspan="3" style="text-align:right;color:#6b7280;font-size:12px;font-weight:600;padding:14px 12px;">Total Settled Fiscal Amount</td>
                     <td style="text-align:right;color:#111827;padding:14px 12px;">$${tx.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 </tr>
+                `}
             </tbody>
         </table>
     </div>
@@ -725,6 +870,29 @@ const ClientOrders = () => {
         }, 500);
     };
 
+
+    useEffect(() => {
+        if (allTransactions.length > 0 && (orders || []).length > 0) {
+            try {
+                const total = filteredTransactions.reduce((acc, tx) => acc + (tx.netTotal !== undefined ? tx.netTotal : tx.total), 0);
+                const active = allTransactions.filter(tx => !['completed', 'delivered', 'cancelled', 'done'].includes(String(tx.status || '').toLowerCase())).length;
+                localStorage.setItem('client_orders_summary', JSON.stringify({
+                    total,
+                    count: allTransactions.length,
+                    active
+                }));
+            } catch {}
+        }
+    }, [allTransactions, filteredTransactions, orders]);
+
+    const liveTotal = filteredTransactions.reduce((acc, tx) => acc + (tx.netTotal !== undefined ? tx.netTotal : tx.total), 0);
+    const displayTotal = (orders || []).length > 0 ? liveTotal : (cachedStats?.total ?? liveTotal);
+
+    const liveLogsCount = allTransactions.length;
+    const displayLogsCount = (orders || []).length > 0 ? liveLogsCount : (cachedStats?.count ?? liveLogsCount);
+
+    const liveActiveCount = allTransactions.filter(tx => !['completed', 'delivered', 'cancelled', 'done'].includes(String(tx.status || '').toLowerCase())).length;
+    const displayActiveCount = (orders || []).length > 0 ? liveActiveCount : (cachedStats?.active ?? liveActiveCount);
 
     return (
         <div className="space-y-10 animate-fade-in pb-10">
@@ -768,21 +936,21 @@ const ClientOrders = () => {
                     <div className="glass-card p-6 border-l-4 border-l-accent">
                         <p className="text-[10px] text-accent font-black uppercase tracking-widest mb-1">Total Transaction Value</p>
                         <p className="text-2xl font-black text-white italic font-heading tracking-tighter">
-                            ${filteredTransactions.reduce((acc, tx) => acc + tx.total, 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            ${displayTotal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </p>
                     </div>
 
                     <div className="glass-card p-6 border-l-4 border-l-info">
                         <p className="text-[10px] text-info font-black uppercase tracking-widest mb-1">Active Services & Missions</p>
                         <p className="text-2xl font-black text-white italic font-heading tracking-tighter">
-                            {allTransactions.filter(tx => !['completed', 'delivered', 'cancelled', 'done'].includes(String(tx.status || '').toLowerCase())).length.toString().padStart(2, '0')}
+                            {displayActiveCount.toString().padStart(2, '0')}
                         </p>
                     </div>
 
                     <div className="glass-card p-6 border-l-4 border-l-warning">
                         <p className="text-[10px] text-warning font-black uppercase tracking-widest mb-1">Total Verified Proof Records</p>
                         <p className="text-2xl font-black text-white italic font-heading tracking-tighter">
-                            {allTransactions.length.toString().padStart(2, '0')} Logs
+                            {displayLogsCount.toString().padStart(2, '0')} Logs
                         </p>
                     </div>
 
@@ -845,7 +1013,7 @@ const ClientOrders = () => {
                         filteredTransactions.map((tx) => {
                             const cfg = CATEGORY_CONFIG[tx.category] || CATEGORY_CONFIG['Custom Order'];
                             const Icon = cfg.icon;
-                            return (
+                        return (
                                 <div key={`${tx.source}-${tx.id}`} className="glass-card p-5 space-y-4 hover:border-accent/30 transition-all">
                                     <div className="flex justify-between items-start gap-2">
                                         <div>
@@ -1055,7 +1223,7 @@ const ClientOrders = () => {
                                         const tAssetCustom = selectedTransaction.transport_asset_custom || orig.transport_asset_custom || orig.transportAssetCustom || orig.charterDetails || origMeta.transport_asset_custom || origMeta.charter_details || origMeta.transportAssetCustom;
                                         const islLoc = selectedTransaction.island_location || orig.island_location || orig.islandLocation || origMeta.island_location || origMeta.islandLocation;
 
-                                        return (
+                                    return (
                                             <div className="p-4 rounded-2xl bg-accent/5 border border-accent/20 space-y-3">
                                                 <div className="flex items-center justify-between">
                                                     <p className="text-[10px] font-black text-accent uppercase tracking-widest flex items-center gap-1.5">
@@ -1130,7 +1298,7 @@ const ClientOrders = () => {
                                         const rawAmenities = c0.amenities || selectedTransaction.amenities || selectedTransaction.metadata?.amenities || [];
                                         const amenList = Array.isArray(rawAmenities) ? rawAmenities : (typeof rawAmenities === 'string' && rawAmenities.trim() ? rawAmenities.split(',').map(s => s.trim()) : []);
 
-                                        return (
+                                    return (
                                             <div className="space-y-3 p-4 rounded-2xl bg-accent/5 border border-accent/20">
                                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                     <div>
@@ -1177,7 +1345,7 @@ const ClientOrders = () => {
                                                 const qty = parseInt(item.qty || 1) || 1;
                                                 const unitPrice = parseFloat(item.price ?? item.unitPrice ?? item.unit_price ?? 0) || 0;
                                                 const lineTotal = unitPrice * qty;
-                                                return (
+                                            return (
                                                     <div key={idx} className="p-3.5 bg-white/[0.03] border border-white/5 rounded-xl">
                                                         <div className="flex items-center justify-between gap-3">
                                                             <div className="flex items-center gap-3 min-w-0">
@@ -1203,27 +1371,50 @@ const ClientOrders = () => {
                                         </div>
                                     </div>
 
-                                    {/* Financial Total */}
-                                    <div className="p-5 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between">
-                                        <div>
-                                            <p className="text-[10px] font-black text-muted uppercase tracking-widest">Total Settled Fiscal Amount</p>
-                                            <p className="text-xs text-secondary font-bold">Includes all service charges, tariffs & logistics</p>
+                                    {/* Financial Total & Refund Breakdown */}
+                                    <div className="p-5 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-[10px] font-black text-muted uppercase tracking-widest">Total Settled Fiscal Amount</p>
+                                                <p className="text-xs text-secondary font-bold">Includes all service charges, tariffs & logistics</p>
+                                            </div>
+                                            <p className="text-2xl font-black text-white italic tracking-tighter font-mono">
+                                                ${(selectedTransaction.netTotal !== undefined ? selectedTransaction.netTotal : selectedTransaction.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </p>
                                         </div>
-                                        <p className="text-2xl font-black text-white italic tracking-tighter">
-                                            ${selectedTransaction.total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                        </p>
+
+                                        {selectedTransaction.refunded_amount > 0 && (
+                                            <div className="pt-2 border-t border-white/5 flex items-center justify-between text-xs font-bold text-amber-400">
+                                                <span>Dispute Refund Settled</span>
+                                                <span className="font-mono">-${selectedTransaction.refunded_amount.toFixed(2)}</span>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
 
                                 {/* Modal Actions */}
-                                <div className="p-6 border-t border-white/10 flex items-center justify-between bg-white/[0.02]">
-                                    <button
-                                        type="button"
-                                        onClick={handlePrintProof}
-                                        className="btn-secondary text-xs px-6 flex items-center gap-2"
-                                    >
-                                        <Printer size={16} /> Print Official Proof
-                                    </button>
+                                <div className="p-6 border-t border-white/10 flex items-center justify-between bg-white/[0.02] flex-wrap gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={handlePrintProof}
+                                            className="btn-secondary text-xs px-6 flex items-center gap-2"
+                                        >
+                                            <Printer size={16} /> Print Official Proof
+                                        </button>
+                                        {selectedTransaction.category === 'Marketplace Order' && ['completed', 'delivered', 'done', 'partially refunded', 'partially_refunded'].includes(String(selectedTransaction.status || '').toLowerCase()) && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setIsProofModalOpen(false);
+                                                    navigate(`/dashboard/support?category=Return%20%2F%20Refund%20Request&orderId=${selectedTransaction.rawId || selectedTransaction.id}`);
+                                                }}
+                                                className="px-4 py-2.5 bg-accent/15 border border-accent/40 text-accent hover:bg-accent hover:text-black rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer shadow-md shadow-accent/10"
+                                            >
+                                                <RotateCcw size={14} /> Request Refund / Return
+                                            </button>
+                                        )}
+                                    </div>
                                     <button
                                         type="button"
                                         onClick={() => setIsProofModalOpen(false)}
